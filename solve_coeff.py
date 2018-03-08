@@ -6,8 +6,7 @@ from sklearn.cross_validation import KFold
 import mdtraj as md
 
 import basis_library
-
-
+import util
 
 if __name__ == "__main__":
     n_beads = 25 
@@ -25,7 +24,7 @@ if __name__ == "__main__":
     n_basis_deriv = len(dU_dxi)
     n_params = len(dU_funcs)
 
-    n_frames_tot = get_n_frames(trajfile, topfile)
+    raise SystemExit
 
     all_s = [1, 2, 5, 10, 20, 50, 100, 500]
     all_cv_scores = [] 
@@ -36,7 +35,7 @@ if __name__ == "__main__":
         s = dt_frame*s_frames
 
         print "calculating trajectory derivatives..."
-        G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_frames_tot, n_dim, n_params)
+        G, Y = util.calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_dim, n_params)
 
         cv_score = 0
         temp_c_soln = []

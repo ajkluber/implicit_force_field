@@ -162,3 +162,29 @@ def polymer_library(n_beads, gaussians=True):
     dU_ck = dU_bond_ck + dU_angle_ck + dU_pair_ck + dU_gauss_ck
 
     return dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors
+
+def many_body_function(n_beads, gaussians=True):
+    """ """
+
+    # 
+    gauss_func = -gauss_scale*sympy.exp(-one_half*((r12_sym - gauss_r0[m])/gauss_w)**2)
+
+    max_n_args = 3*n_beads
+    xyz_sym = []
+    for i in range(max_n_args/3):
+        x_i = sympy.symbols('x' + str(i + 1))
+        y_i = sympy.symbols('y' + str(i + 1))
+        z_i = sympy.symbols('z' + str(i + 1))
+        xyz_sym.append([x_i, y_i, z_i])
+
+    x1, y1, z1 = xyz_sym[0]
+    x2, y2, z2 = xyz_sym[1]
+    x3, y3, z3 = xyz_sym[2]
+
+    r12_sym = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+    r23_sym = sympy.sqrt((x2 - x3)**2 + (y2 - y3)**2 + (z2 - z3)**2)
+    r13_sym = sympy.sqrt((x3 - x1)**2 + (y3 - y1)**2 + (z3 - z1)**2)
+
+    rij_args = (x1, y1, z1, x2, y2, z2)
+
+    rho_sym = 1 

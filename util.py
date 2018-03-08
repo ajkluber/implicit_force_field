@@ -1,6 +1,5 @@
-
-import numpy as np
 import time
+import numpy as np
 
 import mdtraj as md
 
@@ -11,9 +10,10 @@ def get_n_frames(trajfile, topfile):
     n_frames_tot = float(n_frames_tot)
     return n_frames_tot
 
-def calc_deriv_and_drift(trajfile, topfile, s_frames, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_frames_tot, n_dim):
+def calc_deriv_and_drift(trajfile, topfile, s_frames, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_dim):
 
     n_params = len(dU_funcs)
+    n_frames_tot = get_n_frames(trajfile, topfile)
     
     G = np.zeros((int(n_frames_tot)*n_dim, n_params), float)
     Y = np.zeros(int(n_frames_tot)*n_dim, float)
