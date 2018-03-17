@@ -235,7 +235,7 @@ def one_dimension():
     return U_funcs, dU_funcs
 
 
-def hermite(domain, n_herm=20):
+def hermite_1D(domain, n_herm=20):
 
     xdata = np.linspace(domain[0], domain[1], 1000)
     U_funcs = []
@@ -252,5 +252,48 @@ def hermite(domain, n_herm=20):
         dH_i = -H_i.deriv(1)
         U_funcs.append(H_i)
         dU_funcs.append(dH_i)
+    return U_funcs, dU_funcs
+
+def gaussians_1D(domain):
+
+    xdata = np.linspace(domain[0], domain[1], 1000)
+    U_funcs = []
+    dU_funcs = []
+
+    # cover interval in different gaussian basis functions
+
+    for i in range(1, n_herm):
+        coeff = np.zeros(n_herm)
+        coeff[i] = 1
+        #y = np.polynomial.hermite.hermval(xdata, coeff)
+        H_i = np.polynomial.hermite.Hermite(coeff, domain=domain)
+        max_val = H_i(xdata).max()
+
+        coeff[i] = 1./max_val
+        H_i = np.polynomial.hermite.Hermite(coeff, domain=domain)
+        dH_i = -H_i.deriv(1)
+        U_funcs.append(H_i)
+        dU_funcs.append(dH_i)
+    return U_funcs, dU_funcs
+
+def Bsplines_1D(domain, n_knots=100):
+
+    U_funcs = []
+    dU_funcs = []
+
+    # cover interval in spline basis
+    pad_left = np.array(3*[domain[0]])
+    pad_right = np.array(3*[domain[1]])
+    knots = np.concatenate((pad_left, np.linspace(domain[0], domain[1], n_knots), pad_right))
+	k = 3
+
+    for i in range(len(knots) - k - 1):
+        coeff = np.zeros(len(knots))
+        coeff[i] = 1.
+        B_i = lambda x: scipy.interpolate.splev(x, (knots, coeff, k), ext=1)
+        dB_i = lambda x: scipy.interpolate.splev(x, (knots, -coeff, k), ext=1, der=1)
+		U_funcs.append(B_i)
+		dU_funcs.append(dB_i)
+
     return U_funcs, dU_funcs
 
