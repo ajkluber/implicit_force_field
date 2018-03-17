@@ -276,24 +276,28 @@ def gaussians_1D(domain):
         dU_funcs.append(dH_i)
     return U_funcs, dU_funcs
 
-def Bsplines_1D(domain, n_knots=100):
+def Bsplines_1D(domain, n_knots=100, knots=None, k=3):
+
+    # cover interval in spline basis
+    if knots is None:
+        pad_left = np.array(3*[domain[0]])
+        pad_right = np.array(3*[domain[1]])
+        knots = np.concatenate((pad_left, np.linspace(domain[0], domain[1], n_knots), pad_right))
+    else:
+        pad_left = np.array(3*[knots[0]])
+        pad_right = np.array(3*[knots[-1]])
+        knots = np.concatenate((pad_left, knots, pad_right))
 
     U_funcs = []
     dU_funcs = []
-
-    # cover interval in spline basis
-    pad_left = np.array(3*[domain[0]])
-    pad_right = np.array(3*[domain[1]])
-    knots = np.concatenate((pad_left, np.linspace(domain[0], domain[1], n_knots), pad_right))
-	k = 3
-
     for i in range(len(knots) - k - 1):
         coeff = np.zeros(len(knots))
         coeff[i] = 1.
-        B_i = lambda x: scipy.interpolate.splev(x, (knots, coeff, k), ext=1)
-        dB_i = lambda x: scipy.interpolate.splev(x, (knots, -coeff, k), ext=1, der=1)
-		U_funcs.append(B_i)
-		dU_funcs.append(dB_i)
+        B_i = scipy.interpolate.BSpline(knots, coeff, k)
+        negB_i = scipy.interpolate.BSpline(knots, -coeff, k)
+        dB_i = negB_i.derivative(1)
+        U_funcs.append(B_i)
+        dU_funcs.append(dB_i)
 
     return U_funcs, dU_funcs
 
