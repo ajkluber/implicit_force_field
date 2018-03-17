@@ -8,7 +8,7 @@ import simtk.unit as unit
 
 import simulation.openmm as sop
 
-def polymer_library(n_beads, gaussians=True):
+def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params 
 
@@ -56,63 +56,87 @@ def polymer_library(n_beads, gaussians=True):
     scale_factors = np.array([ float(x) for x in [kb_scale.evalf(),
         ka_scale.evalf(), eps_scale.evalf(), gauss_scale.evalf()]])
 
-    dU_bond_dxi = []
-    dU_bond_ck = []
-    dU_bond = []
-    dU_bond_d_arg = []
-    dbond_idxs = []
-    for i in range(n_beads - 1):
-        xi_idxs = np.arange(6) + i*3
-        for n in range(len(rij_args)):
-            dbond_idxs.append(xi_idxs)
-            dU_bond_d_arg.append(n)
-            dU_bond_dxi.append(xi_idxs[n])
-            dU_bond_ck.append(0)
-            if i == 0:
-                # take derivative w.r.t. argument n
-                bond_func = kb_scale*one_half*(r12_sym - r0_nm)**2 # scaled
-                d_bond_func = -bond_func.diff(rij_args[n])
-                dU_bond.append(sympy.lambdify(rij_args, d_bond_func, modules="numpy"))
+    dU_funcs = []
+    dU_idxs = []
+    dU_d_arg = []
+    dU_dxi = []
+    dU_ck = []
 
-    # angle potential
-    dU_angle = []
-    dU_angle_dxi = []
-    dU_angle_ck = []
-    dU_angle_d_arg = []
-    dang_idxs = []
-    for i in range(n_beads - 2):
-        xi_idxs = np.arange(9) + i*3
-        for n in range(len(theta_ijk_args)):
-            dang_idxs.append(xi_idxs)
-            dU_angle_dxi.append(xi_idxs[n])
-            dU_angle_ck.append(1)
-            dU_angle_d_arg.append(n)
-            if i == 0:
-                ang_func = ka_scale*one_half*(theta_ijk_sym - theta0_rad)**2  # scaled
-                d_ang_func = -ang_func.diff(theta_ijk_args[n])
-                dU_angle.append(sympy.lambdify(theta_ijk_args, d_ang_func, modules="numpy"))
-
-    # pairwise potential
-    bond_cutoff = 3
-    dU_pair = []
-    dU_pair_dxi = []
-    dU_pair_ck = []
-    dU_pair_d_arg = []
-    dpair_idxs = []
-    for i in range(n_beads - bond_cutoff - 1):
-        idxs1 = np.arange(3) + i*3
-        for j in range(i + bond_cutoff + 1, n_beads):
-            idxs2 = np.arange(3) + j*3
-            xi_idxs = np.concatenate([idxs1, idxs2])
+    if bonds:
+        dU_bond_dxi = []
+        dU_bond_ck = []
+        dU_bond = []
+        dU_bond_d_arg = []
+        dbond_idxs = []
+        for i in range(n_beads - 1):
+            xi_idxs = np.arange(6) + i*3
             for n in range(len(rij_args)):
-                dpair_idxs.append(xi_idxs)
-                dU_pair_dxi.append(xi_idxs[n])
-                dU_pair_ck.append(2)
-                dU_pair_d_arg.append(n)
-                if (i == 0) and (j == (bond_cutoff + 1)):
-                    pair_func = eps_scale*one_half*(sympy.tanh(400*(r0_wca_nm - r12_sym)) + 1)*(4*((sigma_ply_nm/r12_sym)**12 - (sigma_ply_nm/r12_sym)**6) + 1)
-                    d_pair_func = -pair_func.diff(rij_args[n])
-                    dU_pair.append(sympy.lambdify(rij_args, d_pair_func, modules="numpy"))
+                dbond_idxs.append(xi_idxs)
+                dU_bond_d_arg.append(n)
+                dU_bond_dxi.append(xi_idxs[n])
+                dU_bond_ck.append(0)
+                if i == 0:
+                    # take derivative w.r.t. argument n
+                    bond_func = kb_scale*one_half*(r12_sym - r0_nm)**2 # scaled
+                    d_bond_func = -bond_func.diff(rij_args[n])
+                    dU_bond.append(sympy.lambdify(rij_args, d_bond_func, modules="numpy"))
+        dU_funcs.append(dU_bond)
+        dU_idxs += dbond_idxs
+        dU_d_arg += dU_bond_d_arg
+        dU_dxi += dU_bond_dxi
+        dU_ck += dU_bond_ck
+
+    if angles:
+        # angle potential
+        dU_angle = []
+        dU_angle_dxi = []
+        dU_angle_ck = []
+        dU_angle_d_arg = []
+        dang_idxs = []
+        for i in range(n_beads - 2):
+            xi_idxs = np.arange(9) + i*3
+            for n in range(len(theta_ijk_args)):
+                dang_idxs.append(xi_idxs)
+                dU_angle_dxi.append(xi_idxs[n])
+                dU_angle_ck.append(1)
+                dU_angle_d_arg.append(n)
+                if i == 0:
+                    ang_func = ka_scale*one_half*(theta_ijk_sym - theta0_rad)**2  # scaled
+                    d_ang_func = -ang_func.diff(theta_ijk_args[n])
+                    dU_angle.append(sympy.lambdify(theta_ijk_args, d_ang_func, modules="numpy"))
+        dU_funcs.append(dU_angle)
+        dU_idxs += dangle_idxs
+        dU_d_arg += dU_angle_d_arg
+        dU_dxi += dU_angle_dxi
+        dU_ck += dU_angle_ck
+
+    if non_bond_wca:
+        # pairwise potential
+        bond_cutoff = 3
+        dU_pair = []
+        dU_pair_dxi = []
+        dU_pair_ck = []
+        dU_pair_d_arg = []
+        dpair_idxs = []
+        for i in range(n_beads - bond_cutoff - 1):
+            idxs1 = np.arange(3) + i*3
+            for j in range(i + bond_cutoff + 1, n_beads):
+                idxs2 = np.arange(3) + j*3
+                xi_idxs = np.concatenate([idxs1, idxs2])
+                for n in range(len(rij_args)):
+                    dpair_idxs.append(xi_idxs)
+                    dU_pair_dxi.append(xi_idxs[n])
+                    dU_pair_ck.append(2)
+                    dU_pair_d_arg.append(n)
+                    if (i == 0) and (j == (bond_cutoff + 1)):
+                        pair_func = eps_scale*one_half*(sympy.tanh(400*(r0_wca_nm - r12_sym)) + 1)*(4*((sigma_ply_nm/r12_sym)**12 - (sigma_ply_nm/r12_sym)**6) + 1)
+                        d_pair_func = -pair_func.diff(rij_args[n])
+                        dU_pair.append(sympy.lambdify(rij_args, d_pair_func, modules="numpy"))
+        dU_funcs.append(dU_pair)
+        dU_idxs += dpair_idxs
+        dU_d_arg += dU_pair_d_arg
+        dU_dxi += dU_pair_dxi
+        dU_ck += dU_pair_ck
 
 
     # create spline basis functions
@@ -124,42 +148,44 @@ def polymer_library(n_beads, gaussians=True):
     gauss_r0 = [ sympy.Rational(3 + i,10) for i in range(10) ]
     gauss_w = sympy.Rational(1, 10)
 
-    bond_cutoff = 3
-    dU_gauss = []
-    dU_gauss_dxi = []
-    dU_gauss_ck = []
-    dU_gauss_d_arg = []
-    dgauss_idxs = []
 
-    # add a gaussian well
-    for m in range(len(gauss_r0)):
-        dU_m = []
-        for i in range(n_beads - bond_cutoff - 1):
-            idxs1 = np.arange(3) + i*3
-            for j in range(i + bond_cutoff + 1, n_beads):
-                idxs2 = np.arange(3) + j*3
-                xi_idxs = np.concatenate([idxs1, idxs2])
+    if non_bond_gaussians:
+        bond_cutoff = 3
+        dU_gauss = []
+        dU_gauss_dxi = []
+        dU_gauss_ck = []
+        dU_gauss_d_arg = []
+        dgauss_idxs = []
 
-                # loop over basis functions
-                for n in range(len(rij_args)):
-                    dgauss_idxs.append(xi_idxs)
-                    dU_gauss_dxi.append(xi_idxs[n])
+        # add a gaussian well
+        for m in range(len(gauss_r0)):
+            dU_m = []
+            for i in range(n_beads - bond_cutoff - 1):
+                idxs1 = np.arange(3) + i*3
+                for j in range(i + bond_cutoff + 1, n_beads):
+                    idxs2 = np.arange(3) + j*3
+                    xi_idxs = np.concatenate([idxs1, idxs2])
 
-                    # add 
-                    dU_gauss_ck.append(3 + m)
-                    dU_gauss_d_arg.append(n)
-                    if (i == 0) and (j == (bond_cutoff + 1)):
-                        gauss_func = -gauss_scale*sympy.exp(-one_half*((r12_sym - gauss_r0[m])/gauss_w)**2)
+                    # loop over basis functions
+                    for n in range(len(rij_args)):
+                        dgauss_idxs.append(xi_idxs)
+                        dU_gauss_dxi.append(xi_idxs[n])
 
-                        d_gauss_func = -gauss_func.diff(rij_args[n])
-                        dU_m.append(sympy.lambdify(rij_args, d_gauss_func, modules="numpy"))
-        dU_gauss.append(dU_m)
+                        # add 
+                        dU_gauss_ck.append(3 + m)
+                        dU_gauss_d_arg.append(n)
+                        if (i == 0) and (j == (bond_cutoff + 1)):
+                            gauss_func = -gauss_scale*sympy.exp(-one_half*((r12_sym - gauss_r0[m])/gauss_w)**2)
 
-    dU_funcs = [dU_bond, dU_angle, dU_pair] + dU_gauss
-    dU_idxs = dbond_idxs + dang_idxs + dpair_idxs + dgauss_idxs
-    dU_d_arg = dU_bond_d_arg + dU_angle_d_arg + dU_pair_d_arg + dU_gauss_d_arg
-    dU_dxi = dU_bond_dxi + dU_angle_dxi + dU_pair_dxi + dU_gauss_dxi
-    dU_ck = dU_bond_ck + dU_angle_ck + dU_pair_ck + dU_gauss_ck
+                            d_gauss_func = -gauss_func.diff(rij_args[n])
+                            dU_m.append(sympy.lambdify(rij_args, d_gauss_func, modules="numpy"))
+            dU_gauss.append(dU_m)
+
+        dU_funcs.extend(dU_gauss)
+        dU_idxs += dpair_idxs
+        dU_d_arg += dU_pair_d_arg
+        dU_dxi += dU_pair_dxi
+        dU_ck += dU_pair_ck
 
     return dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors
 

@@ -1,10 +1,11 @@
 import os
 import numpy as np
-import sympy
+
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import mdtraj as md
-import simtk.unit as unit
 
 import simulation.openmm as sop
 
