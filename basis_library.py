@@ -249,7 +249,7 @@ def hermite(domain, n_herm=20):
 
         coeff[i] = 1./max_val
         H_i = np.polynomial.hermite.Hermite(coeff, domain=domain)
-        dH_i = H_i.deriv(1)
+        dH_i = -H_i.deriv(1)
         U_funcs.append(H_i)
         dU_funcs.append(dH_i)
     return U_funcs, dU_funcs

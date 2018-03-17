@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     raise SystemExit
     avg_c_vs_s = [] 
-    for i in range(10)
+    for i in range(10):
         coeff = c_vs_s[i + 3]
         avg_c_vs_s.append(np.mean(coeff, axis=1))
 
