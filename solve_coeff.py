@@ -1,14 +1,6 @@
 import os
 import argparse
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-import mdtraj as md
-
-import basis_library
-import util
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
@@ -30,6 +22,15 @@ if __name__ == "__main__":
     angles = args.angles
     non_bond_wca = args.non_bond_wca
     non_bond_gaussians = args.non_bond_gaussians
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    import mdtraj as md
+
+    import basis_library
+    import util
 
     n_beads = 25 
     n_dim = 3*n_beads
