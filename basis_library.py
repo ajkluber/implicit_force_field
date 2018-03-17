@@ -208,3 +208,23 @@ def one_dimension():
 
     return U_funcs, dU_funcs
 
+
+def hermite(domain, n_herm=20):
+
+    xdata = np.linspace(domain[0], domain[1], 1000)
+    U_funcs = []
+    dU_funcs = []
+    for i in range(1, n_herm):
+        coeff = np.zeros(n_herm)
+        coeff[i] = 1
+        #y = np.polynomial.hermite.hermval(xdata, coeff)
+        H_i = np.polynomial.hermite.Hermite(coeff, domain=domain)
+        max_val = H_i(xdata).max()
+
+        coeff[i] = 1./max_val
+        H_i = np.polynomial.hermite.Hermite(coeff, domain=domain)
+        dH_i = H_i.deriv(1)
+        U_funcs.append(H_i)
+        dU_funcs.append(dH_i)
+    return U_funcs, dU_funcs
+
