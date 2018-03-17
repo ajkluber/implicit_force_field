@@ -214,3 +214,23 @@ def many_body_function(n_beads, gaussians=True):
     rij_args = (x1, y1, z1, x2, y2, z2)
 
     rho_sym = 1 
+
+
+def one_dimension():
+
+    x = sympy.symbols("x")
+
+    polynomials = [x] + [ x**i for i in range(2, 10) ]
+    sinosoids = [sympy.sin(x)] + [sympy.sin(x*i) for i in range(2, 5)] + [sympy.cos(x)] + [sympy.cos(x*i) for i in range(2, 5)]
+
+    exponentials = [sympy.exp(x), sympy.exp(-x)]
+    database = polynomials + sinosoids + exponentials
+
+    U_funcs = []
+    dU_funcs = []
+    for i in range(len(database)):
+        U_funcs.append(sympy.lambdify(x, database[i], modules="numpy"))
+        dU_funcs.append(sympy.lambdify(x, -database[i].diff(x), modules="numpy"))
+
+    return U_funcs, dU_funcs
+
