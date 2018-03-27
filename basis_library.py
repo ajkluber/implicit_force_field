@@ -105,7 +105,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
                     d_ang_func = -ang_func.diff(theta_ijk_args[n])
                     dU_angle.append(sympy.lambdify(theta_ijk_args, d_ang_func, modules="numpy"))
         dU_funcs.append(dU_angle)
-        dU_idxs += dangle_idxs
+        dU_idxs += dang_idxs
         dU_d_arg += dU_angle_d_arg
         dU_dxi += dU_angle_dxi
         dU_ck += dU_angle_ck
@@ -182,10 +182,10 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
             dU_gauss.append(dU_m)
 
         dU_funcs.extend(dU_gauss)
-        dU_idxs += dpair_idxs
-        dU_d_arg += dU_pair_d_arg
-        dU_dxi += dU_pair_dxi
-        dU_ck += dU_pair_ck
+        dU_idxs += dgauss_idxs
+        dU_d_arg += dU_gauss_d_arg
+        dU_dxi += dU_gauss_dxi
+        dU_ck += dU_gauss_ck
 
     return dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors
 

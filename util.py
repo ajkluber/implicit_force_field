@@ -13,8 +13,8 @@ def get_n_frames(trajfile, topfile):
     n_dim = 3*chunk.xyz.shape[1]
     return n_frames_tot, n_dim
 
-def calc_deriv_and_drift(trajfile, topfile, s_frames, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_dim, n_frames_tot):
 
+def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot):
     n_params = len(dU_funcs)
     
     G = np.zeros((int(n_frames_tot)*n_dim, n_params), float)
@@ -107,8 +107,8 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
 
     else:
         # calculate deriviative matrix on all data
-        G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_ck, dU_d_arg, dU_idxs, n_dim, n_params, n_frames_tot)
-
+        G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot)
+        
         cv_score = 0
         c_solns = []
         kf = KFold(Y.shape[0], n_folds=n_folds, shuffle=True)

@@ -23,6 +23,9 @@ if __name__ == "__main__":
     non_bond_wca = args.non_bond_wca
     non_bond_gaussians = args.non_bond_gaussians
 
+    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_gaussians
+    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_wca
+
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
