@@ -26,8 +26,10 @@ if __name__ == "__main__":
     #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_gaussians
     #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_wca
 
-    import matplotlib
-    matplotlib.use("Agg")
+    import matplotlib as mpl
+    mpl.use("Agg")
+    mpl.rcParams['mathtext.fontset'] = 'cm'
+    mpl.rcParams['mathtext.rm'] = 'serif'
     import matplotlib.pyplot as plt
 
     import mdtraj as md
@@ -37,7 +39,7 @@ if __name__ == "__main__":
 
     n_beads = 25 
     n_dim = 3*n_beads
-    n_folds = 10
+    n_folds = 5
     #dt_frame = 0.2
 
     #topfile = "c25_min_ply_1.pdb"
@@ -58,17 +60,19 @@ if __name__ == "__main__":
     n_params = len(dU_funcs)
 
     all_s = [1, 2, 5, 10, 20, 50, 100, 500]
-    all_cv_scores = np.zeros(len(all_s), float)
+    #all_s = [1, 5, 10]
     all_c_soln = []
+    all_cv_scores = []
     for z in range(len(all_s)):
         #for z in [0]:
         s_frames = all_s[z]
         s = dt_frame*s_frames
         c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, n_blocks=n_blocks)
         all_c_soln.append(c_solns)
-        all_cv_scores[z] = cv_score
-    all_c_soln = np.array(all_c_soln)
+        all_cv_scores.append(cv_score)
     all_s = np.array(all_s)
+    all_c_soln = np.array(all_c_soln)
+    all_cv_scores = np.array(all_cv_scores)
 
     c_vs_s = []
     for n in range(n_params):
@@ -77,47 +81,86 @@ if __name__ == "__main__":
         else:
             c_vs_s.append(scale_factors[-1]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
 
-    raise SystemExit
-    avg_c_vs_s = [] 
-    for i in range(10):
-        coeff = c_vs_s[i + 3]
-        avg_c_vs_s.append(np.mean(coeff, axis=1))
+    savedir = "coeff_vs_s"
+    if bonds:
+        savedir += "_bond"
+    if angles:
+        savedir += "_angle"
+    if non_bond_wca:
+        savedir += "_wca"
+    if non_bond_gaussians:
+        savedir += "_gauss"
 
-    r = np.linspace(0.2, 1.5, 1000)
-    y = np.zeros(len(r), float)
-    for i in range(len(avg_c_vs_s)):
-        c_k = avg_c_vs_s[i][1]
-        y += c_k*gauss_funcs[i](r)
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+    os.chdir(savedir)
 
+    # save coefficients versus lagtime
+    for i in range(n_params):
+        np.save("coeff_{}_vs_s.npy".format((i+1)), c_vs_s[i])
+    np.save("s_list.npy", all_s)
 
-    plt.figure()
-    for i in range(10):
-        coeff = c_vs_s[i + 3]
-        plt.errorbar(dt_frame*all_s[:len(coeff)], np.mean(coeff, axis=1), yerr=np.std(coeff, axis=1))
-    plt.ylabel(r"$c_k$", fontsize=20)
-    plt.savefig("coeff_gauss_vs_s.pdf")
-    plt.savefig("coeff_gauss_vs_s.png")
+    if non_bond_gaussians:
+        avg_c_vs_s = [] 
+        for i in range(10):
+            coeff = c_vs_s[i + 3]
+            avg_c_vs_s.append(np.mean(coeff, axis=1))
+
+        r = np.linspace(0.2, 1.5, 1000)
+        y = np.zeros(len(r), float)
+        for i in range(len(avg_c_vs_s)):
+            c_k = avg_c_vs_s[i][1]
+            y += c_k*gauss_funcs[i](r)
+
+        plt.figure()
+        for i in range(10):
+            coeff = c_vs_s[i + 3]
+            plt.errorbar(dt_frame*all_s[:len(coeff)], np.mean(coeff, axis=1), yerr=np.std(coeff, axis=1))
+        plt.ylabel(r"$c_k$", fontsize=20)
+        plt.savefig("coeff_gauss_vs_s.pdf")
+        plt.savefig("coeff_gauss_vs_s.png")
 
     ylabels = [r"$k_b$", r"$k_a$", r"$\epsilon$"]
+    #coeff_true = [334720, 462, 0.14] 
+    coeff_true = [100, 20, 1] 
 
+    gamma = 100
+
+    s_complete = all_s[:len(c_vs_s[0])]
     fig, axes = plt.subplots(3, 1, figsize=(4,10))
     for i in range(n_params):
         coeff = c_vs_s[i]
+
+        c_avg = gamma*np.mean(coeff, axis=1)
+        c_avg_err = gamma*np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
+        #c_avg = np.mean(coeff, axis=1)
+        #c_avg_err = np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
+
+        #print c_avg, c_avg_err
+
         ax = axes[i]
-        ax.errorbar(dt_frame*all_s, np.mean(coeff, axis=1), yerr=np.std(coeff, axis=1))
-        ax.set_ylabel(ylabels[i], fontsize=20)
+        ax.errorbar(dt_frame*s_complete, c_avg, yerr=c_avg_err)
+        #ax.axhline(coeff_true[i], color='k', ls='--', label="True")
+        ax.set_ylabel(ylabels[i], fontsize=26)
         if i == (n_params - 1):
-            ax.set_xlabel("s (ps)")
-    fig.savefig("coeff_vs_s_3_params_lstsq.pdf")
-    fig.savefig("coeff_vs_s_3_params_lstsq.png")
+            ax.set_xlabel(r"$\Delta t$ (ps)", fontsize=26)
+        #ax.set_xlim(0, 1.1*dt_frame*np.max(s_complete))
+        ax.set_xlim(0.9*dt_frame, 1.1*dt_frame*np.max(s_complete))
+        ymin, ymax = ax.get_ylim()
+        ax.set_ylim(ymin, 1.2*ymax)
+        ax.semilogx()
+        #ax.semilogy()
+    fig.savefig("coeff_vs_s_3_params_lstsq_xlog.pdf")
+    fig.savefig("coeff_vs_s_3_params_lstsq_xlog.png")
+    #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.pdf")
+    #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.png")
 
     plt.figure()
-    plt.plot(dt_frame*all_s, all_cv_scores)
+    plt.plot(dt_frame*s_complete, all_cv_scores[:len(c_vs_s[0])])
     plt.xlabel("s (ps)")
     plt.ylabel("CV Score")
     plt.savefig("cv_score_vs_s_3_params_lstsq.pdf")
     plt.savefig("cv_score_vs_s_3_params_lstsq.png")
-    plt.show()
 
     raise SystemExit
 
