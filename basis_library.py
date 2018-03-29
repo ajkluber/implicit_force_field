@@ -74,7 +74,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
                 dbond_idxs.append(xi_idxs)
                 dU_bond_d_arg.append(n)
                 dU_bond_dxi.append(xi_idxs[n])
-                dU_bond_ck.append(0)
+                dU_bond_ck.append(len(dU_funcs))
                 if i == 0:
                     # take derivative w.r.t. argument n
                     bond_func = kb_scale*one_half*(r12_sym - r0_nm)**2 # scaled
@@ -98,7 +98,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
             for n in range(len(theta_ijk_args)):
                 dang_idxs.append(xi_idxs)
                 dU_angle_dxi.append(xi_idxs[n])
-                dU_angle_ck.append(1)
+                dU_angle_ck.append(len(dU_funcs))
                 dU_angle_d_arg.append(n)
                 if i == 0:
                     ang_func = ka_scale*one_half*(theta_ijk_sym - theta0_rad)**2  # scaled
@@ -126,7 +126,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
                 for n in range(len(rij_args)):
                     dpair_idxs.append(xi_idxs)
                     dU_pair_dxi.append(xi_idxs[n])
-                    dU_pair_ck.append(2)
+                    dU_pair_ck.append(len(dU_funcs))
                     dU_pair_d_arg.append(n)
                     if (i == 0) and (j == (bond_cutoff + 1)):
                         pair_func = eps_scale*one_half*(sympy.tanh(400*(r0_wca_nm - r12_sym)) + 1)*(4*((sigma_ply_nm/r12_sym)**12 - (sigma_ply_nm/r12_sym)**6) + 1)
@@ -145,7 +145,10 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
     #        lambdify derivative of spline
     #        assign pair to derivative
 
-    gauss_r0 = [ sympy.Rational(3 + i,10) for i in range(10) ]
+    n_gauss = 10
+    rmin = 3
+    rmax = 10 
+    gauss_r0 = [ sympy.Rational(rmin + i, 10) for i in range(rmax) ]
     gauss_w = sympy.Rational(1, 10)
 
 
@@ -172,7 +175,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
                         dU_gauss_dxi.append(xi_idxs[n])
 
                         # add 
-                        dU_gauss_ck.append(3 + m)
+                        dU_gauss_ck.append(len(dU_funcs) + m)
                         dU_gauss_d_arg.append(n)
                         if (i == 0) and (j == (bond_cutoff + 1)):
                             gauss_func = -gauss_scale*sympy.exp(-one_half*((r12_sym - gauss_r0[m])/gauss_w)**2)
