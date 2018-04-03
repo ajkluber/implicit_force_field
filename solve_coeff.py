@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import numpy as np
 
@@ -7,11 +8,12 @@ if __name__ == "__main__":
     parser.add_argument('trajfile', help='Trajectory file.')
     parser.add_argument('topfile', help='Trajectory file.')
     parser.add_argument('--dt_frame', default=0.2, type=float, help='Timestep of one frame.')
-    parser.add_argument('--in_blocks', action="store_true", help='Trajectory file.')
-    parser.add_argument('--non_bond_gaussians', action="store_true", help='Trajectory file.')
-    parser.add_argument('--non_bond_wca', action="store_true", help='Trajectory file.')
-    parser.add_argument('--bonds', action="store_true", help='Trajectory file.')
-    parser.add_argument('--angles', action="store_true", help='Trajectory file.')
+    parser.add_argument('--gamma', default=100, type=float, help='Friction coefficient.')
+    parser.add_argument('--in_blocks', action="store_true", help='Calculate in blocks.')
+    parser.add_argument('--non_bond_gaussians', action="store_true")
+    parser.add_argument('--non_bond_wca', action="store_true")
+    parser.add_argument('--bonds', action="store_true")
+    parser.add_argument('--angles', action="store_true")
 
     args = parser.parse_args()
     trajfile = args.trajfile
@@ -37,17 +39,23 @@ if __name__ == "__main__":
     import basis_library
     import util
 
+    savedir = "coeff_vs_s"
+    if bonds:
+        savedir += "_bond"
+    if angles:
+        savedir += "_angle"
+    if non_bond_wca:
+        savedir += "_wca"
+    if non_bond_gaussians:
+        savedir += "_gauss"
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+
     n_beads = 25 
     n_dim = 3*n_beads
     n_folds = 5
     #dt_frame = 0.2
-
-    #topfile = "c25_min_ply_1.pdb"
-    #trajfile = "c25_traj_ply_1.dcd"
-    #topfile = "c25_min_1.pdb"
-    #trajfile = "c25_traj_1.dcd"
-    #topfile = "c25_min_ply_1.pdb"
-    #trajfile = "c25_traj_ply_1.dcd"
+    gamma = 100
 
     if in_blocks:
         n_blocks = 50
@@ -55,6 +63,7 @@ if __name__ == "__main__":
         n_blocks = False
 
     print "building basis function database..."
+    sys.stdout.flush()
     dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors = basis_library.polymer_library(n_beads, bonds=bonds, angles=angles, non_bond_wca=non_bond_wca, non_bond_gaussians=non_bond_gaussians)
     n_basis_deriv = len(dU_dxi)
     n_params = len(dU_funcs)
@@ -67,7 +76,18 @@ if __name__ == "__main__":
         #for z in [0]:
         s_frames = all_s[z]
         s = dt_frame*s_frames
-        c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, n_blocks=n_blocks)
+        c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, n_blocks=n_blocks)
+
+        for n in range(n_params):
+            if non_bond_gaussians and not (bonds and angles):
+                temp_coeff = scale_factors[0]*np.array(c_solns)[:,n]
+            else:
+                if n in [0,1,2]:
+                    temp_coeff = scale_factors[n]*np.array(c_solns)[:,n]
+                else:
+                    temp_coeff = scale_factors[-1]*np.array(c_solns)[:,n]
+            np.save("{}/coeff_{}_s_{}.npy".format(savedir, n+1, s_frames), temp_coeff)
+
         all_c_soln.append(c_solns)
         all_cv_scores.append(cv_score)
     all_s = np.array(all_s)
@@ -76,32 +96,24 @@ if __name__ == "__main__":
 
     c_vs_s = []
     for n in range(n_params):
-        if n in [0,1,2]:
-            c_vs_s.append(scale_factors[n]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
+        if non_bond_gaussians and not (bonds and angles):
+            c_vs_s.append(scale_factors[0]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
         else:
-            c_vs_s.append(scale_factors[-1]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
+            if n in [0,1,2]:
+                c_vs_s.append(scale_factors[n]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
+            else:
+                c_vs_s.append(scale_factors[-1]*np.array([ np.array(all_c_soln[i])[:,n] for i in range(all_c_soln.shape[0]) ]))
 
-    savedir = "coeff_vs_s"
-    if bonds:
-        savedir += "_bond"
-    if angles:
-        savedir += "_angle"
-    if non_bond_wca:
-        savedir += "_wca"
-    if non_bond_gaussians:
-        savedir += "_gauss"
-
-    if not os.path.exists(savedir):
-        os.mkdir(savedir)
     os.chdir(savedir)
-
     # save coefficients versus lagtime
     for i in range(n_params):
         np.save("coeff_{}_vs_s.npy".format((i+1)), c_vs_s[i])
     np.save("s_list.npy", all_s)
+    np.save("cv_score.npy", all_cv_scores)
 
     if non_bond_gaussians:
         avg_c_vs_s = [] 
+        n_gaussians = len(c_vs_s[3:])
         for i in range(10):
             coeff = c_vs_s[i + 3]
             avg_c_vs_s.append(np.mean(coeff, axis=1))
@@ -111,6 +123,14 @@ if __name__ == "__main__":
         for i in range(len(avg_c_vs_s)):
             c_k = avg_c_vs_s[i][1]
             y += c_k*gauss_funcs[i](r)
+        y *= gamma
+
+        plt.figure()
+        plt.plot(r, y)
+        plt.xlabel("Distance (nm)")
+        plt.ylabel("Effective potential")
+        plt.savefig("gaussian_interaction.pdf")
+        plt.savefig("gaussian_interaction.png")
 
         plt.figure()
         for i in range(10):
@@ -123,46 +143,71 @@ if __name__ == "__main__":
     ylabels = [r"$k_b$", r"$k_a$", r"$\epsilon$"]
     #coeff_true = [334720, 462, 0.14] 
     coeff_true = [100, 20, 1] 
-
-    gamma = 100
-
     s_complete = all_s[:len(c_vs_s[0])]
-    fig, axes = plt.subplots(3, 1, figsize=(4,10))
-    for i in range(n_params):
-        coeff = c_vs_s[i]
 
-        c_avg = gamma*np.mean(coeff, axis=1)
-        c_avg_err = gamma*np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
-        #c_avg = np.mean(coeff, axis=1)
-        #c_avg_err = np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
 
-        #print c_avg, c_avg_err
+    if bonds and angles:
+        fig, axes = plt.subplots(3, 1, figsize=(4,10))
+        for i in range(n_params):
+            coeff = c_vs_s[i]
 
-        ax = axes[i]
-        ax.errorbar(dt_frame*s_complete, c_avg, yerr=c_avg_err)
-        #ax.axhline(coeff_true[i], color='k', ls='--', label="True")
-        ax.set_ylabel(ylabels[i], fontsize=26)
-        if i == (n_params - 1):
-            ax.set_xlabel(r"$\Delta t$ (ps)", fontsize=26)
-        #ax.set_xlim(0, 1.1*dt_frame*np.max(s_complete))
-        ax.set_xlim(0.9*dt_frame, 1.1*dt_frame*np.max(s_complete))
-        ymin, ymax = ax.get_ylim()
-        ax.set_ylim(ymin, 1.2*ymax)
-        ax.semilogx()
-        #ax.semilogy()
-    fig.savefig("coeff_vs_s_3_params_lstsq_xlog.pdf")
-    fig.savefig("coeff_vs_s_3_params_lstsq_xlog.png")
-    #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.pdf")
-    #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.png")
+            c_avg = gamma*np.mean(coeff, axis=1)
+            c_avg_err = gamma*np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
+            #c_avg = np.mean(coeff, axis=1)
+            #c_avg_err = np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
 
-    plt.figure()
-    plt.plot(dt_frame*s_complete, all_cv_scores[:len(c_vs_s[0])])
-    plt.xlabel("s (ps)")
-    plt.ylabel("CV Score")
-    plt.savefig("cv_score_vs_s_3_params_lstsq.pdf")
-    plt.savefig("cv_score_vs_s_3_params_lstsq.png")
+            #print c_avg, c_avg_err
+
+            ax = axes[i]
+            ax.errorbar(dt_frame*s_complete, c_avg, yerr=c_avg_err)
+            #ax.axhline(coeff_true[i], color='k', ls='--', label="True")
+            ax.set_ylabel(ylabels[i], fontsize=26)
+            if i == (n_params - 1):
+                ax.set_xlabel(r"$\Delta t$ (ps)", fontsize=26)
+            #ax.set_xlim(0, 1.1*dt_frame*np.max(s_complete))
+            ax.set_xlim(0.9*dt_frame, 1.1*dt_frame*np.max(s_complete))
+            ymin, ymax = ax.get_ylim()
+            ax.set_ylim(ymin, 1.2*ymax)
+            ax.semilogx()
+            #ax.semilogy()
+        fig.savefig("coeff_vs_s_3_params_lstsq_xlog.pdf")
+        fig.savefig("coeff_vs_s_3_params_lstsq_xlog.png")
+        #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.pdf")
+        #fig.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.png")
+
+        plt.figure()
+        plt.plot(dt_frame*s_complete, all_cv_scores[:len(c_vs_s[0])])
+        plt.xlabel("s (ps)")
+        plt.ylabel("CV Score")
+        plt.savefig("cv_score_vs_s_3_params_lstsq.pdf")
+        plt.savefig("cv_score_vs_s_3_params_lstsq.png")
 
     raise SystemExit
+    line_colors = ["#ff7f00", "#377eb8", "grey"] # orange, blue, grey
+
+    plt.figure()
+    for i in range(n_params):
+        coeff = c_vs_s[i]
+        c_avg = gamma*np.mean(coeff, axis=1)
+        c_avg_err = gamma*np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
+        c_avg /= coeff_true[i]
+        c_avg_err /= coeff_true[i]
+        c_avg *= 40
+        c_avg_err *= 40
+
+        plt.errorbar(dt_frame*s_complete, c_avg, yerr=c_avg_err, color=line_colors[i], label=ylabels[i])
+
+    #plt.legend(loc=1, fontsize=20, fancybox=False, frameon=True, edgecolor="k", framealpha=1)
+    legend = plt.legend(loc=1, fontsize=20, fancybox=False, frameon=True)
+    legend.get_frame().set_edgecolor("k") 
+    plt.ylabel("Effective / True", fontsize=26)
+    plt.xlim(0.9*dt_frame, 1.1*dt_frame*np.max(s_complete))
+    plt.semilogx()
+    plt.xlabel(r"$\Delta t$ (ps)", fontsize=26)
+    plt.savefig("coeff_vs_s_3_params_lstsq_ratio_xlog.pdf")
+    plt.savefig("coeff_vs_s_3_params_lstsq_ratio_xlog.png")
+    #plt.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.pdf")
+    #plt.savefig("coeff_vs_s_3_params_lstsq_xlog_with_true.png")
 
     q = np.diag(D_T_D)
     cond_D = np.copy(D_T_D)
@@ -198,6 +243,8 @@ if __name__ == "__main__":
         c_soln, residuals, rank, sing_vals = np.linalg.lstsq(cond_D, cond_Y, rcond=rcond)
         axes[i].plot(q*c_soln, 'o')
     plt.show()
+
+
 
 
 
