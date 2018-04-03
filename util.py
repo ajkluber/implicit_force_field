@@ -1,4 +1,5 @@
 import time
+import sys
 import numpy as np
 
 from sklearn.cross_validation import KFold
@@ -26,6 +27,7 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
     for chunk in md.iterload(trajfile, top=topfile, chunk=1000):
         if ((iteration_idx + 1) % 10) == 0:
             print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+            sys.stdout.flush()
         xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
 
         ravel_size = (chunk.n_frames - s_frames)*n_dim
@@ -70,6 +72,7 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
 
             if ((iteration_idx + 1) % 10) == 0:
                 print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+                sys.stdout.flush()
             xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
 
             ravel_size = (chunk.n_frames - s_frames)*n_dim
@@ -124,5 +127,6 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
     stoptime = time.time()
     runmin = (stoptime - starttime)/60.
     print "calculation took: {} min".format(runmin)
+    sys.stdout.flush()
 
     return c_solns, cv_score 
