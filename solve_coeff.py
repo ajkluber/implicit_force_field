@@ -9,7 +9,7 @@ if __name__ == "__main__":
     parser.add_argument('topfile', help='Trajectory file.')
     parser.add_argument('--dt_frame', default=0.2, type=float, help='Timestep of one frame.')
     parser.add_argument('--gamma', default=100, type=float, help='Friction coefficient.')
-    parser.add_argument('--in_blocks', action="store_true", help='Calculate in blocks.')
+    parser.add_argument('--method', type=str, default="full", help='Calculation method.')
     parser.add_argument('--non_bond_gaussians', action="store_true")
     parser.add_argument('--non_bond_wca', action="store_true")
     parser.add_argument('--bonds', action="store_true")
@@ -18,15 +18,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     trajfile = args.trajfile
     topfile = args.topfile
-    in_blocks = args.in_blocks
+    method = args.method
     dt_frame = args.dt_frame
     bonds = args.bonds
     angles = args.angles
     non_bond_wca = args.non_bond_wca
     non_bond_gaussians = args.non_bond_gaussians
 
-    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_gaussians
-    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --in_blocks --bonds --angles --non_bond_wca
+    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --method qr --bonds --angles --non_bond_gaussians
+    #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --method qr --bonds --angles --non_bond_wca
+
+    assert method in ["full", "chunks", "qr"], "IOError. method must be full, chunks, or qr"
+    print "method: ", method
 
     import matplotlib as mpl
     mpl.use("Agg")
@@ -48,6 +51,9 @@ if __name__ == "__main__":
         savedir += "_wca"
     if non_bond_gaussians:
         savedir += "_gauss"
+
+    savedir += "_" + method
+
     if not os.path.exists(savedir):
         os.mkdir(savedir)
 
@@ -56,11 +62,7 @@ if __name__ == "__main__":
     n_folds = 5
     #dt_frame = 0.2
     gamma = 100
-
-    if in_blocks:
-        n_blocks = 50
-    else:
-        n_blocks = False
+    n_chunks = 50
 
     print "building basis function database..."
     sys.stdout.flush()
@@ -76,7 +78,7 @@ if __name__ == "__main__":
         #for z in [0]:
         s_frames = all_s[z]
         s = dt_frame*s_frames
-        c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, n_blocks=n_blocks)
+        c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
 
         for n in range(n_params):
             if non_bond_gaussians and not (bonds and angles):
