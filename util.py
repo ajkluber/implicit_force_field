@@ -16,6 +16,22 @@ def get_n_frames(trajfile, topfile):
     n_dim = 3*chunk.xyz.shape[1]
     return n_frames_tot, n_dim
 
+def calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, G=None):
+
+    if G is None:
+        G = np.zeros((n_rows, n_params), float)
+
+    # calculate forces
+    for i in range(len(dU_dxi)):
+        # derivative 
+        deriv_fun = dU_funcs[dU_ck[i]][dU_d_arg[i]]
+        deriv = deriv_fun(*xyz_flat[:,dU_idxs[i]].T)[:-s_frames]   # derivative k dxi_idx = dU_dxi[i]
+
+        # unraveled indices for xi 
+        xi_ravel_idxs = np.arange(dU_dxi[i], n_rows, n_dim)
+        G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
+    return G
+
 
 def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot):
     n_params = len(dU_funcs)
@@ -33,16 +49,7 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
         xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
 
         n_rows = (chunk.n_frames - s_frames)*n_dim
-
-        # calculate forces
-        for i in range(len(dU_dxi)):
-            # derivative 
-            deriv_fun = dU_funcs[dU_ck[i]][dU_d_arg[i]]
-            deriv = deriv_fun(*xyz_flat[:,dU_idxs[i]].T)[:-s_frames]   # derivative k dxi_idx = dU_dxi[i]
-
-            # unraveled indices for xi 
-            xi_ravel_idxs = start_idx + np.arange(dU_dxi[i], n_rows, n_dim)
-            G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
+        G = calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, G=G)
 
         # calculate drift
         Y_il = (xyz_flat[s_frames:,:] - xyz_flat[:-s_frames,:])/s
@@ -71,17 +78,19 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
         # calculate deriviative matrix on all data
         G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot)
         
+        c_soln = np.linalg.lstsq(G, Y)[0]
         cv_score = 0
-        c_solns = []
-        kf = KFold(Y.shape[0], n_folds=n_folds, shuffle=True)
-        for train_idxs, test_idxs in kf:
-            # cross-validation: solve regression on one part of data then test
-            # it on another. Helps measure predictability.
-            c_new = np.linalg.lstsq(G[train_idxs], Y[train_idxs])[0]
-            y_fit_new = np.dot(G, c_new)
-            cv_score += np.linalg.norm(Y[test_idxs] - y_fit_new[test_idxs], ord=2)
-            c_solns.append(c_new)
-        cv_score /= float(n_folds)
+        c_solns = [c_soln]
+        #c_solns = []
+        #kf = KFold(Y.shape[0], n_folds=n_folds, shuffle=True)
+        #for train_idxs, test_idxs in kf:
+        #    # cross-validation: solve regression on one part of data then test
+        #    # it on another. Helps measure predictability.
+        #    c_new = np.linalg.lstsq(G[train_idxs], Y[train_idxs])[0]
+        #    y_fit_new = np.dot(G, c_new)
+        #    cv_score += np.linalg.norm(Y[test_idxs] - y_fit_new[test_idxs], ord=2)
+        #    c_solns.append(c_new)
+        #cv_score /= float(n_folds)
     elif method == "chunks":
         # calculate matrix on chunk of data
 
@@ -146,20 +155,9 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
                 print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
                 sys.stdout.flush()
 
-            # calculate for chunk
             n_rows = (chunk.n_frames - s_frames)*n_dim
-            G = np.zeros((n_rows, n_params), float)
             xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
-
-            # calculate forces
-            for i in range(len(dU_dxi)):
-                # derivative 
-                deriv_fun = dU_funcs[dU_ck[i]][dU_d_arg[i]]
-                deriv = deriv_fun(*xyz_flat[:,dU_idxs[i]].T)[:-s_frames]   # derivative k dxi_idx = dU_dxi[i]
-
-                # unraveled indices for xi 
-                xi_ravel_idxs = np.arange(dU_dxi[i], n_rows, n_dim)
-                G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
+            G = calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck)
 
             # calculate drift
             Y = ((xyz_flat[s_frames:,:] - xyz_flat[:-s_frames,:])/s).ravel()
@@ -186,6 +184,7 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
         final_b = b[:n_params]
         c_soln = np.linalg.lstsq(final_R, final_b)[0]
         cv_score = 0
+        c_solns = [c_soln]
 
     stoptime = time.time()
     runmin = (stoptime - starttime)/60.
