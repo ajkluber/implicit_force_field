@@ -69,11 +69,6 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
     n_params = len(dU_funcs)
     n_frames_tot, n_dim = get_n_frames(trajfile, topfile)
 
-    # solution methods:
-    #   - Full regression problem.
-    #   - Chunked regression problem.
-    #   - QR factorization
-
     if method == "full":
         # calculate deriviative matrix on all data
         G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot)
