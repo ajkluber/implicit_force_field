@@ -10,7 +10,7 @@ mpl.rcParams['mathtext.rm'] = 'serif'
 mpl.rcParams['errorbar.capsize'] = 10
 import matplotlib.pyplot as plt
 
-def get_coeffs(gamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, indv=False):
+def get_coeffs(mgamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, indv=False):
 
     # get bonded and wca coefficients
     c_vs_s = []
@@ -19,10 +19,10 @@ def get_coeffs(gamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, i
             if indv:
                 temp_c = []
                 for i in range(len(s_list)):
-                    coeff = gamma*np.load("coeff_{}_s_{}.npy".format(n + 1, s_list[i]))
+                    coeff = mgamma*np.load("coeff_{}_s_{}.npy".format(n + 1, s_list[i]))
                     temp_c.append(coeff)
             else:
-                temp_c = gamma*np.load("coeff_{}_vs_s.npy".format(n + 1))
+                temp_c = mgamma*np.load("coeff_{}_vs_s.npy".format(n + 1))
             c_vs_s.append(temp_c)
 
     # get gaussian coefficients
@@ -31,7 +31,7 @@ def get_coeffs(gamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, i
         for n in range(10):
             temp_c = []
             for i in range(len(s_list)):
-                coeff = gamma*np.load("coeff_{}_s_{}.npy".format(start_k + n + 1, s_list[i]))
+                coeff = mgamma*np.load("coeff_{}_s_{}.npy".format(start_k + n + 1, s_list[i]))
                 temp_c.append(coeff)
             c_vs_s_gauss.append(temp_c)
     return c_vs_s, c_vs_s_gauss
@@ -42,9 +42,13 @@ def plot_bond_coeffs_vs_s(start_k, dt_frame, s_list, c_vs_s, coeff_true, line_co
         fig, axes = plt.subplots(start_k, 1, figsize=(5, start_k*4))
         for n in range(start_k):
             ax = axes[n]
-            avg_c = [ np.mean(c_vs_s[n][i]) for i in range(len(s_list)) ]
-            err_c = [ np.std(c_vs_s[n][i])/np.sqrt(float(len(c_vs_s[n][i]))) for i in range(len(s_list)) ]
-            ax.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[n], capsize=10, elinewidth=2, capthick=3)
+            if len(c_vs_s[n][0]) > 1:
+                avg_c = [ np.mean(c_vs_s[n][i]) for i in range(len(s_list)) ]
+                err_c = [ np.std(c_vs_s[n][i])/np.sqrt(float(len(c_vs_s[n][i]))) for i in range(len(s_list)) ]
+                ax.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[n], capsize=10, elinewidth=2, capthick=3)
+            else:
+                avg_c = np.array(c_vs_s[n])[:,0]
+                ax.plot(dt_frame*s_list, avg_c, lw=3, color=line_colors[n])
             if ylog:
                 ax.semilogy()
             ax.semilogx()
@@ -55,9 +59,13 @@ def plot_bond_coeffs_vs_s(start_k, dt_frame, s_list, c_vs_s, coeff_true, line_co
         plt.savefig("bond_coeffs_vs_s.png")
     elif start_k == 1:
         plt.figure()
-        avg_c = [ np.mean(c_vs_s[0][i]) for i in range(len(s_list)) ]
-        err_c = [ np.std(c_vs_s[0][i])/np.sqrt(float(len(c_vs_s[0][i]))) for i in range(len(s_list)) ]
-        plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=2, color=line_colors[2], capsize=10, elinewidth=2, capthick=3)
+        if len(c_vs_s[0][0]) > 1: 
+            avg_c = [ np.mean(c_vs_s[0][i]) for i in range(len(s_list)) ]
+            err_c = [ np.std(c_vs_s[0][i])/np.sqrt(float(len(c_vs_s[0][i]))) for i in range(len(s_list)) ]
+            plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=2, color=line_colors[2], capsize=10, elinewidth=2, capthick=3)
+        else:
+            avg_c = np.array(c_vs_s[n])[:,0]
+            plt.plot(dt_frame*s_list, avg_c, lw=2, color=line_colors[2])
         plt.xlim(0.9*np.min(dt_frame*s_list), 1.1*np.max(dt_frame*s_list))
         if ylog:
             plt.semilogy()
@@ -70,12 +78,19 @@ def plot_bond_coeffs_vs_s(start_k, dt_frame, s_list, c_vs_s, coeff_true, line_co
     if len(coeff_true) > 0:
         plt.figure()
         for n in range(start_k):
-            avg_c = [ np.mean(c_vs_s[n][i])/coeff_true[n] for i in range(len(s_list)) ]
-            err_c = [ np.std(c_vs_s[n][i])/(coeff_true[n]*np.sqrt(float(len(c_vs_s[n][i])))) for i in range(len(s_list)) ]
-            if len(coeff_true) == 1:
-                plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[2], capsize=10, elinewidth=2, capthick=3, label=ylabels[2])
+            if len(c_vs_s[n][0]) > 1:
+                avg_c = [ np.mean(c_vs_s[n][i])/coeff_true[n] for i in range(len(s_list)) ]
+                err_c = [ np.std(c_vs_s[n][i])/(coeff_true[n]*np.sqrt(float(len(c_vs_s[n][i])))) for i in range(len(s_list)) ]
+                if len(coeff_true) == 1:
+                    plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[2], capsize=10, elinewidth=2, capthick=3, label=ylabels[2])
+                else:
+                    plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[n], capsize=10, elinewidth=2, capthick=3, label=ylabels[n])
             else:
-                plt.errorbar(dt_frame*s_list, avg_c, yerr=err_c, lw=3, color=line_colors[n], capsize=10, elinewidth=2, capthick=3, label=ylabels[n])
+                avg_c = np.array(c_vs_s[n])[:,0]/coeff_true[n]
+                if len(coeff_true) == 1:
+                    plt.plot(dt_frame*s_list, avg_c, lw=3, color=line_colors[2], label=ylabels[2])
+                else:
+                    plt.plot(dt_frame*s_list, avg_c, lw=3, color=line_colors[n], label=ylabels[n])
         legend = plt.legend(loc=1, fontsize=16, frameon=True, fancybox=False, framealpha=1)
         legend.get_frame().set_edgecolor("k")
         plt.ylabel("Effective / True", fontsize=20)
@@ -172,6 +187,7 @@ def WCA(r, sigma, eps):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('gamma', type=float, help='Friction coefficient.')
+    parser.add_argument('mass', type=float, help='Mass.')
     parser.add_argument('dt_frame', type=float, help='Output timestep.')
     parser.add_argument('--coeff_true', nargs="+", default=[], type=float, help='True coefficients.')
     parser.add_argument('--ylog', action="store_true")
@@ -179,11 +195,13 @@ if __name__ == "__main__":
     parser.add_argument('--angles', action="store_true")
     parser.add_argument('--non_bond_gaussians', action="store_true")
     parser.add_argument('--non_bond_wca', action="store_true")
+    parser.add_argument('--method', type=str, help="Method of calculation")
 
     n_beads = 25
 
     args = parser.parse_args()
     gamma = args.gamma
+    mass = args.mass
     dt_frame = args.dt_frame
     coeff_true = args.coeff_true
     ylog = args.ylog
@@ -191,6 +209,9 @@ if __name__ == "__main__":
     angles = args.angles
     non_bond_wca = args.non_bond_wca
     non_bond_gaussians = args.non_bond_gaussians
+    method = args.method
+
+    mgamma = mass*gamma
 
     ylabels = [r"$k_b$", r"$k_a$", r"$\epsilon$"]
     line_colors = ["#ff7f00", "#377eb8", "grey", "#7fc97f", "#beaed4", "#fdc086", "#ffff99", "#e41a1c", "#4daf4a", "#984ea3"] # orange, blue, grey
@@ -210,9 +231,10 @@ if __name__ == "__main__":
     if non_bond_gaussians:
         dirsuff += "_gauss"
     savedir += dirsuff
+    savedir += "_" + method
+    savedir += "_chunk"
 
     os.chdir(savedir)
-
     
     s_list = [ int(x.split("_")[3].split(".npy")[0]) for x in glob.glob("coeff_1_s_*npy") ]
     if len(s_list) > 0:
@@ -223,7 +245,7 @@ if __name__ == "__main__":
         s_list = np.load("s_list.npy")
         indv = False
 
-    c_vs_s, c_vs_s_gauss = get_coeffs(gamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, indv=indv)
+    c_vs_s, c_vs_s_gauss = get_coeffs(mgamma, s_list, bonds, angles, non_bond_wca, non_bond_gaussians, indv=indv)
 
     # plot coefficients versus s
     if bonds or angles or non_bond_wca:

@@ -5,7 +5,6 @@ import scipy.linalg as scl
 
 from sklearn.cross_validation import KFold
 
-
 import mdtraj as md
 
 def get_n_frames(trajfile, topfile):
@@ -163,11 +162,11 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
                 X = np.zeros((n_params + max_rows, n_params), float)
                 b = np.zeros(n_params + max_rows, float)
 
-                X[:n_params,:] = R.copy()
+                X[:n_params,:] = R[:n_params,:].copy()
                 b[:n_params] = np.dot(Q.T, Y)
             else:
-                X[n_params:,:] = G
-                b[n_params:] = Y
+                X[n_params:n_params + n_rows,:] = G
+                b[n_params:n_params + n_rows] = Y
 
                 Qk, Rk = scl.qr(X[:n_rows,:], mode="economic")
 
@@ -177,7 +176,7 @@ def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, d
             iteration_idx += 1
         final_R = X[:n_params,:]
         final_b = b[:n_params]
-        c_soln = np.linalg.lstsq(final_R, final_b)[0]
+        c_soln = scl.solve(final_R, final_b)
         cv_score = 0
         c_solns = [c_soln]
 

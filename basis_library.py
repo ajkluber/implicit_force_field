@@ -210,12 +210,26 @@ def many_body_function(n_beads, gaussians=True):
     x2, y2, z2 = xyz_sym[1]
     x3, y3, z3 = xyz_sym[2]
 
+    #r0 = 0.38
+    #w = 0.1
+    one_half = sympy.Rational(1,2)
+    r0 = sympy.Rational(38, 100)
+    w = sympy.Rational(1, 10)
+
+    # local density
+    for i in range(n_beads):
+        xi, yi, zi = xyz_sym[i]
+        for j in range(n_beads):
+            xj, yj, zj = xyz_sym[j]
+
+            #rij_sym = sympy.sqrt((xj - xi)**2 + (yj - yi)**2 + (zj - zi)**2)
+            #rho_ij = one_half*(sympy.tanh(sympy.Rational(r0 - rij_sym, w)) + 1)
+
     r12_sym = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
     r23_sym = sympy.sqrt((x2 - x3)**2 + (y2 - y3)**2 + (z2 - z3)**2)
     r13_sym = sympy.sqrt((x3 - x1)**2 + (y3 - y1)**2 + (z3 - z1)**2)
 
     rij_args = (x1, y1, z1, x2, y2, z2)
-
     rho_sym = 1 
 
 

@@ -9,7 +9,8 @@ if __name__ == "__main__":
     parser.add_argument('topfile', help='Trajectory file.')
     parser.add_argument('--dt_frame', default=0.2, type=float, help='Timestep of one frame.')
     parser.add_argument('--gamma', default=100, type=float, help='Friction coefficient.')
-    parser.add_argument('--method', type=str, default="full", help='Calculation method.')
+    parser.add_argument('--method', type=str, default="qr", help='Calculation method.')
+    parser.add_argument('--n_chunks', default=50, type=int, help='Number of chunks to break trajectory.')
     parser.add_argument('--non_bond_gaussians', action="store_true")
     parser.add_argument('--non_bond_wca', action="store_true")
     parser.add_argument('--bonds', action="store_true")
@@ -20,6 +21,8 @@ if __name__ == "__main__":
     topfile = args.topfile
     method = args.method
     dt_frame = args.dt_frame
+    gamma = args.gamma
+    n_chunks = args.n_chunks
     bonds = args.bonds
     angles = args.angles
     non_bond_wca = args.non_bond_wca
@@ -61,16 +64,19 @@ if __name__ == "__main__":
     n_dim = 3*n_beads
     n_folds = 5
     #dt_frame = 0.2
-    gamma = 100
-    n_chunks = 50
+    #gamma = 100
+    #n_chunks = 50
 
     print "building basis function database..."
     sys.stdout.flush()
     dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors = basis_library.polymer_library(n_beads, bonds=bonds, angles=angles, non_bond_wca=non_bond_wca, non_bond_gaussians=non_bond_gaussians)
     n_basis_deriv = len(dU_dxi)
     n_params = len(dU_funcs)
+    np.save("{}/scale_factors.npy".format(savedir), scale_factors)
 
     all_s = [1, 2, 5, 10, 20, 50, 100, 500]
+    np.save("{}/s_list.npy".format(savedir), np.array(all_s))
+
     #all_s = [1, 5, 10]
     all_c_soln = []
     all_cv_scores = []
@@ -110,7 +116,6 @@ if __name__ == "__main__":
     # save coefficients versus lagtime
     for i in range(n_params):
         np.save("coeff_{}_vs_s.npy".format((i+1)), c_vs_s[i])
-    np.save("s_list.npy", all_s)
     np.save("cv_score.npy", all_cv_scores)
 
     if non_bond_gaussians:
