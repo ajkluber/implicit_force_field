@@ -13,7 +13,6 @@ if __name__ == "__main__":
     subdir = args.subdir
 
     name = "c25"
-    n_beads = 25
     
     trajpaths = glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))
 
