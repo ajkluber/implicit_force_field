@@ -115,18 +115,18 @@ def plot_gauss_coeffs(dt_frame, s_list, c_vs_s_gauss):
     plt.savefig("gauss_coeffs_vs_s.pdf")
     plt.savefig("gauss_coeffs_vs_s.png")
 
-def plot_effective_pair(non_bond_wca, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff):
+def plot_effective_pair(mgamma, non_bond_wca, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff):
 
     plot_idxs = range(0, len(s_list), 1)
     saveas = "eff_pair{}_s_all".format(dirsuff)
-    plot_eff_pair(non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
+    plot_eff_pair(mgamma, non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
 
     plot_idxs = [ i for i in range(len(s_list)) if s_list[i] in [1, 5, 20]]
     suffix = "_".join([ str(x) for x in plot_idxs])
     saveas = "eff_pair{}_s_{}".format(dirsuff, suffix)
-    plot_eff_pair(non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
+    plot_eff_pair(mgamma, non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
 
-def plot_eff_pair(non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff):
+def plot_eff_pair(mgamma, non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff):
 
     rmin = 3
     rmax = 10 
@@ -145,13 +145,13 @@ def plot_eff_pair(non_bond_wca, plot_idxs, saveas, line_colors, s_list, dt_frame
         avg_c_vs_s_gauss = [] 
         for n in range(len(c_vs_s_gauss)):
             c_k = np.mean(c_vs_s_gauss[n][s_idx])
-            y += c_k*gauss_func(r, gauss_r0[n], gauss_w)
+            y += mgamma*c_k*gauss_func(r, gauss_r0[n], gauss_w)
         y += y.max()
         if i == 0:
             ymin = y.min()
 
         if non_bond_wca:
-            plt.plot(r, y + WCA(r, 0.373, np.mean(c_vs_s[start_k - 1][s_idx])), lw=3, color=line_colors[i], label=r"$\Delta t = {}$ ps".format(s))
+            plt.plot(r, y + mgamma*WCA(r, 0.373, np.mean(c_vs_s[start_k - 1][s_idx])), lw=3, color=line_colors[i], label=r"$\Delta t = {}$ ps".format(s))
         else:
             plt.plot(r, y, lw=3, color=line_colors[i], label=r"$\Delta t = {}$ ps".format(s))
     legend = plt.legend(loc=4, fontsize=16, frameon=True, fancybox=False, framealpha=1)
@@ -231,8 +231,8 @@ if __name__ == "__main__":
     if non_bond_gaussians:
         dirsuff += "_gauss"
     savedir += dirsuff
-    savedir += "_" + method
-    savedir += "_chunk"
+    #savedir += "_" + method
+    #savedir += "_chunk"
 
     os.chdir(savedir)
     
@@ -255,6 +255,6 @@ if __name__ == "__main__":
         plot_gauss_coeffs(dt_frame, s_list, c_vs_s_gauss)
 
     if non_bond_gaussians:
-        plot_effective_pair(non_bond_wca, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
+        plot_effective_pair(mgamma, non_bond_wca, line_colors, s_list, dt_frame, c_vs_s_gauss, dirsuff)
 
     os.chdir("..")
