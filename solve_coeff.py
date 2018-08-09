@@ -74,8 +74,9 @@ if __name__ == "__main__":
     n_params = len(dU_funcs)
     np.save("{}/scale_factors.npy".format(savedir), scale_factors)
 
-    all_s = [1, 2, 5, 10, 20, 50, 100, 500]
-    np.save("{}/s_list.npy".format(savedir), np.array(all_s))
+    #all_s = [1, 2, 5, 10, 20, 50, 100, 500]
+    all_s = [50, 100, 500]
+    #np.save("{}/s_list.npy".format(savedir), np.array(all_s))
 
     #all_s = [1, 5, 10]
     all_c_soln = []
