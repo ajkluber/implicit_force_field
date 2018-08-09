@@ -13,13 +13,17 @@ if __name__ == "__main__":
 
     subdir = args.subdir
 
+    import matplotlib as mpl
+    mpl.rcParams['mathtext.fontset'] = 'cm'
+    mpl.rcParams['mathtext.rm'] = 'serif'
+
     name = "c25"
     savedir = "rg_dist"
 
     cwd = os.getcwd()
 
     os.chdir(subdir)
-    
+ 
     eps_paths = glob.glob("eps_slv_*")
     eps_vals = [ float(os.path.basename(x).split("_")[-1]) for x in eps_paths ]
 
@@ -31,15 +35,16 @@ if __name__ == "__main__":
         Tpaths = glob.glob("T_*")
         T = [ float((os.path.basename(x)).split("_")[1]) for x in Tpaths ]
         T.sort()
-        avgRg = np.array([ np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir))[0] for j in range(len(T)) ])
+        avgRg = np.array([ float(np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir))) for j in range(len(T)) ])
 
-        plt.plot(T, avgRg, 'o-', label=r"$\epsilon_{slv} = {:.2f}$".format(eps_vals[i]))
+        plt.plot(T, avgRg, 'o-', label=r"$\epsilon_{{slv}} = {:.2f}$".format(eps_vals[i]))
         os.chdir("..")
-    os.chdir("..")
 
     if not os.path.exists("plots"):
         os.mkdir("plots")
+
     os.chdir("plots")
+    print os.getcwd()
 
     plt.legend(loc=2)
     plt.xlabel("Temperature")

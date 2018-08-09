@@ -13,17 +13,23 @@ if __name__ == "__main__":
 
     subdir = args.subdir
 
+    import matplotlib as mpl
+    mpl.rcParams['mathtext.fontset'] = 'cm'
+    mpl.rcParams['mathtext.rm'] = 'serif'
+
     name = "c25"
-    
-    Tpaths = glob.glob(subdir + "/*/T_*")
     savedir = "rg_dist"
+
+    os.chdir(subdir)
+    #Tpaths = glob.glob(subdir + "/*/T_*")
+    Tpaths = glob.glob("T_*")
 
     cwd = os.getcwd()
     for i in range(len(Tpaths)):
         os.chdir(Tpaths[i])
 
         files = ["n.npy", "Pn.npy", "dPn.npy", "bin_edges.npy", "mid_bin.npy"]
-        all_files_exist = np.all([ os.path.exist(savedir + "/" + x) for x in files ])
+        all_files_exist = np.all([ os.path.exists(savedir + "/" + x) for x in files ])
 
         no_data = False
         if all_files_exist:
