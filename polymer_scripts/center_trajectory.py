@@ -14,8 +14,10 @@ if __name__ == "__main__":
 
     name = "c25"
     
-    #trajpaths = glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))
-    trajpaths = glob.glob(subdir + "/*/*/{}_traj_*.dcd".format(name))
+    if len(glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))) > 0:
+        trajpaths = glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))
+    else:
+        trajpaths = glob.glob(subdir + "/*/*/{}_traj_*.dcd".format(name))
 
     cwd = os.getcwd()
     for i in range(len(trajpaths)):

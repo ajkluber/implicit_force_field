@@ -24,29 +24,34 @@ if __name__ == "__main__":
 
     os.chdir(subdir)
  
-    eps_paths = glob.glob("eps_slv_*")
-    eps_vals = [ float(os.path.basename(x).split("_")[-1]) for x in eps_paths ]
+    #eps_paths = glob.glob("eps_slv_*")
+    #eps_paths = glob.glob("eps_ply_0.10_eps_slv_*")
+    #eps_vals = [ float(os.path.basename(x).split("_")[-1]) for x in eps_paths ]
+    eps_paths = glob.glob("eps_ply_*_eps_slv_*")
+    eps_vals = [ (float(os.path.basename(x).split("_")[2]), float(os.path.basename(x).split("_")[-1])) for x in eps_paths ]
 
     plt.figure()
     # plot rg vs T for each value of eps_slv
     for i in range(len(eps_vals)):
-        os.chdir("eps_slv_{:.2f}".format(eps_vals[i]))
+        eps_ply, eps_slv = eps_vals[i]
+        os.chdir("eps_ply_{:.2f}_eps_slv_{:.2f}".format(eps_ply, eps_slv))
+
+        print os.getcwd()
 
         Tpaths = glob.glob("T_*")
         T = [ float((os.path.basename(x)).split("_")[1]) for x in Tpaths ]
         T.sort()
         avgRg = np.array([ float(np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir))) for j in range(len(T)) ])
 
-        plt.plot(T, avgRg, 'o-', label=r"$\epsilon_{{slv}} = {:.2f}$".format(eps_vals[i]))
+        plt.plot(T, avgRg, 'o-', label=r"$\epsilon_{{ply}} = {:.2f}$ $\epsilon_{{slv}} = {:.2f}$".format(eps_ply, eps_slv))
         os.chdir("..")
 
     if not os.path.exists("plots"):
         os.mkdir("plots")
 
     os.chdir("plots")
-    print os.getcwd()
 
-    plt.legend(loc=2)
+    plt.legend(loc=1)
     plt.xlabel("Temperature")
     plt.ylabel("Rg")
     plt.title(subdir)
