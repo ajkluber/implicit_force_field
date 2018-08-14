@@ -64,7 +64,7 @@ def LJslv_params(eps_slv_mag):
     return eps_slv, sigma_slv, mass_slv
 
 def get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag):
-    Hdir = cwd + "/{}_{}_{}slv".format(name, ply_potential, slv_potential)
+    Hdir = os.getcwd() + "/{}_{}_{}slv".format(name, ply_potential, slv_potential)
     if ply_potential == "LJ": 
         if slv_potential == "LJ": 
             Hdir += "/eps_ply_{:.2f}_eps_slv_{:.2f}".format(eps_ply_mag, eps_slv_mag)

@@ -8,6 +8,8 @@ import simtk.unit as unit
 import simtk.openmm as omm
 import simtk.openmm.app as app
 
+import mdtraj as md
+
 import simulation.openmm as sop
 import util
 
@@ -48,6 +50,7 @@ if __name__ == "__main__":
     cutoff = 0.9*unit.nanometers
     vdwCutoff = 0.9*unit.nanometers
     r_switch = 0.7*unit.nanometers
+    minimize = False
 
     ### Interaction parameters 
     #ply_potential = "LJ"
@@ -64,16 +67,20 @@ if __name__ == "__main__":
             raise IOError("--eps_slv must be specified for LJ solvent potential")
         eps_slv, sigma_slv, mass_slv = util.LJslv_params(eps_slv_mag)
     else:
-        pass
+        eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
 
     ff_filename = "ff_c{}.xml".format(n_beads)
     util.add_elements(mass_slv, mass_ply)
 
     # directory structure
-    Hdir = util.get_Hdir(name, ply_potential, slv_potential)
+    Hdir = util.get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag)
     #Hdir = cwd + "/{}_LJ_LJslv/eps_slv_{:.2f}".format(name, eps_slv_mag)
-    Tdir_str = Hdir + "/T_{:.2f}".format(T)
-    rundir_str = lambda idx: Tdir_str + "/run_{}".format(idx)
+    Tdir = Hdir + "/T_{:.2f}".format(T)
+    rundir_str = lambda idx: Tdir + "/run_{}".format(idx)
+
+    print "Hdir:", Hdir 
+    print "Tdir:", Tdir 
+    print "rundir:", rundir_str
 
     ### Determine if trajectories exist for this run
     all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in util.output_filenames(name, idx2)])
@@ -106,10 +113,9 @@ if __name__ == "__main__":
     #   - sure the density is correct at this temperature (for this Hamiltonian).
     os.chdir(Hdir)
 
-    print "finding reference pressure"
     Pdir = "pressure_equil"
     if not os.path.exists(Pdir + "/pressure.dat"):
-        print "finding pressure to match reference density"
+        print "Reference pressure search"
         if not os.path.exists(Pdir):
             os.mkdir(Pdir)
         os.chdir(Pdir)
@@ -119,37 +125,40 @@ if __name__ == "__main__":
         target_volume = ref_pdb.unitcell_volumes[0]
 
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply,
-                eps_slv=eps_slv, sigma_slv=sigma_slv)
+                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
+                eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
         # adaptive change pressure in order to get target unitcell volume (density). 
-        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, refT=refT)
+        print "  running adaptive simulations..."
+        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, cutoff, r_switch, refT=refT)
         os.chdir("..")
 
     #pressure =3931.122169*unit.atmosphere # found for c25_wca_CSslv
-    pressure = np.loadtxt(P_str + "/pressure.dat")[0]*unit.atmosphere
+    pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
     #refT= float(np.loadtxt(P_str + "/temperature.dat"))
 
     os.chdir(cwd)
 
     ### Equilibrate unitcell volume at this temperature and pressure (if not the reference temperature).
-    print "equilibrating reference pressure"
     if not os.path.exists(Tdir):
         os.makedirs(Tdir)
-    os.chdir(Tdir_str)
+    os.chdir(Tdir)
 
     equil_pdb_name = os.getcwd() + "/volume_equil/{}_fin_1.pdb".format(name)
+    print equil_pdb_name
 
     if not os.path.exists(equil_pdb_name):
-        print "equilibrating volume at this pressure"
+        print "Unitcell volume equilibration"
         os.mkdir("volume_equil")
         os.chdir("volume_equil")
         shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
         # let volume equilibrate at this pressure
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply,
-                eps_slv=eps_slv, sigma_slv=sigma_slv)
-        sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name, n_beads, T)
+                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
+                eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
+
+        print "  equilibrating volume at this pressure..."
+        sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name, n_beads, T, cutoff, r_switch)
         os.chdir("..")
     os.chdir(cwd)
 
@@ -162,8 +171,8 @@ if __name__ == "__main__":
     # save force field
     #sop.build_ff.LJ_toy_polymer_LJ_water(n_beads, cutoff, solvent_params, saveas=ff_filename)
     sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-            saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply,
-            eps_slv=eps_slv, sigma_slv=sigma_slv)
+            saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
+            eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
     min_name, log_name, traj_name, lastframe_name = util.output_filenames(name, traj_idx)
 
@@ -184,7 +193,7 @@ if __name__ == "__main__":
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
     # Run simulation
-    print "running production..."
+    print "Running production..."
     sop.run.production(topology, positions, ensemble, temperature, timestep,
             collision_rate, pressure, n_steps, nsteps_out, ff_filename,
             min_name, log_name, traj_name, lastframe_name, cutoff, templates,
