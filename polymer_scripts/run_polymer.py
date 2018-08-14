@@ -78,9 +78,9 @@ if __name__ == "__main__":
     Tdir = Hdir + "/T_{:.2f}".format(T)
     rundir_str = lambda idx: Tdir + "/run_{}".format(idx)
 
-    print "Hdir:", Hdir 
-    print "Tdir:", Tdir 
-    print "rundir:", rundir_str
+    #print "Hdir:", Hdir 
+    #print "Tdir:", Tdir 
+    #print "rundir:", rundir_str
 
     ### Determine if trajectories exist for this run
     all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in util.output_filenames(name, idx2)])
@@ -137,6 +137,7 @@ if __name__ == "__main__":
     #pressure =3931.122169*unit.atmosphere # found for c25_wca_CSslv
     pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
     #refT= float(np.loadtxt(P_str + "/temperature.dat"))
+    #print pressure
 
     os.chdir(cwd)
 
@@ -145,10 +146,12 @@ if __name__ == "__main__":
         os.makedirs(Tdir)
     os.chdir(Tdir)
 
+    recalc_V = True
     equil_pdb_name = os.getcwd() + "/volume_equil/{}_fin_1.pdb".format(name)
-    if not os.path.exists(equil_pdb_name):
+    if not os.path.exists(equil_pdb_name) or recalc_V:
         print "Unitcell volume equilibration"
-        os.mkdir("volume_equil")
+        if not os.path.exists("volume_equil"):
+            os.mkdir("volume_equil")
         os.chdir("volume_equil")
         shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
         # let volume equilibrate at this pressure
@@ -160,6 +163,8 @@ if __name__ == "__main__":
         sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name, n_beads, T, cutoff, r_switch)
         os.chdir("..")
     os.chdir(cwd)
+
+    raise SystemExit
 
     ### Run simulation
     os.chdir(rundir)
