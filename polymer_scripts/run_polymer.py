@@ -133,6 +133,7 @@ if __name__ == "__main__":
         sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, cutoff, r_switch, refT=refT)
         os.chdir("..")
 
+    print "Loading reference pressure"
     #pressure =3931.122169*unit.atmosphere # found for c25_wca_CSslv
     pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
     #refT= float(np.loadtxt(P_str + "/temperature.dat"))
@@ -145,8 +146,6 @@ if __name__ == "__main__":
     os.chdir(Tdir)
 
     equil_pdb_name = os.getcwd() + "/volume_equil/{}_fin_1.pdb".format(name)
-    print equil_pdb_name
-
     if not os.path.exists(equil_pdb_name):
         print "Unitcell volume equilibration"
         os.mkdir("volume_equil")
