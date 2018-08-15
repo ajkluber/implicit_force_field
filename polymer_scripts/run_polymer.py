@@ -25,6 +25,7 @@ if __name__ == "__main__":
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--save_forces_and_vels', action="store_true", help='Save forces.')
+    parser.add_argument('--recalc_V', action="store_true", help='Save forces.')
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
@@ -39,6 +40,7 @@ if __name__ == "__main__":
     T = args.T
     n_steps = args.n_steps
     forces_and_velocities = args.save_forces_and_vels
+    recalc_V = args.recalc_V
     
     assert ply_potential in ["LJ", "wca"]
     assert slv_potential in ["LJ", "CS"]
@@ -146,7 +148,6 @@ if __name__ == "__main__":
         os.makedirs(Tdir)
     os.chdir(Tdir)
 
-    recalc_V = True
     equil_pdb_name = os.getcwd() + "/volume_equil/{}_fin_1.pdb".format(name)
     if not os.path.exists(equil_pdb_name) or recalc_V:
         print "Unitcell volume equilibration"
@@ -163,8 +164,6 @@ if __name__ == "__main__":
         sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name, n_beads, T, cutoff, r_switch)
         os.chdir("..")
     os.chdir(cwd)
-
-    raise SystemExit
 
     ### Run simulation
     os.chdir(rundir)
