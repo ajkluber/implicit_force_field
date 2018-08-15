@@ -1,0 +1,195 @@
+<ForceField>
+  <AtomTypes>
+    <Type class="LJ" element="Sv" mass="18.0" name="Solv" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly1" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly2" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly3" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly4" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly5" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly6" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly7" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly8" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly9" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly10" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly11" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly12" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly13" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly14" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly15" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly16" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly17" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly18" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly19" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly20" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly21" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly22" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly23" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly24" />
+    <Type class="PL" element="Pl" mass="37.0" name="Poly25" />
+  </AtomTypes>
+  <Residues>
+    <Residue name="SLV">
+      <Atom name="LJ" type="Solv" />
+    </Residue>
+    <Residue name="PL1">
+      <Atom name="PL1" type="Poly1" />
+      <ExternalBond atomName="PL1" />
+    </Residue>
+    <Residue name="PL2">
+      <Atom name="PL2" type="Poly2" />
+      <ExternalBond atomName="PL2" />
+    </Residue>
+    <Residue name="PL3">
+      <Atom name="PL3" type="Poly3" />
+      <ExternalBond atomName="PL3" />
+    </Residue>
+    <Residue name="PL4">
+      <Atom name="PL4" type="Poly4" />
+      <ExternalBond atomName="PL4" />
+    </Residue>
+    <Residue name="PL5">
+      <Atom name="PL5" type="Poly5" />
+      <ExternalBond atomName="PL5" />
+    </Residue>
+    <Residue name="PL6">
+      <Atom name="PL6" type="Poly6" />
+      <ExternalBond atomName="PL6" />
+    </Residue>
+    <Residue name="PL7">
+      <Atom name="PL7" type="Poly7" />
+      <ExternalBond atomName="PL7" />
+    </Residue>
+    <Residue name="PL8">
+      <Atom name="PL8" type="Poly8" />
+      <ExternalBond atomName="PL8" />
+    </Residue>
+    <Residue name="PL9">
+      <Atom name="PL9" type="Poly9" />
+      <ExternalBond atomName="PL9" />
+    </Residue>
+    <Residue name="PL10">
+      <Atom name="PL10" type="Poly10" />
+      <ExternalBond atomName="PL10" />
+    </Residue>
+    <Residue name="PL11">
+      <Atom name="PL11" type="Poly11" />
+      <ExternalBond atomName="PL11" />
+    </Residue>
+    <Residue name="PL12">
+      <Atom name="PL12" type="Poly12" />
+      <ExternalBond atomName="PL12" />
+    </Residue>
+    <Residue name="PL13">
+      <Atom name="PL13" type="Poly13" />
+      <ExternalBond atomName="PL13" />
+    </Residue>
+    <Residue name="PL14">
+      <Atom name="PL14" type="Poly14" />
+      <ExternalBond atomName="PL14" />
+    </Residue>
+    <Residue name="PL15">
+      <Atom name="PL15" type="Poly15" />
+      <ExternalBond atomName="PL15" />
+    </Residue>
+    <Residue name="PL16">
+      <Atom name="PL16" type="Poly16" />
+      <ExternalBond atomName="PL16" />
+    </Residue>
+    <Residue name="PL17">
+      <Atom name="PL17" type="Poly17" />
+      <ExternalBond atomName="PL17" />
+    </Residue>
+    <Residue name="PL18">
+      <Atom name="PL18" type="Poly18" />
+      <ExternalBond atomName="PL18" />
+    </Residue>
+    <Residue name="PL19">
+      <Atom name="PL19" type="Poly19" />
+      <ExternalBond atomName="PL19" />
+    </Residue>
+    <Residue name="PL20">
+      <Atom name="PL20" type="Poly20" />
+      <ExternalBond atomName="PL20" />
+    </Residue>
+    <Residue name="PL21">
+      <Atom name="PL21" type="Poly21" />
+      <ExternalBond atomName="PL21" />
+    </Residue>
+    <Residue name="PL22">
+      <Atom name="PL22" type="Poly22" />
+      <ExternalBond atomName="PL22" />
+    </Residue>
+    <Residue name="PL23">
+      <Atom name="PL23" type="Poly23" />
+      <ExternalBond atomName="PL23" />
+    </Residue>
+    <Residue name="PL24">
+      <Atom name="PL24" type="Poly24" />
+      <ExternalBond atomName="PL24" />
+    </Residue>
+    <Residue name="PL25">
+      <Atom name="PL25" type="Poly25" />
+      <ExternalBond atomName="PL25" />
+    </Residue>
+  </Residues>
+  <CustomNonbondedForce bondCutoff="3" energy="areslv*eps_slv*(5*((rmin_slv/r)^12) - 6*((rmin_slv/r)^10)) + (1 - areslv)*eps_ply*(5*((rmin_ply/r)^12) - 6*((rmin_ply/r)^10)); areslv=step((flavor1 + flavor2) - 1.5);">
+    <GlobalParameter defaultValue="1.0" name="eps_slv" />
+    <GlobalParameter defaultValue="0.31" name="rmin_slv" />
+    <GlobalParameter defaultValue="0.1" name="eps_ply" />
+    <GlobalParameter defaultValue="0.373" name="rmin_ply" />
+    <PerParticleParameter name="flavor" />
+    <Atom class="LJ" flavor="1" />
+    <Atom class="PL" flavor="0" />
+  </CustomNonbondedForce>
+  <HarmonicBondForce>
+    <Bond k="334720.0" length="0.153" type1="Poly1" type2="Poly2" />
+    <Bond k="334720.0" length="0.153" type1="Poly2" type2="Poly3" />
+    <Bond k="334720.0" length="0.153" type1="Poly3" type2="Poly4" />
+    <Bond k="334720.0" length="0.153" type1="Poly4" type2="Poly5" />
+    <Bond k="334720.0" length="0.153" type1="Poly5" type2="Poly6" />
+    <Bond k="334720.0" length="0.153" type1="Poly6" type2="Poly7" />
+    <Bond k="334720.0" length="0.153" type1="Poly7" type2="Poly8" />
+    <Bond k="334720.0" length="0.153" type1="Poly8" type2="Poly9" />
+    <Bond k="334720.0" length="0.153" type1="Poly9" type2="Poly10" />
+    <Bond k="334720.0" length="0.153" type1="Poly10" type2="Poly11" />
+    <Bond k="334720.0" length="0.153" type1="Poly11" type2="Poly12" />
+    <Bond k="334720.0" length="0.153" type1="Poly12" type2="Poly13" />
+    <Bond k="334720.0" length="0.153" type1="Poly13" type2="Poly14" />
+    <Bond k="334720.0" length="0.153" type1="Poly14" type2="Poly15" />
+    <Bond k="334720.0" length="0.153" type1="Poly15" type2="Poly16" />
+    <Bond k="334720.0" length="0.153" type1="Poly16" type2="Poly17" />
+    <Bond k="334720.0" length="0.153" type1="Poly17" type2="Poly18" />
+    <Bond k="334720.0" length="0.153" type1="Poly18" type2="Poly19" />
+    <Bond k="334720.0" length="0.153" type1="Poly19" type2="Poly20" />
+    <Bond k="334720.0" length="0.153" type1="Poly20" type2="Poly21" />
+    <Bond k="334720.0" length="0.153" type1="Poly21" type2="Poly22" />
+    <Bond k="334720.0" length="0.153" type1="Poly22" type2="Poly23" />
+    <Bond k="334720.0" length="0.153" type1="Poly23" type2="Poly24" />
+    <Bond k="334720.0" length="0.153" type1="Poly24" type2="Poly25" />
+  </HarmonicBondForce>
+  <HarmonicAngleForce>
+    <Angle angle="1.93731546971" k="462.0" type1="Poly1" type2="Poly2" type3="Poly3" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly2" type2="Poly3" type3="Poly4" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly3" type2="Poly4" type3="Poly5" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly4" type2="Poly5" type3="Poly6" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly5" type2="Poly6" type3="Poly7" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly6" type2="Poly7" type3="Poly8" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly7" type2="Poly8" type3="Poly9" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly8" type2="Poly9" type3="Poly10" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly9" type2="Poly10" type3="Poly11" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly10" type2="Poly11" type3="Poly12" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly11" type2="Poly12" type3="Poly13" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly12" type2="Poly13" type3="Poly14" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly13" type2="Poly14" type3="Poly15" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly14" type2="Poly15" type3="Poly16" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly15" type2="Poly16" type3="Poly17" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly16" type2="Poly17" type3="Poly18" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly17" type2="Poly18" type3="Poly19" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly18" type2="Poly19" type3="Poly20" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly19" type2="Poly20" type3="Poly21" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly20" type2="Poly21" type3="Poly22" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly21" type2="Poly22" type3="Poly23" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly22" type2="Poly23" type3="Poly24" />
+    <Angle angle="1.93731546971" k="462.0" type1="Poly23" type2="Poly24" type3="Poly25" />
+  </HarmonicAngleForce>
+</ForceField>
