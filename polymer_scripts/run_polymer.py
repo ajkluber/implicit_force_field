@@ -26,6 +26,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--save_forces_and_vels', action="store_true", help='Save forces.')
     parser.add_argument('--recalc_V', action="store_true", help='Save forces.')
+    parser.add_argument('--save_forces', action="store_true", help='Save forces.')
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
@@ -41,6 +42,7 @@ if __name__ == "__main__":
     n_steps = args.n_steps
     forces_and_velocities = args.save_forces_and_vels
     recalc_V = args.recalc_V
+    save_forces = args.save_forces
     
     assert ply_potential in ["LJ", "wca"]
     assert slv_potential in ["LJ", "CS"]
@@ -132,7 +134,7 @@ if __name__ == "__main__":
 
         # adaptive change pressure in order to get target unitcell volume (density). 
         print "  running adaptive simulations..."
-        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, cutoff, r_switch, refT=refT)
+        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, cutoff, r_switch, refT=refT, save_forces=save_forces)
         os.chdir("..")
 
     print "Loading reference pressure"

@@ -20,12 +20,13 @@ def get_rg(trajnames):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('subdir', type=str, help='Name.')
+    parser.add_argument('--recalc', action="store_true", help='Recalculate.')
     args = parser.parse_args()
 
     subdir = args.subdir
+    recalc = args.recalc
 
     name = "c25"
-    recalc = True
 
     savedir = "rg_dist"
 
@@ -47,7 +48,6 @@ if __name__ == "__main__":
         all_files_exist = np.all([ os.path.exists(savedir + "/" + x) for x in files ])
 
         if not all_files_exist or recalc:
-
             # analyze all trajectories at one temperature
             all_rg = []
             for i in range(len(runpaths)):

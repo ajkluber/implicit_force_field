@@ -74,3 +74,8 @@ def get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag):
         if slv_potential == "LJ": 
             Hdir += "/eps_slv_{:.2f}".format(eps_ply_mag, eps_slv_mag)
     return Hdir
+
+def get_Eng():
+
+    E = []
+    glob.glob("run_*/")
