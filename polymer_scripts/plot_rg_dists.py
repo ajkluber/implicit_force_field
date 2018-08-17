@@ -8,16 +8,18 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
+    parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('subdir', type=str, help='Name.')
     args = parser.parse_args()
 
+    name = args.name
     subdir = args.subdir
 
     import matplotlib as mpl
     mpl.rcParams['mathtext.fontset'] = 'cm'
     mpl.rcParams['mathtext.rm'] = 'serif'
 
-    name = "c25"
+    #name = "c25"
     savedir = "rg_dist"
 
     os.chdir(subdir)

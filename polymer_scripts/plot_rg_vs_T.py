@@ -8,16 +8,18 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
+    parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('subdir', type=str, help='Name.')
     args = parser.parse_args()
 
+    name = args.name
     subdir = args.subdir
 
     import matplotlib as mpl
     mpl.rcParams['mathtext.fontset'] = 'cm'
     mpl.rcParams['mathtext.rm'] = 'serif'
 
-    name = "c25"
+    #name = "c25"
     savedir = "rg_dist"
 
     cwd = os.getcwd()
@@ -41,9 +43,16 @@ if __name__ == "__main__":
         Tpaths = glob.glob("T_*")
         T = [ float((os.path.basename(x)).split("_")[1]) for x in Tpaths ]
         T.sort()
-        avgRg = np.array([ float(np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir))) for j in range(len(T)) ])
+        hasT = []
+        avgRg = []
+        for j in range(len(T)):
+            rg_file = "T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir)
+            if os.path.exists(rg_file):
+                avgRg.append(float(np.loadtxt(rg_file)))
+                hasT.append(T[j])
+        #avgRg = np.array([ float(np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j], savedir))) for j in range(len(T)) ])
 
-        plt.plot(T, avgRg, 'o-', label=r"$\epsilon_{{ply}} = {:.2f}$ $\epsilon_{{slv}} = {:.2f}$".format(eps_ply, eps_slv))
+        plt.plot(hasT, avgRg, 'o-', label=r"$\epsilon_{{ply}} = {:.2f}$ $\epsilon_{{slv}} = {:.2f}$".format(eps_ply, eps_slv))
         os.chdir("..")
 
     if not os.path.exists("plots"):

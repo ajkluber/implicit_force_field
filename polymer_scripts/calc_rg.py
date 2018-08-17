@@ -19,14 +19,16 @@ def get_rg(trajnames):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
+    parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('subdir', type=str, help='Name.')
     parser.add_argument('--recalc', action="store_true", help='Recalculate.')
     args = parser.parse_args()
 
+    name = args.name
     subdir = args.subdir
     recalc = args.recalc
 
-    name = "c25"
+    #name = "c25"
 
     savedir = "rg_dist"
 

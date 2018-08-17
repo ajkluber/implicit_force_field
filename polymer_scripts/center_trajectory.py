@@ -7,12 +7,12 @@ import mdtraj as md
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
-    parser.add_argument('subdir', type=str, help='Name.')
+    parser.add_argument('name', type=str, help='Name.')
+    parser.add_argument('subdir', type=str, help='Subdirectory.')
     args = parser.parse_args()
 
+    name = args.name
     subdir = args.subdir
-
-    name = "c25"
     
     if len(glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))) > 0:
         trajpaths = glob.glob(subdir + "/*/*/run_*/{}_traj_*.dcd".format(name))
