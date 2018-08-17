@@ -56,7 +56,6 @@ if __name__ == "__main__":
     cutoff = 0.9*unit.nanometers
     vdwCutoff = 0.9*unit.nanometers
     r_switch = 0.7*unit.nanometers
-    minimize = False
 
     ### Interaction parameters 
     #ply_potential = "LJ"
@@ -106,6 +105,11 @@ if __name__ == "__main__":
     while all_trajfiles_exist(run_idx, traj_idx):
         traj_idx += 1
 
+    if traj_idx == 1:
+        minimize = True
+    else:
+        minimize = False
+
     ### Get pressure
     # The pressure and unitcell dimensions must reproduce the density of 
     # the reference state point.     
@@ -119,8 +123,10 @@ if __name__ == "__main__":
     #   - sure the density is correct at this temperature (for this Hamiltonian).
     os.chdir(Hdir)
 
-    Pdir = "pressure_equil"
-    if not os.path.exists(Pdir + "/pressure.dat"):
+    Pdir = os.getcwd() + "/pressure_equil"
+    peq_name = name + "_press_equil.pdb"
+    #if not os.path.exists(Pdir + "/pressure.dat"):
+    if not (os.path.exists(Pdir + "/pressure_in_atm_vs_step.npy") and os.path.exists(Pdir + "/" + peq_name)):
         print "Reference pressure search"
         if not os.path.exists(Pdir):
             os.mkdir(Pdir)
@@ -137,15 +143,13 @@ if __name__ == "__main__":
         # adaptive change pressure in order to get target unitcell volume (density). 
         print "  running adaptive simulations..."
         sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name,
-                n_beads, cutoff, r_switch, refT=refT, save_forces=save_forces,
+                n_beads, cutoff, r_switch, refT=refT, saveas=peq_name, save_forces=save_forces,
                 cuda=cuda)
         os.chdir("..")
 
     print "Loading reference pressure"
-    #pressure =3931.122169*unit.atmosphere # found for c25_wca_CSslv
-    pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
-    #refT= float(np.loadtxt(P_str + "/temperature.dat"))
-    #print pressure
+    #pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
+    pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
 
     os.chdir(cwd)
 
@@ -154,13 +158,14 @@ if __name__ == "__main__":
         os.makedirs(Tdir)
     os.chdir(Tdir)
 
-    equil_pdb_name = os.getcwd() + "/volume_equil/{}_fin_1.pdb".format(name)
+    veq_name = "{}_vol_equil.pdb".format(name)
+    equil_pdb_name = os.getcwd() + "/volume_equil/" + veq_name
     if not os.path.exists(equil_pdb_name) or recalc_V:
         print "Unitcell volume equilibration"
         if not os.path.exists("volume_equil"):
             os.mkdir("volume_equil")
         os.chdir("volume_equil")
-        shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        shutil.copy(Pdir + "/" + peq_name, name + "_min.pdb")
         # let volume equilibrate at this pressure
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
                 saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
@@ -168,7 +173,7 @@ if __name__ == "__main__":
 
         print "  equilibrating volume at this pressure..."
         sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name,
-                n_beads, T, cutoff, r_switch, cuda=cuda)
+                n_beads, T, cutoff, r_switch, saveas=veq_name, cuda=cuda)
         os.chdir("..")
     os.chdir(cwd)
 
