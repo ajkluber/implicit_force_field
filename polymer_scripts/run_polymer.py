@@ -27,6 +27,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_forces_and_vels', action="store_true", help='Save forces.')
     parser.add_argument('--recalc_V', action="store_true", help='Save forces.')
     parser.add_argument('--save_forces', action="store_true", help='Save forces.')
+    parser.add_argument('--nocuda', action="store_true", default=False, help='Dont specify cuda.')
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
@@ -43,6 +44,7 @@ if __name__ == "__main__":
     forces_and_velocities = args.save_forces_and_vels
     recalc_V = args.recalc_V
     save_forces = args.save_forces
+    cuda = not args.nocuda
     
     assert ply_potential in ["LJ", "wca"]
     assert slv_potential in ["LJ", "CS"]
@@ -134,7 +136,9 @@ if __name__ == "__main__":
 
         # adaptive change pressure in order to get target unitcell volume (density). 
         print "  running adaptive simulations..."
-        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name, n_beads, cutoff, r_switch, refT=refT, save_forces=save_forces)
+        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name,
+                n_beads, cutoff, r_switch, refT=refT, save_forces=save_forces,
+                cuda=cuda)
         os.chdir("..")
 
     print "Loading reference pressure"
@@ -163,7 +167,8 @@ if __name__ == "__main__":
                 eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
         print "  equilibrating volume at this pressure..."
-        sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name, n_beads, T, cutoff, r_switch)
+        sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name,
+                n_beads, T, cutoff, r_switch, cuda=cuda)
         os.chdir("..")
     os.chdir(cwd)
 
@@ -202,7 +207,7 @@ if __name__ == "__main__":
     sop.run.production(topology, positions, ensemble, temperature, timestep,
             collision_rate, pressure, n_steps, nsteps_out, ff_filename,
             min_name, log_name, traj_name, lastframe_name, cutoff, templates,
-            nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=True, 
+            nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=cuda, 
             more_reporters=more_reporters, use_switch=True, r_switch=r_switch)
 
     stoptime = time.time()
