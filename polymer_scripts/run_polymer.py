@@ -11,7 +11,7 @@ import simtk.openmm.app as app
 import mdtraj as md
 
 import simulation.openmm as sop
-import util
+#import util
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
@@ -24,9 +24,8 @@ if __name__ == "__main__":
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
-    parser.add_argument('--save_forces_and_vels', action="store_true", help='Save forces.')
-    parser.add_argument('--recalc_V', action="store_true", help='Save forces.')
     parser.add_argument('--save_forces', action="store_true", help='Save forces.')
+    parser.add_argument('--save_velocities', action="store_true", help='Save velocities.')
     parser.add_argument('--nocuda', action="store_true", default=False, help='Dont specify cuda.')
     args = parser.parse_args()
 
@@ -41,9 +40,8 @@ if __name__ == "__main__":
     run_idx = args.run_idx
     T = args.T
     n_steps = args.n_steps
-    forces_and_velocities = args.save_forces_and_vels
-    recalc_V = args.recalc_V
     save_forces = args.save_forces
+    save_velocities = args.save_velocities
     cuda = not args.nocuda
     
     assert ply_potential in ["LJ", "wca"]
@@ -51,7 +49,7 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
 
-    refT = 300
+    refT = 300.
     ensemble = "NVT"
     cutoff = 0.9*unit.nanometers
     vdwCutoff = 0.9*unit.nanometers
@@ -70,25 +68,23 @@ if __name__ == "__main__":
     if slv_potential == "LJ":
         if eps_slv_mag == 0:
             raise IOError("--eps_slv must be specified for LJ solvent potential")
-        eps_slv, sigma_slv, mass_slv = util.LJslv_params(eps_slv_mag)
+        eps_slv, sigma_slv, mass_slv = sop.util.LJslv_params(eps_slv_mag)
     else:
         eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
 
     ff_filename = "ff_c{}.xml".format(n_beads)
-    util.add_elements(mass_slv, mass_ply)
+    sop.util.add_elements(mass_slv, mass_ply)
 
     # directory structure
-    Hdir = util.get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag)
-    #Hdir = cwd + "/{}_LJ_LJslv/eps_slv_{:.2f}".format(name, eps_slv_mag)
+    Hdir = sop.util.get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag)
+    Pdir = Hdir + "/pressure_equil"
     Tdir = Hdir + "/T_{:.2f}".format(T)
+    Vdir = Tdir + "/volume_equil"
     rundir_str = lambda idx: Tdir + "/run_{}".format(idx)
 
-    #print "Hdir:", Hdir 
-    #print "Tdir:", Tdir 
-    #print "rundir:", rundir_str
 
     ### Determine if trajectories exist for this run
-    all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in util.output_filenames(name, idx2)])
+    all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in sop.util.output_filenames(name, idx2)])
 
     # if run idx is not specified create new run directory 
     if run_idx == 0:
@@ -100,6 +96,13 @@ if __name__ == "__main__":
     if not os.path.exists(rundir):
         os.makedirs(rundir)
 
+    if not os.path.exists(Pdir):
+        os.mkdir(Pdir)
+    if not os.path.exists(Vdir):
+        os.mkdir(Vdir)
+    if not os.path.exists(Tdir):
+        os.mkdir(Tdir)
+
     # If trajectories exist in run directory, extend the last one.
     traj_idx = 1
     while all_trajfiles_exist(run_idx, traj_idx):
@@ -110,7 +113,6 @@ if __name__ == "__main__":
     else:
         minimize = False
 
-    ### Get pressure
     # The pressure and unitcell dimensions must reproduce the density of 
     # the reference state point.     
 
@@ -121,15 +123,15 @@ if __name__ == "__main__":
     # We need to determine. Each cg Hamiltonian requires 
     # Then we can equilsimulation at different temperatures can 
     #   - sure the density is correct at this temperature (for this Hamiltonian).
-    os.chdir(Hdir)
 
-    Pdir = os.getcwd() + "/pressure_equil"
-    peq_name = name + "_press_equil.pdb"
-    #if not os.path.exists(Pdir + "/pressure.dat"):
-    if not (os.path.exists(Pdir + "/pressure_in_atm_vs_step.npy") and os.path.exists(Pdir + "/" + peq_name)):
+    ###################################################
+    # Determine reasonable pressure for model
+    ###################################################
+    os.chdir(Hdir)
+    peq_state_name = Pdir + "/" + "final_state.xml"
+    peq_log = Pdir + "/pressure_in_atm_vs_step.npy"
+    if not (os.path.exists(peq_log) and os.path.exists(peq_state_name)):
         print "Reference pressure search"
-        if not os.path.exists(Pdir):
-            os.mkdir(Pdir)
         os.chdir(Pdir)
         shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
 
@@ -143,53 +145,59 @@ if __name__ == "__main__":
         # adaptive change pressure in order to get target unitcell volume (density). 
         print "  running adaptive simulations..."
         sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name,
-                n_beads, cutoff, r_switch, refT=refT, saveas=peq_name, save_forces=save_forces,
+                n_beads, cutoff, r_switch, refT, save_forces=save_forces,
                 cuda=cuda)
         os.chdir("..")
-
-    print "Loading reference pressure"
-    #pressure = np.loadtxt(Pdir + "/pressure.dat")[0]*unit.atmosphere
+    else:
+        print "Loading reference pressure"
     pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
-
     os.chdir(cwd)
 
-    ### Equilibrate unitcell volume at this temperature and pressure (if not the reference temperature).
-    if not os.path.exists(Tdir):
-        os.makedirs(Tdir)
+    ###################################################
+    # Equilibrate unitecell volume at T and P
+    ###################################################
     os.chdir(Tdir)
-
-    veq_name = "{}_vol_equil.pdb".format(name)
-    equil_pdb_name = os.getcwd() + "/volume_equil/" + veq_name
-    if not os.path.exists(equil_pdb_name) or recalc_V:
+    veq_state_name = Vdir + "/final_state_nvt.xml"
+    if not os.path.exists(veq_state_name):
         print "Unitcell volume equilibration"
-        if not os.path.exists("volume_equil"):
-            os.mkdir("volume_equil")
         os.chdir("volume_equil")
-        shutil.copy(Pdir + "/" + peq_name, name + "_min.pdb")
-        # let volume equilibrate at this pressure
-        sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
-                eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
-        print "  equilibrating volume at this pressure..."
+        # let volume equilibrate at this pressure
+        shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
+                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply,
+                mass_ply=mass_ply, eps_slv=eps_slv, sigma_slv=sigma_slv,
+                mass_slv=mass_slv)
+
+        print "  equilibrating V at this T and P..."
         sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name,
-                n_beads, T, cutoff, r_switch, saveas=veq_name, cuda=cuda)
+                n_beads, refT, T, cutoff, r_switch, peq_state_name, cuda=cuda)
+
         os.chdir("..")
+
+    if traj_idx == 1:
+        if ensemble == "NVT":
+            prev_state_name = Vdir + "/final_state_nvt.xml"
+        else:
+            prev_state_name = Vdir + "/final_state_npt.xml"
+    else:
+        prev_state_name = name + "_final_state_{}.xml".format(traj_idx - 1)
     os.chdir(cwd)
 
-    ### Run simulation
+    ###################################################
+    # Run production 
+    ###################################################
     os.chdir(rundir)
 
     if traj_idx == 1:
-        shutil.copy(equil_pdb_name, name + "_min.pdb")
+        shutil.copy(Vdir + "/" + name + "_min.pdb", name + "_min.pdb")
 
     # save force field
-    #sop.build_ff.LJ_toy_polymer_LJ_water(n_beads, cutoff, solvent_params, saveas=ff_filename)
     sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
             saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
             eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
-    min_name, log_name, traj_name, lastframe_name = util.output_filenames(name, traj_idx)
+    min_name, log_name, traj_name, final_state_name = util.output_filenames(name, traj_idx)
 
     # simulation parameters
     nsteps_out = 100
@@ -198,21 +206,23 @@ if __name__ == "__main__":
     timestep = 0.002*unit.picosecond
 
     starttime = time.time()
-    topology, positions = util.get_starting_coordinates(name, traj_idx)
-    templates = util.template_dict(topology, n_beads)
+    topology, positions = sop.util.get_starting_coordinates(name, traj_idx)
+    templates = sop.util.template_dict(topology, n_beads)
 
-    #forces_and_velocities = True
+    # reporters for forces and velocities
     more_reporters = []
-    if forces_and_velocities:
+    if save_forces:
         more_reporters.append(sop.additional_reporters.ForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out))
+    if save_velocities:
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
     # Run simulation
     print "Running production..."
     sop.run.production(topology, positions, ensemble, temperature, timestep,
             collision_rate, pressure, n_steps, nsteps_out, ff_filename,
-            min_name, log_name, traj_name, lastframe_name, cutoff, templates,
-            nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=cuda, 
+            min_name, log_name, traj_name, final_state_name, cutoff, templates,
+            prev_state_name=prev_state_name,
+            nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=cuda,
             more_reporters=more_reporters, use_switch=True, r_switch=r_switch)
 
     stoptime = time.time()
