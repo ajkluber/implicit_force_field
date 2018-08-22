@@ -22,10 +22,12 @@ def output_filenames(name, traj_idx):
     min_name = name + "_min_{}.pdb".format(traj_idx)
     log_name = name + "_{}.log".format(traj_idx)
     traj_name = name + "_traj_{}.dcd".format(traj_idx)
-    lastframe_name = name + "_fin_{}.pdb".format(traj_idx)
-    return min_name, log_name, traj_name, lastframe_name
+    final_state_name = name + "_final_state_{}.xml".format(traj_idx)
+    return min_name, log_name, traj_name, final_state_name
 
 def get_starting_coordinates(name, traj_idx):
+
+    pdb = app.PDBFile(name + "_min.pdb")
 
     # get initial configuration
     if traj_idx == 1:
