@@ -11,7 +11,6 @@ import simtk.openmm.app as app
 import mdtraj as md
 
 import simulation.openmm as sop
-#import util
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
