@@ -1,4 +1,5 @@
 import os
+import time
 import glob
 import argparse
 import numpy as np
@@ -28,7 +29,10 @@ if __name__ == "__main__":
         new_pdbname = name + "_min_cent.pdb" 
 
         os.chdir(os.path.dirname(trajpaths[i]))
-        if not os.path.exists(new_name):
+        # only calc if trajectory if not currently running (i.e., hasn't been
+        # modified in 5mins)
+        last_change = np.abs(os.path.getmtime(old_name) - time.time())/60.
+        if not os.path.exists(new_name) and last_change > 5:
             # get indices for polymer
             topfile = name + "_min.pdb"
             pdb = md.load(topfile)
