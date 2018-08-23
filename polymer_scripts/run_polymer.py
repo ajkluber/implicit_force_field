@@ -196,7 +196,7 @@ if __name__ == "__main__":
             saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
             eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
-    min_name, log_name, traj_name, final_state_name = util.output_filenames(name, traj_idx)
+    min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
     # simulation parameters
     nsteps_out = 100
