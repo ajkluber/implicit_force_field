@@ -24,13 +24,95 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
 
-    os.chdir(subdir)
+    if len(glob.glob(subdir + "/eps_*/T_*/" + savedir)) > 0:
+        # doing several parameter sets
+        epsdirs = glob.glob(subdir + "/eps_*")
+    elif len(glob.glob(subdir + "/T_*/" + savedir)) > 0:
+        # doing one parameter set
+        epsdirs = [subdir]
+    else:
+        raise IOError("I don't see Rg data in this subdir")
+
+
+    for i in range(len(epsdirs)):
+        os.chdir(epsdirs[i])
+        Tdirs = glob.glob("T_*/" + savedir + "/Pn.npy")
+        T = [ float((x.split("/")[0])[2:]) for x in Tdirs ]
+        T.sort()
+
+        print os.getcwd() 
  
-    #eps_paths = glob.glob("eps_slv_*")
-    #eps_paths = glob.glob("eps_ply_0.10_eps_slv_*")
-    #eps_vals = [ float(os.path.basename(x).split("_")[-1]) for x in eps_paths ]
-    eps_paths = glob.glob("eps_ply_*_eps_slv_*")
-    eps_vals = [ (float(os.path.basename(x).split("_")[2]), float(os.path.basename(x).split("_")[-1])) for x in eps_paths ]
+        plt.figure()
+        for j in range(len(T)):
+            # plot rg dist for T 
+            mid_bin = np.load("T_{:.2f}/{}/mid_bin.npy".format(T[j],savedir))
+            Pn = np.load("T_{:.2f}/{}/Pn.npy".format(T[j],savedir))
+            if os.path.exists("T_{:.2f}/{}/dPn.npy".format(T[j],savedir)):
+                dPn = np.load("T_{:.2f}/{}/dPn.npy".format(T[j],savedir))
+            else:
+                dPn = None
+
+            if dPn is None:
+                plt.plot(mid_bin, Pn, label=r"$T={:.2f}$".format(T[j]))
+            else:
+                plt.errorbar(mid_bin, Pn, yerr=dPn, label=r"$T={:.2f}$".format(T[j]))
+
+            plt.legend(loc=1)
+
+        if not os.path.exists("plots"):
+            os.mkdir("plots")
+        os.chdir("plots")
+        plt.legend(loc=1)
+        plt.xlabel(r"Radius of gyration (nm)")
+        plt.ylabel(r"Prob. density")
+        plt.title(epsdirs[i])
+        plt.savefig("rg_dist_vs_T.pdf")
+        plt.savefig("rg_dist_vs_T.png")
+        os.chdir(cwd)
+
+    for i in range(len(epsdirs)):
+        os.chdir(epsdirs[i])
+        Tdirs = glob.glob("T_*/" + savedir + "/Pn.npy")
+        T = [ float((x.split("/")[0])[2:]) for x in Tdirs ]
+        T.sort()
+
+        print os.getcwd() 
+ 
+        plt.figure()
+        for j in range(len(T)):
+            # plot rg dist for T 
+            mid_bin = np.load("T_{:.2f}/{}/mid_bin.npy".format(T[j],savedir))
+            Pn = np.load("T_{:.2f}/{}/Pn.npy".format(T[j],savedir))
+            pmf = np.zeros(len(Pn), float)
+            pmf[Pn > 0] = -np.log(Pn[Pn > 0])
+            pmf -= pmf.min()
+
+            #if os.path.exists("T_{:.2f}/{}/dPn.npy".format(T[j],savedir)):
+            #    dPn = np.load("T_{:.2f}/{}/dPn.npy".format(T[j],savedir))
+            #else:
+            #    dPn = None
+
+            #if dPn is None:
+            plt.plot(mid_bin[Pn > 0], pmf[Pn > 0], label=r"$T={:.2f}$".format(T[j]))
+            #else:
+            #    plt.errorbar(mid_bin, Pn, yerr=dPn, label=r"$T={:.2f}$".format(T[j]))
+            plt.ylim(0,4)
+
+            plt.legend(loc=1)
+
+        if not os.path.exists("plots"):
+            os.mkdir("plots")
+        os.chdir("plots")
+        plt.legend(loc=1)
+        plt.xlabel(r"Radius of gyration (nm)")
+        plt.ylabel(r"Free energy $-\log P(R_g)$")
+        plt.title(epsdirs[i])
+        plt.savefig("rg_pmf_vs_T.pdf")
+        plt.savefig("rg_pmf_vs_T.png")
+        os.chdir(cwd)
+
+
+    raise SystemExit
 
     plt.figure()
     # plot rg vs T for each value of eps_slv
