@@ -43,8 +43,10 @@ if __name__ == "__main__":
         print os.getcwd() 
  
         plt.figure()
+        avgRg = []
         for j in range(len(T)):
             # plot rg dist for T 
+            avgRg.append(float(np.loadtxt("T_{:.2f}/{}/avg_Rg.dat".format(T[j],savedir))))
             mid_bin = np.load("T_{:.2f}/{}/mid_bin.npy".format(T[j],savedir))
             Pn = np.load("T_{:.2f}/{}/Pn.npy".format(T[j],savedir))
             if os.path.exists("T_{:.2f}/{}/dPn.npy".format(T[j],savedir)):
@@ -68,6 +70,14 @@ if __name__ == "__main__":
         plt.title(epsdirs[i])
         plt.savefig("rg_dist_vs_T.pdf")
         plt.savefig("rg_dist_vs_T.png")
+
+        plt.figure()
+        plt.plot(T, avgRg)
+        plt.xlabel("Temperature (K)")
+        plt.ylabel(r"\langle R_g \rangle")
+        plt.title(epsdirs[i])
+        plt.savefig("rg_avg_vs_T.pdf")
+        plt.savefig("rg_avg_vs_T.png")
         os.chdir(cwd)
 
     for i in range(len(epsdirs)):
