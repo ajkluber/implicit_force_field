@@ -86,8 +86,6 @@ if __name__ == "__main__":
         T = [ float((x.split("/")[0])[2:]) for x in Tdirs ]
         T.sort()
 
-        print os.getcwd() 
- 
         plt.figure()
         for j in range(len(T)):
             # plot rg dist for T 
