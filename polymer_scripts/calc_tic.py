@@ -108,3 +108,23 @@ if __name__ == "__main__":
     plt.xlabel("Index")
     plt.ylabel("Cum. Var.")
     plt.savefig("cumvar_vs_index.pdf")
+
+
+    tica = coor.tica(lag=10, stride=1, dim=10)
+    cluster = coor.cluster_kmeans(k=500)
+    coor.pipeline([reader, tica, cluster])
+    M = msm.estimate_markov_model(cluster.dtrajs, 1)
+    
+    msm_lags = [1, 10, 20, 50, 100, 200]
+    its = msm.its(cluster.dtrajs, lags=msm_lags)
+    plt.figure()
+    mplt.plot_implied_timescales(its, ylog=False)
+    plt.savefig("msm_its.pdf")
+
+
+
+    plt.figure()
+    plt.plot(np.arange(1,21), M.timescales()[:20], 'o')
+    ymin, ymax = plt.ylim()
+    plt.ylim(0, ymax)
+    plt.savefig("msm_ti.pdf")
