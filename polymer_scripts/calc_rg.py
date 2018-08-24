@@ -2,11 +2,8 @@ import os
 import glob
 import argparse
 import numpy as np
-#import matplotlib.pyplot as plt
 
 import mdtraj as md
-
-import util
 
 def get_rg(trajnames):
     Rg = []
