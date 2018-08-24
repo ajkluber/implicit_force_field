@@ -56,7 +56,7 @@ if __name__ == "__main__":
                         ply_idxs = pdb.top.select("name PL") 
                         pairs = []
                         for n in range(len(ply_idxs) - 1):
-                            for m in range(n + 3, len(ply_idx)):
+                            for m in range(n + 3, len(ply_idxs)):
                                 pairs.append([ply_idxs[n], ply_idxs[m]])
                         pairs = np.array(pairs)
 
