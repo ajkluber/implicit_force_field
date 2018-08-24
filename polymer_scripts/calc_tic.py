@@ -4,7 +4,6 @@ import pickle
 import argparse
 import numpy as np 
 
-from pyemma.coordinates.data.featurization.misc import CustomFeature
 
 import mdtraj as md
 
@@ -33,6 +32,7 @@ if __name__ == "__main__":
 
     import pyemma.coordinates as coor
     import pyemma.msm as msm
+    from pyemma.coordinates.data.featurization.misc import CustomFeature
 
 
     # get trajectory names
@@ -56,13 +56,43 @@ if __name__ == "__main__":
     # add dihedrals
     #feat.add_custom_feature(CustomFeature(tanh_contact, len(pair_idxs), fun_args=(pair_idxs, r0, widths)))
     feat.add_dihedrals(dih_idxs, cossin=True)
-    feat.add_distances(pair_idxs, cossin=True)
+    feat.add_distances(pair_idxs)
     #feature_info = {'pairs':pair_idxs, 'r0':r0, 'widths':widths, 'dim':len(pair_idxs)}
 
     reader = coor.source(trajnames, features=feat)
 
-    lagtimes = [1, 5, 10, 100, 500, 1000]
+    keep_dims = 20
+    #lagtimes = [1, 5, 10, 100, 500, 1000]
+    lagtimes = [1, 2, 5, 8, 10, 20]
+    ti = []
+    cvar = []
     for n in range(len(lagtimes)):
-        tica = coor.tica(lag=lagtimes[n], stride=1)
+        tica = coor.tica(lag=lagtimes[n], stride=1, dim=keep_dims)
         coor.pipeline([reader, tica])
 
+        ti.append(tica.timescales)
+        cvar.append(tica.cumvar)
+
+    
+    idxs = np.arange(1, keep_dims + 1)
+
+    plt.figure()
+    for i in range(len(lagtimes)):
+        plt.plot(idxs, ti[i][:keep_dims], 'o', label=str(lagtimes[i]))
+
+    plt.legend(loc=1)
+    plt.xlim(0, idxs[-1])
+    plt.xticks(idxs)
+    plt.xlabel("Index")
+    plt.ylabel("Imp Timescale")
+    plt.savefig("ti_vs_index.pdf")
+
+    plt.figure()
+    for i in range(len(lagtimes)):
+        plt.plot(idxs, cvar[i][:keep_dims], 'o', label=str(lagtimes[i]))
+    plt.legend(loc=2)
+    plt.xlim(0, idxs[-1])
+    plt.xticks(idxs)
+    plt.xlabel("Index")
+    plt.ylabel("Cum. Var.")
+    plt.savefig("cumvar_vs_index.pdf")
