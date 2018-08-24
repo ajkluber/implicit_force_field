@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
         if not all_files_exist or recalc:
             # analyze all trajectories at one temperature
-            all_rg = []
+            all_q = []
             for i in range(len(runpaths)):
                 os.chdir(runpaths[i])
                 trajnames = glob.glob(name + "_traj_cent_*.dcd")
@@ -77,21 +77,21 @@ if __name__ == "__main__":
                             q_for_run.append(Q[200:])
                         else:
                             q_for_run.append(Q)
-                    all_rg.append(np.concatenate(q_for_run))
+                    all_q.append(np.concatenate(q_for_run))
                 os.chdir("..")
 
-            if len(all_rg) > 0:
+            if len(all_q) > 0:
                 # statistics with all runs and between runs.
-                max_rg = np.max([ np.max(x) for x in all_rg ])
-                min_rg = np.min([ np.min(x) for x in all_rg ])
+                max_q = np.max([ np.max(x) for x in all_q ])
+                min_q = np.min([ np.min(x) for x in all_q ])
 
                 # calculate the distribution for each run
-                bin_edges = np.linspace(min_rg, max_rg, 100)
+                bin_edges = np.linspace(min_q, max_q, 100)
                 mid_bin = 0.5*(bin_edges[1:] + bin_edges[:-1])
-                n, _ = np.histogram(np.concatenate(all_rg), bins=bin_edges)
-                Pn, _ = np.histogram(np.concatenate(all_rg), density=True, bins=bin_edges)
+                n, _ = np.histogram(np.concatenate(all_q), bins=bin_edges)
+                Pn, _ = np.histogram(np.concatenate(all_q), density=True, bins=bin_edges)
 
-                avgQ = np.mean(np.concatenate(all_rg))
+                avgQ = np.mean(np.concatenate(all_q))
 
                 if not os.path.exists(savedir):
                     os.mkdir(savedir)
@@ -102,8 +102,8 @@ if __name__ == "__main__":
                 np.save("mid_bin.npy", mid_bin)
                 np.savetxt("avg_Q.dat", np.array([avgQ]))
 
-                if len(all_rg) > 2: 
-                    dPn = np.std([ np.histogram(x, density=True, bins=bin_edges)[0] for x in all_rg ], axis=0)
+                if len(all_q) > 2: 
+                    dPn = np.std([ np.histogram(x, density=True, bins=bin_edges)[0] for x in all_q ], axis=0)
                     np.save("dPn.npy", dPn)
 
         os.chdir(cwd)

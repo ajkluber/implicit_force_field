@@ -74,7 +74,7 @@ if __name__ == "__main__":
         plt.figure()
         plt.plot(T, avgRg)
         plt.xlabel("Temperature (K)")
-        plt.ylabel(r"\langle R_g \rangle")
+        plt.ylabel(r"$\langle R_g \rangle$")
         plt.title(epsdirs[i])
         plt.savefig("rg_avg_vs_T.pdf")
         plt.savefig("rg_avg_vs_T.png")
