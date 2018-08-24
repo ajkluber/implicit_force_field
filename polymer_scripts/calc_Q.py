@@ -32,6 +32,8 @@ if __name__ == "__main__":
     else:
         Tpaths = glob.glob("T_*")
 
+    pairs = None
+
     for i in range(len(Tpaths)):
         #print os.getcwd()
         os.chdir(Tpaths[i])
@@ -48,9 +50,15 @@ if __name__ == "__main__":
                 trajnames = glob.glob(name + "_traj_cent_*.dcd")
 
                 if len(trajnames) > 0:
-                    topfile = name + "_min_cent.pdb"
-                    pdb = md.load(topfile)
-                    ply_idxs = pdb.top.select("name PL") 
+                    if pairs is None:
+                        topfile = name + "_min_cent.pdb"
+                        pdb = md.load(topfile)
+                        ply_idxs = pdb.top.select("name PL") 
+                        pairs = []
+                        for n in range(len(ply_idxs) - 1):
+                            for m in range(n + 3, len(ply_idx)):
+                                pairs.append([ply_idxs[n], ply_idxs[m]])
+                        pairs = np.array(pairs)
 
                     q_for_run = []
                     print "calculating Q for rundir:", os.getcwd()
