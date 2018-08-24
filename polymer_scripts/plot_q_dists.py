@@ -52,25 +52,25 @@ if __name__ == "__main__":
                 dPn = None
             os.chdir("..")
         else:
-            rg_names = glob.glob("run_*/rg_*.npy")
+            q_names = glob.glob("run_*/q_*.npy")
 
-            if len(rg_names) > 0:
-                all_rg = []
-                for x in rg_names:
+            if len(q_names) > 0:
+                all_q = []
+                for x in q_names:
                     # skip part of the first trajectory for each run as it might start
                     # far away from stationary distribution.
-                    if os.path.basename(x) == "rg_1.npy":
-                        all_rg.append(np.load(x)[200:])
+                    if os.path.basename(x) == "q_1.npy":
+                        all_q.append(np.load(x)[200:])
                     else:
-                        all_rg.append(np.load(x))
-                max_rg = np.max([ np.max(x) for x in all_rg ])
-                min_rg = np.min([ np.min(x) for x in all_rg ])
+                        all_q.append(np.load(x))
+                max_q = np.max([ np.max(x) for x in all_q ])
+                min_q = np.min([ np.min(x) for x in all_q ])
 
-                bin_edges = np.linspace(min_rg, max_rg, 100)
+                bin_edges = np.linspace(min_q, max_q, 100)
                 mid_bin = 0.5*(bin_edges[1:] + bin_edges[:-1])
-                n, _ = np.histogram(np.concatenate(all_rg), bins=bin_edges)
-                Pn, _ = np.histogram(np.concatenate(all_rg), density=True, bins=bin_edges)
-                avgQ = np.mean(np.concatenate(all_rg))
+                n, _ = np.histogram(np.concatenate(all_q), bins=bin_edges)
+                Pn, _ = np.histogram(np.concatenate(all_q), density=True, bins=bin_edges)
+                avgQ = np.mean(np.concatenate(all_q))
 
                 if not os.path.exists(savedir):
                     os.mkdir(savedir)
@@ -81,12 +81,12 @@ if __name__ == "__main__":
                 np.save("mid_bin.npy", mid_bin)
                 np.savetxt("avg_Q.dat", np.array([avgQ]))
 
-                if len(all_rg) > 2:
-                    dPn = np.std([ np.histogram(x, density=True, bins=bin_edges)[0] for x in all_rg ], axis=0)
+                if len(all_q) > 2:
+                    dPn = np.std([ np.histogram(x, density=True, bins=bin_edges)[0] for x in all_q ], axis=0)
                     np.save("dPn.npy", dPn)
                 os.chdir("..")
             else:
-                print "No rg.npy for this temperature: ", Tpaths[i]
+                print "No q.npy for this temperature: ", Tpaths[i]
                 no_data = True
 
         if not no_data:
