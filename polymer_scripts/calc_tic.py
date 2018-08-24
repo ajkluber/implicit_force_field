@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     keep_dims = 20
     #lagtimes = [1, 5, 10, 100, 500, 1000]
-    lagtimes = [1, 2, 5, 8, 10, 20]
+    lagtimes = [1, 2, 5, 8, 10, 20, 50]
     ti = []
     cvar = []
     for n in range(len(lagtimes)):
@@ -73,6 +73,18 @@ if __name__ == "__main__":
         ti.append(tica.timescales)
         cvar.append(tica.cumvar)
 
+    ti = np.array(ti)
+   
+    plt.figure()
+    for i in range(10):
+        #imp_ti = -np.log(ti[:,i])/lagtime[
+        plt.plot(lagtimes, ti[:,i])
+
+    plt.fill_between(lagtimes, lagtimes, color='k', facecolor='gray', lw=2)
+    plt.xlabel("Lagtime")
+    plt.ylabel("Imp Timescale")
+    plt.title(name + " TICA")
+    plt.savefig("its.pdf")
     
     idxs = np.arange(1, keep_dims + 1)
 
