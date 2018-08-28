@@ -6,10 +6,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+def parse_epsdir(epsdir):
+    if epsdir.find("eps_ply") > -1:
+        if epsdir.find("eps_slv") > -1:
+            spt = epsdir.split("_")
+            epsvals = (float(spt[2]), float(spt[5]))
+        else:
+            epsvals = (float(spt[2]))
+    return epsvals
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('subdir', type=str, help='Name.')
+    #parser.add_argument('subdir', type=str, help='Name.')
     args = parser.parse_args()
 
     name = args.name
@@ -118,6 +128,8 @@ if __name__ == "__main__":
         plt.savefig("rg_pmf_vs_T.pdf")
         plt.savefig("rg_pmf_vs_T.png")
         os.chdir(cwd)
+
+
 
 
     raise SystemExit
