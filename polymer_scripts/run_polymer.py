@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('slv_potential', type=str, help='Interactions for solvent.')
     parser.add_argument('--eps_ply', type=float, default=0, help='Polymer parameters.')
     parser.add_argument('--eps_slv', type=float, default=0, help='Solvent parameters.')
+    parser.add_argument('--target_volume', type=float, default=-1, help='Target volume (nm^3).')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
@@ -36,6 +37,7 @@ if __name__ == "__main__":
     slv_potential = args.slv_potential
     eps_ply_mag = args.eps_ply
     eps_slv_mag = args.eps_slv
+    target_volume = args.target_volume
     run_idx = args.run_idx
     T = args.T
     n_steps = args.n_steps
@@ -135,7 +137,9 @@ if __name__ == "__main__":
         shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
 
         ref_pdb = md.load(name + "_min.pdb")
-        target_volume = ref_pdb.unitcell_volumes[0]
+        if target_volume == -1:
+            # reference structure has density of water
+            target_volume = ref_pdb.unitcell_volumes[0]
 
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
                 saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
