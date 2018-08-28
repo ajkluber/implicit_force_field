@@ -4,6 +4,19 @@ import pickle
 import argparse
 import numpy as np 
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pyemma.plots as mplt
+
+import matplotlib as mpl
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
+
+import pyemma.coordinates as coor
+import pyemma.msm as msm
+from pyemma.coordinates.data.featurization.misc import CustomFeature
+
 
 import mdtraj as md
 
@@ -14,95 +27,124 @@ def tanh_contact(traj, pairs, r0, widths):
 def rg_feature(traj):
     return md.compute_rg(traj).astype(np.float32).reshape(-1, 1)
 
+def q_feature(traj, pairs, r0, widths):
+    r = md.compute_distances(traj, pairs)
+    return np.sum(0.5*(np.tanh((r0 - r)/widths) + 1), axis=1)
+
 def local_density_feature(traj, pairs, r0, widths):
 
     rho_i = np.zeros((traj.n_frames, traj.n_atoms), np.float32)
     for i in range(len(pairs)):
         r = md.compute_distances(traj, pairs[i])
-        rho_i[:,i] = np.sum(0.5*(np.tanh((r0 - r)/widths) + 1))
+        rho_i[:,i] = np.sum(0.5*(np.tanh((r0 - r)/widths) + 1), axis=1)
     #r = md.compute_distances(traj, pairs)
     #rho_i = np.sum(0.5*(np.tanh((r0 - r)/widths) + 1), axis=1).astype(np.float32).reshape(-1,1)
-    return rho_i
+    return rho_i.astype(np.float32)
 
-def tica_stuff():
-
-    #lagtimes = [1, 5, 10, 100, 500, 1000]
-    lagtimes = [1, 2, 5, 8, 10, 20, 50]
-    ti = []
-    cvar = []
-    for n in range(len(lagtimes)):
-        tica = coor.tica(lag=lagtimes[n], stride=1, dim=keep_dims)
+def plot_tica_stuff():
+    # calculate TICA at different lagtimes
+    tica_lags = np.array([1, 2, 5, 8, 10, 20, 50])
+    all_cumvar = []
+    all_tica_ti = []
+    for i in range(len(tica_lags)):
+        tica = coor.tica(lag=tica_lags[i], stride=1)
         coor.pipeline([reader, tica])
 
-        ti.append(tica.timescales)
-        cvar.append(tica.cumvar)
+        all_cumvar.append(tica.cumvar)
+        all_tica_ti.append(tica.timescales)
 
-    ti = np.array(ti)
-   
+    all_cumvar = np.array(all_cumvar)
+    all_tica_ti = np.array(all_tica_ti)
+
+    # times vs lag
     plt.figure()
-    for i in range(10):
-        #imp_ti = -np.log(ti[:,i])/lagtime[
-        plt.plot(lagtimes, ti[:,i])
+    for i in range(20):
+        plt.plot(tica_lags, all_tica_ti[:,i])
+    plt.fill_between(tica_lags, tica_lags, color='gray', lw=2)
+    #ymin, ymax = plt.ylim()
+    #plt.ylim(ymin, ymax)
+    plt.grid(True, alpha=1, color='k', ls='--')
+    plt.xlabel(r"Lag time $\tau$")
+    plt.ylabel(r"TICA $t_i(\tau)$")
+    plt.title(f_str)
+    plt.savefig(msm_savedir + "/tica_its_vs_lag.pdf")
 
-    plt.fill_between(lagtimes, lagtimes, color='k', facecolor='gray', lw=2)
-    plt.xlabel("Lagtime")
-    plt.ylabel("Imp Timescale")
-    plt.title(name + " TICA")
-    plt.savefig("its.pdf")
-    
-    idxs = np.arange(1, keep_dims + 1)
-
+    # cumulative variance
     plt.figure()
-    for i in range(len(lagtimes)):
-        plt.plot(idxs, ti[i][:keep_dims], 'o', label=str(lagtimes[i]))
+    for i in range(len(tica_lags)):
+        plt.plot(np.arange(1, len(all_cumvar[i]) + 1), all_cumvar[i], label=str(tica_lags[i]))
 
-    plt.legend(loc=1)
-    plt.xlim(0, idxs[-1])
-    plt.xticks(idxs)
+    plt.legend(loc=4)
+    plt.grid(True, alpha=1, color='k', ls='--')
+    #ymin, ymax = plt.ylim()
+    plt.ylim(0, 1)
     plt.xlabel("Index")
-    plt.ylabel("Imp Timescale")
-    plt.savefig("ti_vs_index.pdf")
+    plt.ylabel("Kinetic Variance")
+    plt.title(f_str)
+    plt.savefig(msm_savedir + "/tica_cumvar.pdf")
 
+    # times vs index
     plt.figure()
-    for i in range(len(lagtimes)):
-        plt.plot(idxs, cvar[i][:keep_dims], 'o', label=str(lagtimes[i]))
-    plt.legend(loc=2)
-    plt.xlim(0, idxs[-1])
-    plt.xticks(idxs)
+    for i in range(len(tica_lags)):
+        plt.plot(all_tica_ti[i,:20], 'o', label=str(tica_lags[i]))
+
+    plt.legend()
+    plt.grid(True, alpha=1, color='k', ls='--')
+    #ymin, ymax = plt.ylim()
+    #plt.ylim(ymin, ymax)
     plt.xlabel("Index")
-    plt.ylabel("Cum. Var.")
-    plt.savefig("cumvar_vs_index.pdf")
+    plt.ylabel(r"TICA $t_i$")
+    plt.title(f_str)
+    plt.savefig(msm_savedir + "/tica_its.pdf")
+
+    # determine from TICA cumulative kinetic variance
+    #for i in range(len(tica_lags)):
+    #    keep_dims = np.argmin((all_cumvar[i] - 0.8)**2)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("name")
-    #parser.add_argument("subdir", type=str)
+    parser.add_argument("--use_dihedrals", action="store_true")
+    parser.add_argument("--use_distances", action="store_true")
+    parser.add_argument("--use_inv_distances", action="store_true")
+    parser.add_argument("--use_rg", action="store_true")
     args = parser.parse_args()
 
     name = args.name
-    #subidr = args.subdir
+    use_dihedrals = args.use_dihedrals
+    use_distances = args.use_distances
+    use_inv_distances = args.use_inv_distances
+    use_rg = args.use_rg
 
-    display = False
+    #python ~/code/implicit_force_field/polymer_scripts/calc_tic.py c25 --use_dihedrals --use_distances --use_rg
 
-    if display:
-        import pyemma.plots as mplt
-    else:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import pyemma.plots as mplt
+    # for tanh contact feature
+    r0 = 0.4
+    widths = 0.1
 
-    import pyemma.coordinates as coor
-    import pyemma.msm as msm
-    from pyemma.coordinates.data.featurization.misc import CustomFeature
-
-    #feature_set = ["dih", "invdists"]
-    feature_set = ["dih", "tanh", "rho"]
+    # local density feature DOESN'T WORK YET.
     #feature_set = ["dih", "rho"]
+    #feature_set = ["dih", "tanh", "rho"]
+
+    #feature_set = ["dih", "tanh"]
+    #feature_set = ["dih", "invdists"]
     #feature_set = ["dih", "invdists", "rg"]
     #feature_set = ["dih", "dists"]
     #feature_set = ["dih", "dists", "rg"]
-    msm_savedir = "msm_" + "_".join(feature_set)
+
+    # determine input features
+    feature_set = []
+    if use_dihedrals:
+        feature_set.append("dih")
+    if use_distances:
+        feature_set.append("dists")
+    if use_inv_distances:
+        feature_set.append("invdists")
+    if use_rg:
+        feature_set.append("rg")
+
+    f_str = "_".join(feature_set)
+    msm_savedir = "msm_" + f_str
 
     if not os.path.exists(msm_savedir):
         os.mkdir(msm_savedir)
@@ -118,7 +160,7 @@ if __name__ == "__main__":
     dih_idxs = np.array([[ply_idxs[i], ply_idxs[i + 1], ply_idxs[i + 2], ply_idxs[i + 3]] for i in range(len(ply_idxs) - 4) ])
     pair_idxs = []
     for i in range(len(ply_idxs) - 1):
-        for j in range(i + 3, len(ply_idxs)):
+        for j in range(i + 4, len(ply_idxs)):
             pair_idxs.append([ply_idxs[i], ply_idxs[j]])
     pair_idxs = np.array(pair_idxs)
 
@@ -126,17 +168,15 @@ if __name__ == "__main__":
     for i in range(len(ply_idxs)):
         this_residue = []
         for j in range(len(ply_idxs)):
-            if i < j:
-                this_residue.append([ply_idxs[i], ply_idxs[j]])
-            elif j < i:
-                this_residue.append([ply_idxs[j], ply_idxs[i]])
-            else:
-                pass
+            if np.abs(i - j) > 3:
+                if i < j:
+                    this_residue.append([ply_idxs[i], ply_idxs[j]])
+                elif j < i:
+                    this_residue.append([ply_idxs[j], ply_idxs[i]])
+                else:
+                    pass
         all_pair_idxs.append(this_residue)
     all_pair_idxs = np.array(all_pair_idxs)
-
-    r0 = 0.4
-    widths = 0.1
 
     # add dihedrals
     if "dih" in feature_set:
@@ -147,29 +187,78 @@ if __name__ == "__main__":
         feat.add_distances(pair_idxs)
     if "invdists" in feature_set:
         feat.add_inverse_distances(pair_idxs)
-    if "rho":
+    if "rho" in feature_set:
         feat.add_custom_feature(CustomFeature(local_density_feature, len(all_pair_idxs), fun_args=(all_pair_idxs, r0, widths)))
     if "rg" in feature_set:
         feat.add_custom_feature(CustomFeature(rg_feature, 1))
 
-    #feature_info = {'pairs':pair_idxs, 'r0':r0, 'widths':widths, 'dim':len(pair_idxs)}
+    ymin, ymax = 0, 7000
 
     reader = coor.source(trajnames, features=feat)
 
-    tica_lag = 10
-    keep_dims = 10
-    n_clusters = 100
-    msm_lags = [1, 10, 20, 50, 100, 200]
+    # Estimate Markov state model
+    #tica_lag = 20 
+    #keep_dims = 23
+    #keep_dims = 23
+
+    #plot_tica_stuff()
+
+    tica_lag = 20 # lagtime where TICA timescales are converged 
+    keep_dims = 50 # num dims where cumulative variance reaches ~0.8
 
     tica = coor.tica(lag=tica_lag, stride=1, dim=keep_dims)
+    coor.pipeline([reader, tica])
+    Y = tica.get_output(dimensions=range(10))
+    np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
+
+    for i in range(5):
+        for n in range(len(Y)):
+            np.save(msm_savedir + "/run_{}_TIC_{}.npy".format(n+1, i+1), Y[n][:,i])
+
+    raise SystemExit
+
+    fig, axes = plt.subplots(5, 1, sharex=True)
+    for i in range(5):
+        ax = axes[i]
+        ax.plot(Y[0][:10000,i])
+        ax.set_ylabel("TIC " + str(i + 1))
+    fig.savefig(msm_savedir + "/tic_subplot.pdf")
+
+    # plot histogram of tica coordinates
+    fig, axes = plt.subplots(4, 4, figsize=(20,20))
+    for i in range(4):
+        for j in range(i, 4):
+            ax = axes[i][j]
+            ax.hist2d(Y[0][:,i], Y[0][:,j + 1], bins=50)
+
+            if i == 3:
+                ax.set_xlabel("TIC " + str(i + 2), fontsize=20)
+            #if j == 0:
+            #    ax.set_ylabel("TIC " + str(j + 1), fontsize=20)
+            #    #ax.set_title("TIC " + str(i + 2), fontsize=20)
+
+        axes[i][0].set_ylabel("TIC " + str(i + 1), fontsize=20)
+
+        if i == 3:
+            for j in range(4):
+                axes[i][j].set_xlabel("TIC " + str(j + 2), fontsize=20)
+
+    axes[0][0].annotate("TICA  " + f_str, fontsize=24, xy=(0,0),
+            xytext=(1.8, 1.1), xycoords="axes fraction", textcoords="axes fraction")
+    fig.savefig(msm_savedir + "/tic_hist_grid.pdf")
+
+    n_clusters = 300
+    msm_lags = [1, 10, 20, 50, 100, 200]
+
     cluster = coor.cluster_kmeans(k=n_clusters)
     coor.pipeline([reader, tica, cluster])
     its = msm.its(cluster.dtrajs, lags=msm_lags)
 
+
     plt.figure()
-    mplt.plot_implied_timescales(its, ylog=False)
+    mplt.plot_implied_timescales(its)
     plt.title(msm_savedir)
-    plt.savefig(msm_savedir + "/its_vs_lag.pdf")
+    plt.savefig(msm_savedir + "/its_vs_lag_ylog.pdf")
 
     #plt.figure()
     #plt.plot(np.arange(1,21), M.timescales()[:20], 'o')
