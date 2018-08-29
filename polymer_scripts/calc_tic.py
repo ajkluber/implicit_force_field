@@ -108,6 +108,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_distances", action="store_true")
     parser.add_argument("--use_inv_distances", action="store_true")
     parser.add_argument("--use_rg", action="store_true")
+    parser.add_argument("--resave_tic", action="store_true")
     args = parser.parse_args()
 
     name = args.name
@@ -115,6 +116,7 @@ if __name__ == "__main__":
     use_distances = args.use_distances
     use_inv_distances = args.use_inv_distances
     use_rg = args.use_rg
+    resave_tic = args.resave_tic
 
     #python ~/code/implicit_force_field/polymer_scripts/calc_tic.py c25 --use_dihedrals --use_distances --use_rg
 
@@ -201,7 +203,7 @@ if __name__ == "__main__":
     #keep_dims = 23
     #keep_dims = 23
 
-    #plot_tica_stuff()
+    plot_tica_stuff()
 
     tica_lag = 20 # lagtime where TICA timescales are converged 
     keep_dims = 50 # num dims where cumulative variance reaches ~0.8
@@ -211,9 +213,12 @@ if __name__ == "__main__":
     Y = tica.get_output(dimensions=range(10))
     np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
 
+    #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
     for i in range(5):
         for n in range(len(Y)):
-            np.save(msm_savedir + "/run_{}_TIC_{}.npy".format(n+1, i+1), Y[n][:,i])
+            tic_saveas = msm_savedir + "/run_{}_TIC_{}.npy".format(n+1, i+1)
+            if not os.path.exists(tic_saveas) or resave_tic:
+                np.save(tic_saveas, Y[n][:,i])
 
     raise SystemExit
 
