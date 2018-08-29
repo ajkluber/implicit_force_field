@@ -293,7 +293,7 @@ def gaussians_1D(domain):
         dU_funcs.append(dH_i)
     return U_funcs, dU_funcs
 
-def Bsplines_1D(domain, n_knots=100, knots=None, k=3):
+def Bsplines_1D(domain, n_knots=100, knots=None, k=3, second_deriv=False):
 
     # cover interval in spline basis
     if knots is None:
@@ -316,5 +316,15 @@ def Bsplines_1D(domain, n_knots=100, knots=None, k=3):
         U_funcs.append(B_i)
         dU_funcs.append(dB_i)
 
-    return U_funcs, dU_funcs
+    if second_deriv:
+        d2U_funcs = []
+        for i in range(len(knots) - k - 1):
+            coeff = np.zeros(len(knots))
+            coeff[i] = 1.
+            B_i = scipy.interpolate.BSpline(knots, coeff, k)
+            d2B_i = B_i.derivative(2)
+            d2U_funcs.append(d2B_i)
+        return U_funcs, dU_funcs, d2U_funcs
+    else:
+        return U_funcs, dU_funcs
 
