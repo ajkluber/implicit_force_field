@@ -85,7 +85,7 @@ if __name__ == "__main__":
         #for z in [0]:
         s_frames = all_s[z]
         s = dt_frame*s_frames
-        c_solns, cv_score = util.solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
+        c_solns, cv_score = util.solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
 
         for n in range(n_params):
             if non_bond_gaussians and not (bonds and angles):

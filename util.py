@@ -62,7 +62,7 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
     Y = Y[:start_idx]
     return G, Y
 
-def solve_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, method="full", n_chunks=50):
+def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, method="full", n_chunks=50):
     print "calculating trajectory derivatives..."
     starttime = time.time()
 
