@@ -18,8 +18,14 @@ if __name__ == "__main__":
     parser.add_argument('n_beads', type=int, help='Number of beads in polymer.')
     parser.add_argument('ply_potential', type=str, help='Interactions for polymer.')
     parser.add_argument('slv_potential', type=str, help='Interactions for solvent.')
-    parser.add_argument('--eps_ply', type=float, default=0, help='Polymer parameters.')
-    parser.add_argument('--eps_slv', type=float, default=0, help='Solvent parameters.')
+    parser.add_argument('--eps_ply', type=float, default=0, help='Polymer interaction (kJ/mol).')
+    parser.add_argument('--eps_slv', type=float, default=0, help='Solvent interaction (kJ/mol).')
+    parser.add_argument('--cutoff', type=float, default=0.9, help='Nonbonded cutoff (nm).')
+    parser.add_argument('--vdwcutoff', type=float, default=0.9, help='VDW cutoff (nm).')
+    parser.add_argument('--rswitch', type=float, default=0.7, help='Distance to start switching nonbonded interactions (nm).')
+    parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
+    parser.add_argument('--collision_rate', type=float, default=1., help='Simulation collision_rate (1/ps).')
+    parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--target_volume', type=float, default=-1, help='Target volume (nm^3).')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
@@ -30,6 +36,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
+    #python run_polymer.py c25 25 LJ6 SPC --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 1000
 
     name = args.name
     n_beads = args.n_beads
@@ -37,6 +44,12 @@ if __name__ == "__main__":
     slv_potential = args.slv_potential
     eps_ply_mag = args.eps_ply
     eps_slv_mag = args.eps_slv
+    cutoff = args.cutoff*unit.nanometers
+    vdwCutoff = args.vdwcutoff*unit.nanometers
+    r_switch = args.rswitch*unit.nanometers
+    timestep = args.timestep*unit.picosecond
+    collision_rate = args.collision_rate/unit.picosecond
+    nsteps_out = args.nsteps_out
     target_volume = args.target_volume
     run_idx = args.run_idx
     T = args.T
@@ -44,36 +57,36 @@ if __name__ == "__main__":
     save_forces = args.save_forces
     save_velocities = args.save_velocities
     cuda = not args.nocuda
+    temperature = T*unit.kelvin
+
     
-    assert ply_potential in ["LJ", "wca"]
-    assert slv_potential in ["LJ", "CS"]
+    assert ply_potential in ["LJ", "WCA", "LJ6"]
+    assert slv_potential in ["LJ", "CS", "SPC"]
 
     cwd = os.getcwd()
 
     refT = 300.
     ensemble = "NVT"
-    cutoff = 0.9*unit.nanometers
-    vdwCutoff = 0.9*unit.nanometers
-    r_switch = 0.7*unit.nanometers
 
-    ### Interaction parameters 
-    #ply_potential = "LJ"
-    #slv_potential = "LJ"
+    ff_filename = "ff_c{}.xml".format(n_beads)
+    ff_files = [ff_filename]
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
-    if ply_potential == "LJ":
+    if ply_potential in ["LJ", "LJ6"]:
         if eps_ply_mag == 0:
             raise IOError("--eps_ply must be specified for LJ polymer potential")
         eps_ply = eps_ply_mag*unit.kilojoule_per_mole
 
-    if slv_potential == "LJ":
-        if eps_slv_mag == 0:
-            raise IOError("--eps_slv must be specified for LJ solvent potential")
-        eps_slv, sigma_slv, mass_slv = sop.util.LJslv_params(eps_slv_mag)
+    if slv_potential == "SPC":
+        ff_files.append("spce.xml")
     else:
-        eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
+        if slv_potential == "LJ":
+            if eps_slv_mag == 0:
+                raise IOError("--eps_slv must be specified for LJ solvent potential")
+            eps_slv, sigma_slv, mass_slv = sop.util.LJslv_params(eps_slv_mag)
+        else:
+            eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
 
-    ff_filename = "ff_c{}.xml".format(n_beads)
     sop.util.add_elements(mass_slv, mass_ply)
 
     # directory structure
@@ -82,7 +95,6 @@ if __name__ == "__main__":
     Tdir = Hdir + "/T_{:.2f}".format(T)
     Vdir = Tdir + "/volume_equil"
     rundir_str = lambda idx: Tdir + "/run_{}".format(idx)
-
 
     ### Determine if trajectories exist for this run
     all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in sop.util.output_filenames(name, idx2)])
@@ -149,7 +161,7 @@ if __name__ == "__main__":
         print "  running adaptive simulations..."
         sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name,
                 n_beads, cutoff, r_switch, refT, save_forces=save_forces,
-                cuda=cuda)
+                cuda=cuda, ff_files=ff_files)
         os.chdir("..")
     else:
         print "Loading reference pressure"
@@ -201,12 +213,6 @@ if __name__ == "__main__":
             eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
 
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
-
-    # simulation parameters
-    nsteps_out = 100
-    temperature = T*unit.kelvin
-    collision_rate = 1.0/unit.picosecond
-    timestep = 0.002*unit.picosecond
 
     starttime = time.time()
     topology, positions = sop.util.get_starting_coordinates(name, traj_idx)
