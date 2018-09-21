@@ -94,7 +94,9 @@ if __name__ == "__main__":
 
     if slv_potential == "SPC":
         ff_files.append("spce.xml")
+        nonbondedMethod = app.PME
     else:
+        nonbondedMethod = app.CutoffPeriodic
         if slv_potential == "LJ":
             if eps_slv_mag == 0:
                 raise IOError("--eps_slv must be specified for LJ solvent potential")
@@ -256,7 +258,7 @@ if __name__ == "__main__":
             collision_rate, pressure, n_steps, nsteps_out, ff_files,
             min_name, log_name, traj_name, final_state_name, cutoff, templates,
             prev_state_name=prev_state_name,
-            nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=cuda,
+            nonbondedMethod=nonbondedMethod, minimize=minimize, cuda=cuda,
             more_reporters=more_reporters, use_switch=True, r_switch=r_switch)
 
     stoptime = time.time()
