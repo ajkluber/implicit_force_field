@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('slv_potential', type=str, help='Interactions for solvent.')
     parser.add_argument('--eps_ply', type=float, default=0, help='Polymer interaction (kJ/mol).')
     parser.add_argument('--eps_slv', type=float, default=0, help='Solvent interaction (kJ/mol).')
+    parser.add_argument('--starting_pdb', type=str, default="c25_min.pdb", help='Starting pdb filename.')
     parser.add_argument('--cutoff', type=float, default=0.9, help='Nonbonded cutoff (nm).')
     parser.add_argument('--vdwcutoff', type=float, default=0.9, help='VDW cutoff (nm).')
     parser.add_argument('--rswitch', type=float, default=0.7, help='Distance to start switching nonbonded interactions (nm).')
@@ -27,6 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('--collision_rate', type=float, default=1., help='Simulation collision_rate (1/ps).')
     parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--target_volume', type=float, default=-1, help='Target volume (nm^3).')
+    parser.add_argument('--p0', type=float, default=4000., help='Starting pressure (atm).')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
-    #python run_polymer.py c25 25 LJ6 SPC --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 1000
+    #python run_polymer.py c25 25 LJ6 SPC --eps_ply 0.59 --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 100 --p0 1 --starting_pdb c25_with_spc.pdb
 
     name = args.name
     n_beads = args.n_beads
@@ -51,6 +53,7 @@ if __name__ == "__main__":
     collision_rate = args.collision_rate/unit.picosecond
     nsteps_out = args.nsteps_out
     target_volume = args.target_volume
+    p0 = args.p0
     run_idx = args.run_idx
     T = args.T
     n_steps = args.n_steps
@@ -67,15 +70,22 @@ if __name__ == "__main__":
 
     refT = 300.
     ensemble = "NVT"
+    ini_pdb_file = cwd + "/" + args.starting_pdb
 
     ff_filename = "ff_c{}.xml".format(n_beads)
     ff_files = [ff_filename]
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
+    app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
+    ff_kwargs = {}
+    ff_kwargs["sigma_ply"] = sigma_ply
+    ff_kwargs["mass_ply"] = mass_ply
+
     if ply_potential in ["LJ", "LJ6"]:
         if eps_ply_mag == 0:
             raise IOError("--eps_ply must be specified for LJ polymer potential")
         eps_ply = eps_ply_mag*unit.kilojoule_per_mole
+        ff_kwargs["eps_ply"] = eps_ply
 
     if slv_potential == "SPC":
         ff_files.append("spce.xml")
@@ -84,10 +94,13 @@ if __name__ == "__main__":
             if eps_slv_mag == 0:
                 raise IOError("--eps_slv must be specified for LJ solvent potential")
             eps_slv, sigma_slv, mass_slv = sop.util.LJslv_params(eps_slv_mag)
-        else:
+        elif slv_potential == "CS":
             eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
 
-    sop.util.add_elements(mass_slv, mass_ply)
+        app.element.solvent = app.element.Element(201, "Solvent", "Sv", mass_slv)
+        ff_kwargs["eps_slv"] = eps_slv
+        ff_kwargs["sigma_slv"] = sigma_slv
+        ff_kwargs["mass_slv"] = mass_slv
 
     # directory structure
     Hdir = sop.util.get_Hdir(name, ply_potential, slv_potential, eps_ply_mag, eps_slv_mag)
@@ -146,7 +159,8 @@ if __name__ == "__main__":
     if not (os.path.exists(peq_log) and os.path.exists(peq_state_name)):
         print "Reference pressure search"
         os.chdir(Pdir)
-        shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        #shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        shutil.copy(ini_pdb_file, name + "_min.pdb")
 
         ref_pdb = md.load(name + "_min.pdb")
         if target_volume == -1:
@@ -154,14 +168,13 @@ if __name__ == "__main__":
             target_volume = ref_pdb.unitcell_volumes[0]
 
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
-                eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
+                saveas=ff_filename, **ff_kwargs)
 
         # adaptive change pressure in order to get target unitcell volume (density). 
         print "  running adaptive simulations..."
-        sop.run.adaptively_find_best_pressure(target_volume, ff_filename, name,
+        sop.run.adaptively_find_best_pressure(target_volume, ff_files, name,
                 n_beads, cutoff, r_switch, refT, save_forces=save_forces,
-                cuda=cuda, ff_files=ff_files)
+                cuda=cuda, ff_files=ff_files, p0=p0)
         os.chdir("..")
     else:
         print "Loading reference pressure"
@@ -178,14 +191,13 @@ if __name__ == "__main__":
         os.chdir("volume_equil")
 
         # let volume equilibrate at this pressure
-        shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        #shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
+        shutil.copy(ini_pdb_file, name + "_min.pdb")
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply,
-                mass_ply=mass_ply, eps_slv=eps_slv, sigma_slv=sigma_slv,
-                mass_slv=mass_slv)
+                saveas=ff_filename, **ff_kwargs)
 
         print "  equilibrating V at this T and P..."
-        sop.run.equilibrate_unitcell_volume(pressure, ff_filename, name,
+        sop.run.equilibrate_unitcell_volume(pressure, ff_files, name,
                 n_beads, refT, T, cutoff, r_switch, peq_state_name, cuda=cuda)
 
         os.chdir("..")
@@ -205,12 +217,12 @@ if __name__ == "__main__":
     os.chdir(rundir)
 
     if traj_idx == 1:
-        shutil.copy(Vdir + "/" + name + "_min.pdb", name + "_min.pdb")
+        #shutil.copy(Vdir + "/" + name + "_min.pdb", name + "_min.pdb")
+        shutil.copy(ini_pdb_file, name + "_min.pdb")
 
     # save force field
     sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-            saveas=ff_filename, eps_ply=eps_ply, sigma_ply=sigma_ply, mass_ply=mass_ply,
-            eps_slv=eps_slv, sigma_slv=sigma_slv, mass_slv=mass_slv)
+            saveas=ff_filename, **ff_kwargs)
 
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
@@ -228,7 +240,7 @@ if __name__ == "__main__":
     # Run simulation
     print "Running production..."
     sop.run.production(topology, positions, ensemble, temperature, timestep,
-            collision_rate, pressure, n_steps, nsteps_out, ff_filename,
+            collision_rate, pressure, n_steps, nsteps_out, ff_files,
             min_name, log_name, traj_name, final_state_name, cutoff, templates,
             prev_state_name=prev_state_name,
             nonbondedMethod=app.CutoffPeriodic, minimize=minimize, cuda=cuda,
