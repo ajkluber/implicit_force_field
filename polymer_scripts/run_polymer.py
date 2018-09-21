@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('slv_potential', type=str, help='Interactions for solvent.')
     parser.add_argument('--eps_ply', type=float, default=0, help='Polymer interaction (kJ/mol).')
     parser.add_argument('--eps_slv', type=float, default=0, help='Solvent interaction (kJ/mol).')
-    parser.add_argument('--starting_pdb', type=str, default="c25_min.pdb", help='Starting pdb filename.')
+    parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--cutoff', type=float, default=0.9, help='Nonbonded cutoff (nm).')
     parser.add_argument('--vdwcutoff', type=float, default=0.9, help='VDW cutoff (nm).')
     parser.add_argument('--rswitch', type=float, default=0.7, help='Distance to start switching nonbonded interactions (nm).')
@@ -28,6 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('--collision_rate', type=float, default=1., help='Simulation collision_rate (1/ps).')
     parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--target_volume', type=float, default=-1, help='Target volume (nm^3).')
+    parser.add_argument('--pressure', type=float, default=-1, help='Pressure to use (atm).')
     parser.add_argument('--p0', type=float, default=4000., help='Starting pressure (atm).')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
-    #python run_polymer.py c25 25 LJ6 SPC --eps_ply 0.59 --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 100 --p0 1 --starting_pdb c25_with_spc.pdb
+    #python run_polymer.py c25 25 LJ6 SPC --eps_ply 0.59 --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 100 --p0 1 --starting_pdb c25_with_spc.pdb --pressure 1
 
     name = args.name
     n_beads = args.n_beads
@@ -53,6 +54,7 @@ if __name__ == "__main__":
     collision_rate = args.collision_rate/unit.picosecond
     nsteps_out = args.nsteps_out
     target_volume = args.target_volume
+    p_mag = args.pressure
     p0 = args.p0
     run_idx = args.run_idx
     T = args.T
@@ -70,7 +72,10 @@ if __name__ == "__main__":
 
     refT = 300.
     ensemble = "NVT"
-    ini_pdb_file = cwd + "/" + args.starting_pdb
+    if args.starting_pdb == "":
+        ini_pdb_file = cwd + "/" + name + "_min.pdb"
+    else:
+        ini_pdb_file = cwd + "/" + args.starting_pdb
 
     ff_filename = "ff_c{}.xml".format(n_beads)
     ff_files = [ff_filename]
@@ -119,15 +124,6 @@ if __name__ == "__main__":
             run_idx += 1
 
     rundir = rundir_str(run_idx)
-    if not os.path.exists(rundir):
-        os.makedirs(rundir)
-
-    if not os.path.exists(Pdir):
-        os.mkdir(Pdir)
-    if not os.path.exists(Vdir):
-        os.mkdir(Vdir)
-    if not os.path.exists(Tdir):
-        os.mkdir(Tdir)
 
     # If trajectories exist in run directory, extend the last one.
     traj_idx = 1
@@ -151,40 +147,53 @@ if __name__ == "__main__":
     #   - sure the density is correct at this temperature (for this Hamiltonian).
 
     ###################################################
-    # Determine reasonable pressure for model
+    # Setting pressure 
     ###################################################
     os.chdir(Hdir)
-    peq_state_name = Pdir + "/" + "final_state.xml"
-    peq_log = Pdir + "/pressure_in_atm_vs_step.npy"
-    if not (os.path.exists(peq_log) and os.path.exists(peq_state_name)):
-        print "Reference pressure search"
-        os.chdir(Pdir)
-        #shutil.copy(cwd + "/" + name + "_min.pdb", name + "_min.pdb")
-        shutil.copy(ini_pdb_file, name + "_min.pdb")
+    if p_mag == -1:
+        peq_state_name = Pdir + "/" + "final_state.xml"
+        peq_log = Pdir + "/pressure_in_atm_vs_step.npy"
+        if not (os.path.exists(peq_log) and os.path.exists(peq_state_name)):
+            print "Reference pressure search"
+            if not os.path.exists(Pdir):
+                os.mkdir(Pdir)
+            os.chdir(Pdir)
+            # Determine reasonable pressure for model
+            shutil.copy(ini_pdb_file, name + "_min.pdb")
 
-        ref_pdb = md.load(name + "_min.pdb")
-        if target_volume == -1:
-            # reference structure has density of water
-            target_volume = ref_pdb.unitcell_volumes[0]
+            ref_pdb = md.load(ini_pdb_file)
+            if target_volume == -1:
+                # reference structure has density of water
+                target_volume = ref_pdb.unitcell_volumes[0]
 
-        sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
-                saveas=ff_filename, **ff_kwargs)
+            sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
+                    saveas=ff_filename, **ff_kwargs)
 
-        # adaptive change pressure in order to get target unitcell volume (density). 
-        print "  running adaptive simulations..."
-        sop.run.adaptively_find_best_pressure(target_volume, ff_files, name,
-                n_beads, cutoff, r_switch, refT, save_forces=save_forces,
-                cuda=cuda, ff_files=ff_files, p0=p0)
-        os.chdir("..")
+            # adaptive change pressure in order to get target unitcell volume (density). 
+            print "  running adaptive simulations..."
+            sop.run.adaptively_find_best_pressure(target_volume, ff_files, name,
+                    n_beads, cutoff, r_switch, refT, save_forces=save_forces,
+                    cuda=cuda, p0=p0)
+
+            os.chdir("..")
+        else:
+            print "Loading reference pressure"
+        pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
     else:
-        print "Loading reference pressure"
-    pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
+        print "Using pressure", p_mag, " atm"
+        peq_state_name = ini_pdb_file
+        pressure = p_mag*unit.atmosphere
     os.chdir(cwd)
 
     ###################################################
     # Equilibrate unitecell volume at T and P
     ###################################################
+    if not os.path.exists(Tdir):
+        os.mkdir(Tdir)
     os.chdir(Tdir)
+
+    if not os.path.exists(Vdir):
+        os.mkdir(Vdir)
     veq_state_name = Vdir + "/final_state_nvt.xml"
     if not os.path.exists(veq_state_name):
         print "Unitcell volume equilibration"
@@ -214,6 +223,8 @@ if __name__ == "__main__":
     ###################################################
     # Run production 
     ###################################################
+    if not os.path.exists(rundir):
+        os.makedirs(rundir)
     os.chdir(rundir)
 
     if traj_idx == 1:
@@ -227,7 +238,9 @@ if __name__ == "__main__":
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
     starttime = time.time()
-    topology, positions = sop.util.get_starting_coordinates(name, traj_idx)
+    ref_pdb = app.PDBFile(ini_pdb_file)
+    topology, positions = ref_pdb.topology, ref_pdb.positions
+
     templates = sop.util.template_dict(topology, n_beads)
 
     # reporters for forces and velocities
