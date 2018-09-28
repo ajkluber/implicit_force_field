@@ -1,6 +1,6 @@
 import os
+import sys
 import glob
-import pickle
 import argparse
 import numpy as np 
 
@@ -43,7 +43,7 @@ def local_density_feature(traj, pairs, r0, widths):
 
 def plot_tica_stuff():
     # calculate TICA at different lagtimes
-    tica_lags = np.array([1, 2, 5, 8, 10, 20, 50])
+    tica_lags = np.array(range(1, 11) + [12, 15, 20, 25, 50, 75, 100, 150, 200])
     all_cumvar = []
     all_tica_ti = []
     for i in range(len(tica_lags)):
@@ -68,6 +68,7 @@ def plot_tica_stuff():
     plt.ylabel(r"TICA $t_i(\tau)$")
     plt.title(f_str)
     plt.savefig(msm_savedir + "/tica_its_vs_lag.pdf")
+    plt.savefig(msm_savedir + "/tica_its_vs_lag.png")
 
     # cumulative variance
     plt.figure()
@@ -82,6 +83,7 @@ def plot_tica_stuff():
     plt.ylabel("Kinetic Variance")
     plt.title(f_str)
     plt.savefig(msm_savedir + "/tica_cumvar.pdf")
+    plt.savefig(msm_savedir + "/tica_cumvar.png")
 
     # times vs index
     plt.figure()
@@ -96,6 +98,7 @@ def plot_tica_stuff():
     plt.ylabel(r"TICA $t_i$")
     plt.title(f_str)
     plt.savefig(msm_savedir + "/tica_its.pdf")
+    plt.savefig(msm_savedir + "/tica_its.png")
 
     # determine from TICA cumulative kinetic variance
     #for i in range(len(tica_lags)):
@@ -104,19 +107,25 @@ def plot_tica_stuff():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("name")
+    parser.add_argument("--lagtime", type=int, default=50)
+    parser.add_argument("--keep_dims", type=int, default=5)
     parser.add_argument("--use_dihedrals", action="store_true")
     parser.add_argument("--use_distances", action="store_true")
     parser.add_argument("--use_inv_distances", action="store_true")
     parser.add_argument("--use_rg", action="store_true")
     parser.add_argument("--resave_tic", action="store_true")
+    parser.add_argument("--noplots", action="store_true")
     args = parser.parse_args()
 
     name = args.name
+    lagtime = args.lagtime
+    keep_dims = args.keep_dims
     use_dihedrals = args.use_dihedrals
     use_distances = args.use_distances
     use_inv_distances = args.use_inv_distances
     use_rg = args.use_rg
     resave_tic = args.resave_tic
+    noplots = args.noplots
 
     #python ~/code/implicit_force_field/polymer_scripts/calc_tic.py c25 --use_dihedrals --use_distances --use_rg
 
@@ -150,6 +159,10 @@ if __name__ == "__main__":
 
     if not os.path.exists(msm_savedir):
         os.mkdir(msm_savedir)
+
+    # save the command that was run to make output
+    with open(msm_savedir + "/cmd.txt", "a") as fout:
+        fout.write("python " + " ".join(sys.argv) + "\n")
 
     # get trajectory names
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
@@ -203,24 +216,29 @@ if __name__ == "__main__":
     #keep_dims = 23
     #keep_dims = 23
 
-    plot_tica_stuff()
+    if not noplots:
+        print "Plotting tica timescales vs lagtime..."
+        plot_tica_stuff()
 
-    tica_lag = 20 # lagtime where TICA timescales are converged 
-    keep_dims = 50 # num dims where cumulative variance reaches ~0.8
+    #tica_lag = 50 # lagtime where TICA timescales are converged 
+    #keep_dims = 5 # num dims where cumulative variance reaches ~0.8
 
-    tica = coor.tica(lag=tica_lag, stride=1, dim=keep_dims)
+    tica = coor.tica(lag=lagtime, stride=1)
     coor.pipeline([reader, tica])
-    Y = tica.get_output(dimensions=range(10))
+    Y = tica.get_output(dimensions=range(keep_dims))
     np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
 
+    print "Saving tica coordinates..."
     #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
-    for i in range(5):
+    for i in range(keep_dims):
         for n in range(len(Y)):
             tic_saveas = msm_savedir + "/run_{}_TIC_{}.npy".format(n+1, i+1)
             if not os.path.exists(tic_saveas) or resave_tic:
                 np.save(tic_saveas, Y[n][:,i])
 
     raise SystemExit
+
+
 
     fig, axes = plt.subplots(5, 1, sharex=True)
     for i in range(5):
