@@ -6,6 +6,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+import matplotlib as mpl
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
@@ -15,9 +19,6 @@ if __name__ == "__main__":
     name = args.name
     subdir = args.subdir
 
-    import matplotlib as mpl
-    mpl.rcParams['mathtext.fontset'] = 'cm'
-    mpl.rcParams['mathtext.rm'] = 'serif'
 
     #name = "c25"
     savedir = "rg_dist"
