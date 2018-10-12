@@ -25,6 +25,7 @@ class CoarseGrainModel(object):
         # the total potential has two terms U = [U_0, U_1]
         # U_0 is the fixed term of the potential
         # U_1 is the parametric term of the potential
+        self.U_sym = [[],[]]             # functional forms, symbolic
         self.U_funcs = [[],[]]           # functional forms, lambdified
         self.dU_funcs = [[],[]]          # derivative of each form wrt each of its arguments, lambdified
 
@@ -117,10 +118,11 @@ class CoarseGrainModel(object):
 
         # TODO: many-body variables?
 
-    def _add_assignments(self, fixed, U_lamb, scale_factor, temp_U_coord_idxs,
+    def _add_assignments(self, fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs,
             temp_dU_funcs):
 
         fixd = int(not fixed) # 0 for fixed, 1 for free
+        self.U_sym[fixd].append(U_sym)
         self.U_funcs[fixd].append(U_lamb)
         self.U_scale_factors[fixd].append(scale_factor)
         self.U_coord_idxs[fixd].append(temp_U_coord_idxs)
@@ -288,8 +290,8 @@ class PolymerModel(CoarseGrainModel):
             If True then terms are treated as a fixed part of the potential.
         """
 
-        harmonic_sym = scale_factor*self.one_half*((self.r12_sym - r0_nm)**2)
-        U_lamb = sympy.lambdify(self.rij_args, harmonic_sym, modules="numpy")
+        U_sym = scale_factor*self.one_half*((self.r12_sym - r0_nm)**2)
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
         n_args = len(self.rij_args)
 
         temp_U_coord_idxs = []
@@ -302,10 +304,10 @@ class PolymerModel(CoarseGrainModel):
         temp_dU_funcs = []
         for n in range(len(self.rij_args)):
             # take derivative wrt argument n
-            d_harmonic = harmonic_sym.diff(self.rij_args[n])
-            temp_dU_funcs.append(sympy.lambdify(self.rij_args, d_harmonic, modules="numpy"))
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_harmonic_angles(self, theta0_rad, scale_factor=1, fixed=False):
         """Assign harmonic angle interactions
@@ -324,8 +326,8 @@ class PolymerModel(CoarseGrainModel):
 
         assert self.n_atoms > 2, "Not enough number of atoms to have angle interactions"
         
-        ang_sym = scale_factor*self.one_half*(self.theta_ijk_sym - theta0_rad)**2
-        U_lamb = sympy.lambdify(self.theta_ijk_args, ang_sym, modules="numpy")
+        U_sym = scale_factor*self.one_half*(self.theta_ijk_sym - theta0_rad)**2
+        U_lamb = sympy.lambdify(self.theta_ijk_args, U_sym, modules="numpy")
         n_args = len(self.theta_ijk_args)
 
         temp_U_coord_idxs = []
@@ -337,32 +339,30 @@ class PolymerModel(CoarseGrainModel):
         temp_dU_funcs = []
         for n in range(len(self.theta_ijk_args)):
             # take derivative wrt argument n
-            d_ang_sym = ang_sym.diff(self.theta_ijk_args[n])
-            temp_dU_funcs.append(sympy.lambdify(self.theta_ijk_args, d_ang_sym, modules="numpy"))
+            dU_sym = U_sym.diff(self.theta_ijk_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.theta_ijk_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_inverse_r12(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
-        inv_r12_sym = scale_factor*(sigma_nm**12)*(self.r12_sym**(-12))
-
-        U_lamb = sympy.lambdify(self.rij_args, inv_r12_sym, modules="numpy")
+        U_sym = scale_factor*(sigma_nm**12)*(self.r12_sym**(-12))
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
         temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
 
         temp_dU_funcs = []
         for n in range(len(self.rij_args)):
             # take derivative wrt argument n
-            d_inv_r12 = inv_r12_sym.diff(self.rij_args[n])
-            temp_dU_funcs.append(sympy.lambdify(self.rij_args, d_inv_r12, modules="numpy"))
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _assign_LJ6(self, sigma_nm, eps_kj, scale_factor=1, lj14scale=0.5, fixed=False, bond_cutoff=3):
+    def _assign_LJ6(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
-        LJ6_sym = 4*scale_factor*eps_kj*((sigma_nm/self.r12_sym)**(12) - (sigma_nm/self.r12_sym)**6)
-
-        U_lamb = sympy.lambdify(self.rij_args, LJ6_sym, modules="numpy")
+        U_sym = 4*scale_factor*((sigma_nm/self.r12_sym)**(12) - (sigma_nm/self.r12_sym)**6)
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
         #temp_U_coord_idxs = self._generate_14_pairwise_idxs(bond_cutoff=bond_cutoff)
         temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
@@ -370,28 +370,28 @@ class PolymerModel(CoarseGrainModel):
         temp_dU_funcs = []
         for n in range(len(self.rij_args)):
             # take derivative wrt argument n
-            d_LJ6 = LJ6_sym.diff(self.rij_args[n])
-            temp_dU_funcs.append(sympy.lambdify(self.rij_args, d_LJ6, modules="numpy"))
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_pairwise_gaussians(self, r0_nm, w_nm, scaling=1, fixed=False, bond_cutoff=3):
         """Assign a Gaussian well a each position"""
         
         for m in range(len(r0_nm)):
             # gaussian well at position r0_nm[m]
-            gauss_sym = -scaling_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
-            U_lamb = sympy.lambdify(self.rij_args, gauss_sym, modules="numpy")
+            U_sym = -scaling_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
+            U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
             temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
 
             temp_dU_funcs = []
             for n in range(len(self.rij_args)):
                 # take derivative wrt argument n
-                d_gauss_sym = gauss_sym.diff(self.rij_args[n])
-                temp_dU_funcs.append(sympy.lambdify(self.rij_args, d_gauss_sym, modules="numpy"))
+                dU_sym = U_sym.diff(self.rij_args[n])
+                temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-            self._add_assignments(fixed, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+            self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
