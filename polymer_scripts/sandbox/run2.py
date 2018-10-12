@@ -28,11 +28,11 @@ def template_dict(topology, n_beads):
 
 
 if __name__ == "__main__":
-    n_beads = 25
+    n_beads = 5
     #n_beads = 2
     name = "c" + str(n_beads)
     #topname = "c25_nosolv_min.pdb"
-    topname = "c25_min.pdb"
+    topname = "c5_min.pdb"
     #topname = "c2_min.pdb"
 
     T = 300
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     nsteps_out = 1
 
     #properties = {'DeviceIndex': '0'}
-    #platform = omm.Platform.getPlatformByName('CPU') 
+    platform = omm.Platform.getPlatformByName('CPU') 
     #platform = omm.Platform.getPlatformByName('CUDA') 
 
     traj_idx = 1
@@ -78,12 +78,11 @@ if __name__ == "__main__":
 
     ff_kwargs = {}
     ff_kwargs["sigma_ply"] = sigma_ply
+    ff_kwargs["eps_ply"] = eps_ply
     ff_kwargs["mass_ply"] = mass_ply
     ff_kwargs["eps_slv"] = eps_slv
     ff_kwargs["sigma_slv"] = sigma_slv
     ff_kwargs["mass_slv"] = mass_slv
-
-    raise SystemExit
 
     #sop.build_ff.polymer_in_solvent(n_beads, "INVR12", "LJ",
     #        saveas=ff_filename, **ff_kwargs)
@@ -96,15 +95,14 @@ if __name__ == "__main__":
         nonbondedMethod=app.CutoffPeriodic, nonbondedCutoff=cutoff,
         switchDistance=r_switch, ignoreExternalBonds=True, residueTemplates=templates)
 
-    for i in range(system.getNumForces()):
-        force = system.getForce(i)
-        force.setForceGroup(i)
+    #for i in range(system.getNumForces()):
+    #    force = system.getForce(i)
+    #    force.setForceGroup(i)
 
     integrator = omm.LangevinIntegrator(temperature, collision_rate, timestep)
 
     simulation = app.Simulation(topology, system, integrator)
     simulation.context.setPositions(positions)
-
 
     simulation.reporters.append(app.DCDReporter(traj_name, nsteps_out))
     simulation.reporters.append(app.StateDataReporter(log_name, nsteps_out,
@@ -113,47 +111,6 @@ if __name__ == "__main__":
     simulation.reporters.append(sop.additional_reporters.ForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out))
 
     simulation.step(100*nsteps_out + 5)
-
-    Eb = []
-    fsim = []
-    for i in range(100):
-        simulation.step(nsteps_out)
-        state = simulation.context.getState(getPositions=True, getEnergy=True, getForces=True, groups={0})
-
-        temp_x = state.getPositions()/unit.nanometer
-        temp_Eb = state.getPotentialEnergy()/unit.kilojoule_per_mole
-        temp_f = state.getForces()/(unit.kilojoule_per_mole/unit.nanometer)
-        Eb.append(temp_Eb)
-    Eb = np.array(Eb)
-
-    xyz_flat = np.concatenate(temp_x)
-
-    raise SystemExit
-    print "{:>10s}   {:>10s}   {:>10s}".format("Eb","Ea","Ew")
-    Eb = []
-    Ea = []
-    Ew = []
-    for i in range(100):
-        simulation.step(nsteps_out)
-
-        state = simulation.context.getState(getEnergy=True, groups={0})
-        temp_Eb = state.getPotentialEnergy()/unit.kilojoule_per_mole
-        Eb.append(temp_Eb)
-
-        state = simulation.context.getState(getEnergy=True, groups={1})
-        temp_Ea = state.getPotentialEnergy()/unit.kilojoule_per_mole
-        Ea.append(temp_Ea)
-
-        state = simulation.context.getState(getEnergy=True, groups={2})
-        temp_Ew = state.getPotentialEnergy()/unit.kilojoule_per_mole
-        Ew.append(temp_Ew)
-
-        print "{:10.5f}   {:10.5f}   {:10.5f}".format(temp_Eb, temp_Ea, temp_Ew)
-    Eb = np.array(Eb)
-    Ea = np.array(Ea)
-    Ew = np.array(Ew)
-
-    raise SystemExit
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params
@@ -167,49 +124,18 @@ if __name__ == "__main__":
     r0_nm = r0/unit.nanometer
 
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj, fixed=True)
-    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj, fixed=True)
-    #Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=eps_ply_kj, fixed=True)
-    Ucg._assign_LJ6(sigma_ply_nm, eps_ply_kj, scale_factor=eps_ply_kj, fixed=True)
+    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
+    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
+    #Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=eps_ply_kj)
+    Ucg._assign_LJ6(sigma_ply_nm, eps_ply_kj, scale_factor=1)
 
     traj = md.load(traj_name, top=topname)
-    Ecg_terms = Ucg.calculate_potential_terms(traj)
-    Eb_cg, Ea_cg, Ew_cg = Ecg_terms[0]
-    Ecg_tot = Eb_cg + Ea_cg + Ew_cg
+    Eterms = Ucg.calculate_potential_terms(traj)
+    Etot_cg = np.array(Eterms[1]).sum(axis=1)
 
-    Esim_tot = Eb + Ea + Ew
-    print np.corrcoef(Ecg_tot, Esim_tot)[0,1]
+    G = Ucg.calculate_parametric_forces(traj)
 
-    E1 = [Eb, Ea, Ew, Esim_tot]
-    E2 = [Eb_cg, Ea_cg, Ew_cg, Ecg_tot]
-    labels = ["bonds", "angles", "ex vol", "Total"]
+    fsim = np.loadtxt(name + "_forces_{}.dat".format(traj_idx))
+    frav = fsim.ravel()
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-    idx = 0
-    for i in range(2):
-        for j in range(2):
-            ax = axes[i,j]
-            x = E1[idx]
-            y = E2[idx]
-            crr = np.corrcoef(x, y)[0,1]
-            xmin = np.min([ np.min(x), np.min(y) ])
-            xmax = np.max([ np.max(x), np.max(y) ])
-
-            ax.annotate("{:.4f}".format(crr), xy=(0,0), xytext=(0.6, 0.2),
-                    textcoords="axes fraction", xycoords="axes fraction", fontsize=15)
-            ax.annotate(labels[idx], xy=(0,0), xytext=(0.2, 0.8),
-                    textcoords="axes fraction", xycoords="axes fraction", fontsize=15)
-
-            ax.plot([xmin, xmax], [xmin, xmax], 'k--')
-            ax.plot(x, y, '.')
-
-            if i == 1:
-                ax.set_xlabel("sim")
-            if j == 0:
-                ax.set_ylabel("calc")
-            ax.set_xlim(xmin, xmax)
-            ax.set_ylim(xmin, xmax)
-            idx += 1
-
-    fig.savefig("compare_terms_2.pdf")
-    fig.savefig("compare_terms_2.png")
+    c_soln = np.linalg.lstsq(G[:len(frav)],frav)
