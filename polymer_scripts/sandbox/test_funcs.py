@@ -15,7 +15,7 @@ import implicit_force_field as iff
 
 if __name__ == "__main__":
     n_beads = 25
-    #n_beads = 5
+    n_beads = 5
     #n_beads = 4
     #n_beads = 3
     name = "c" + str(n_beads)
@@ -28,6 +28,7 @@ if __name__ == "__main__":
     log_name = name + "_{}.log".format(traj_idx)
     traj_name = name + "_traj_cent_{}.dcd".format(traj_idx)
     lastframe_name = name + "_fin_{}.pdb".format(traj_idx)
+
 
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
@@ -54,18 +55,28 @@ if __name__ == "__main__":
     Ucg._assign_harmonic_angles(theta0_rad)
     Ucg._assign_LJ6(sigma_ply_nm)
 
+    # add test functions
+    
+    Ucg._assign_bond_funcs([r0_nm], [0.3])
+    Ucg._assign_angle_funcs([theta0_rad], [4])
+    #Ucg._assign_pairwise_funcs(sigma_ply_nm)
+
+
+
+    msm_savedir = "msm_dists_dih"
+
+    # load tics
+
+
+
+
+    # calculate integrated sindy (eigenpair) matrix equation.
+
+    # 
+
     raise SystemExit
-
-    fsim = np.loadtxt(name + "_forces_{}.dat".format(traj_idx))
-    frav = fsim.ravel()
-
 
     traj = md.load(traj_name, top=topname)
-    G = Ucg.calculate_parametric_forces(traj)
-
-    c_lstsq = np.linalg.lstsq(G, frav)
-
-    raise SystemExit
 
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
