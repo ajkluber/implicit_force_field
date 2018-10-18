@@ -31,6 +31,33 @@ def calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU
         G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
     return G
 
+def calculate_KM_matrix(Ucg, traj, s_frames, G=None):
+
+    n_dim = 3*traj.xyz.shape[1]
+    xyz_flat = np.reshape(traj.xyz, (traj.n_frames, n_dim))
+    n_rows = (chunk.n_frames - s_frames)*n_dim
+    n_params = len(Ucg.U_funcs[1])
+
+    if G is None:
+        G = np.zeros((n_rows, n_params), float)
+
+    for i in range(n_params): 
+        # functional form i corresponds to parameter i.
+        for j in range(len(Ucg.dU_funcs[1][i])):
+            # derivative wrt argument j
+            d_func = Ucg.dU_funcs[1][i][j]
+            coord_idxs = Ucg.dU_coord_idxs[1][i][j]
+            
+            for n in range(len(coord_idxs)):
+                # coordinates assigned to this derivative
+                deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
+
+                # derivative is wrt to coordinate index dxi
+                dxi = Ucg.dU_d_coord_idx[1][i][j][n]    
+                xi_ravel_idxs = np.arange(dxi, n_rows, n_dim)
+                G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
+    return G
+
 
 def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot):
     n_params = len(dU_funcs)
@@ -61,6 +88,64 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
     G = G[:start_idx]
     Y = Y[:start_idx]
     return G, Y
+
+def new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=10, method="full", n_chunks=50):
+    print "calculating trajectory derivatives..."
+    starttime = time.time()
+
+    n_params = len(Ucg.U_funcs[1])
+    n_frames_tot, n_dim = get_n_frames(trajfile, topfile)
+
+    #G = np.zeros((int(n_frames_tot)*n_dim, n_params), float)
+    #Y = np.zeros(int(n_frames_tot)*n_dim, float)
+
+    chunksize = int(n_frames_tot)/n_chunks
+    total_n_iters = int(np.round(n_frames_tot/chunksize))
+    iteration_idx = 0
+    max_rows = (chunksize - s_frames)*n_dim
+
+    for chunk in md.iterload(trajfile, top=topfile, chunk=chunksize):
+        # solve the problem on each chunk
+        if ((iteration_idx + 1) % 10) == 0:
+            print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+            sys.stdout.flush()
+
+        if chunk.n_frames > s_frames:
+            dU_param = Ucg.calculate_parametric_forces(chunk, s_frames=s_frames)
+            dU_fixed = Ucg.calculate_fixed_forces(chunk, s_frames=s_frames)
+
+            n_rows = (chunk.n_frames - s_frames)*n_dim
+            xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
+
+            # calculate Kramers-Moyal drift
+            Y = ((xyz_flat[s_frames:,:] - xyz_flat[:-s_frames,:])/s).ravel()
+            Y -= dU_fixed
+
+            if iteration_idx == 0:
+                Q, R = scl.qr(dU_param, mode="economic")
+
+                X = np.zeros((n_params + max_rows, n_params), float)
+                b = np.zeros(n_params + max_rows, float)
+
+                X[:n_params,:] = R[:n_params,:].copy()
+                b[:n_params] = np.dot(Q.T, Y)
+            else:
+                X[n_params:n_params + n_rows,:] = dU_param
+                b[n_params:n_params + n_rows] = Y
+
+                Qk, Rk = scl.qr(X[:n_rows,:], mode="economic")
+
+                X[:n_params,:] = Rk
+                b[:n_params] = np.dot(Qk.T, b[:n_rows])
+                
+            iteration_idx += 1
+    final_R = X[:n_params,:]
+    final_b = b[:n_params]
+    c_soln = scl.solve(final_R, final_b)
+    cv_score = 0
+    c_solns = [c_soln]
+
+    return c_solns, cv_score
 
 def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, method="full", n_chunks=50):
     print "calculating trajectory derivatives..."
@@ -154,7 +239,8 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
             if chunk.n_frames > s_frames:
                 n_rows = (chunk.n_frames - s_frames)*n_dim
                 xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
-                G = calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck)
+                #G = calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck)
+                G = calculate_KM_matrix(Ucg, chunk, s_frames, G=G)
 
                 # calculate drift
                 Y = ((xyz_flat[s_frames:,:] - xyz_flat[:-s_frames,:])/s).ravel()

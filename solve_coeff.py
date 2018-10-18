@@ -34,6 +34,8 @@ if __name__ == "__main__":
     assert method in ["full", "chunks", "qr"], "IOError. method must be full, chunks, or qr"
     print "method: ", method
 
+
+
     import matplotlib as mpl
     mpl.use("Agg")
     mpl.rcParams['mathtext.fontset'] = 'cm'
@@ -60,6 +62,10 @@ if __name__ == "__main__":
     if not os.path.exists(savedir):
         os.mkdir(savedir)
 
+    # save the command that was run to make output
+    with open(savedir + "/cmd.txt", "a") as fout:
+        fout.write("python " + " ".join(sys.argv) + "\n")
+
     n_beads = 25 
     n_dim = 3*n_beads
     n_folds = 5
@@ -69,6 +75,20 @@ if __name__ == "__main__":
 
     print "building basis function database..."
     sys.stdout.flush()
+
+    # TODO: Allow for fixed and parametric terms in the potential, such that U = U_0 + U_r
+    # TODO: Allow for degeneracy
+    # as well as a parametric term U_r 
+    # Total potential U = U_0 + \sum c_r u_r
+
+    #U_funcs, U_idxs
+    #U0_funcs, U0_idxs
+
+    # TODO: Return the potential functions as well as their first and second derivatives
+    # TODO: Have library of test functions.
+
+    basis_library.PolymerPotential(n_beads)
+
     dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors = basis_library.polymer_library(n_beads, bonds=bonds, angles=angles, non_bond_wca=non_bond_wca, non_bond_gaussians=non_bond_gaussians)
     n_basis_deriv = len(dU_dxi)
     n_params = len(dU_funcs)
@@ -85,7 +105,8 @@ if __name__ == "__main__":
         #for z in [0]:
         s_frames = all_s[z]
         s = dt_frame*s_frames
-        c_solns, cv_score = util.solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
+        #c_solns, cv_score = util.solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
+        c_solns, cv_score = util.new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=n_folds, method=method, n_chunks=n_chunks)
 
         for n in range(n_params):
             if non_bond_gaussians and not (bonds and angles):
