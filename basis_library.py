@@ -9,7 +9,7 @@ import simtk.unit as unit
 import simulation.openmm as sop
 
 
-class CoarseGrainModel(object):
+class FunctionLibrary(object):
     def __init__(self, n_atoms, n_dim=3):
         """Potential energy terms for polymer
         
@@ -242,7 +242,9 @@ class CoarseGrainModel(object):
                     G[xi_ravel_idxs, i] += deriv.ravel()
         return G
 
-class PolymerModel(CoarseGrainModel):
+
+
+class PolymerModel(FunctionLibrary):
 
     def __init__(self, n_atoms):
         """Potential energy terms for polymer
@@ -252,7 +254,22 @@ class PolymerModel(CoarseGrainModel):
         participating coordinate.
 
         """
-        CoarseGrainModel.__init__(self, n_atoms)
+        FunctionLibrary.__init__(self, n_atoms)
+
+        # test functions
+        self.f_sym = []             # functional forms, symbolic
+        self.f_funcs = []           # functional forms, lambdified
+        self.f_coord_idxs = []      # coordinate indices assigned to form
+        self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+
+    def _add_test_functions(self, f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs):
+
+        self.f_sym.append(f_sym)
+        self.f_funcs.append(f_lamb)
+        self.f_coord_idxs.append(temp_f_coord_idxs)
+        self.df_funcs.append(temp_df_funcs)
+        self.d2f_funcs.append(temp_d2f_funcs)
 
     def _generate_pairwise_idxs(self, bond_cutoff=3):
         coord_idxs = []
@@ -392,6 +409,233 @@ class PolymerModel(CoarseGrainModel):
                 temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
             self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+    ##########################################################3
+    ## TEST FUNCTIONS BELOW
+    ##########################################################3
+    def _assign_bond_funcs(self, r0_nm, w_nm, coeff=1):
+        """Assign harmonic bond interactions
+        
+        Parameters
+        ----------
+        r0_nm : np.ndarry float
+            Center of Guassians for each bond in nanometers
+
+        w_nm : np.ndarry float
+            Widths of Guassians for each bond in nanometers
+
+        coeff : float or np.ndarray
+            Coefficient to multiple each test function
+        """
+
+        n_args = len(self.rij_args)
+        if coeff == 1:
+            coeff = np.ones(len(r0_nm))
+
+        temp_f_coord_idxs = []
+        # list is the same for each n. no need to duplicate
+        for i in range(self.n_atoms - 1):
+            # assign coordinates to interaction/derivative
+            xi_idxs = np.arange(n_args) + i*3
+            temp_f_coord_idxs.append(xi_idxs)   
+
+        # Add a couple gaussians along each bond
+        for n in range(len(r0_nm)):
+            # gaussian well at position r0_nm[m]
+            f_sym = coeff[n]*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[n])/w_nm[n])**2)
+            f_lamb = sympy.lambdify(self.rij_args, f_sym, modules="numpy")
+
+            temp_df_funcs = []
+            temp_d2f_funcs = []
+            for i in range(len(self.rij_args)):
+                # take derivative wrt argument n
+                df_sym = f_sym.diff(self.rij_args[i])
+                d2f_sym = df_sym.diff(self.rij_args[i])
+                temp_df_funcs.append(sympy.lambdify(self.rij_args, df_sym, modules="numpy"))
+                temp_d2f_funcs.append(sympy.lambdify(self.rij_args, d2f_sym, modules="numpy"))
+
+            self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
+
+    def _assign_angle_funcs(self, theta0_rad, kappa, coeff=1):
+        """Assign harmonic angle interactions
+        
+        Parameters
+        ----------
+        theta0_rad : np.ndarray, float
+            Center of Von Mises function in radians
+
+        kappa : np.ndarray, float
+            Steepness of Von Mises function
+        
+        coeff : float or np.ndarray
+            Coefficient to multiple each test function
+        
+        """
+
+        assert self.n_atoms > 2, "Not enough number of atoms to have angle interactions"
+        n_args = len(self.theta_ijk_args)
+
+        if coeff == 1:
+            coeff = np.ones(len(theta0_rad))
+
+        temp_f_coord_idxs = []
+        for i in range(self.n_atoms - 2):
+            # assign coordinates to interaction/derivative 
+            xi_idxs = np.arange(n_args) + i*3
+            temp_f_coord_idxs.append(xi_idxs)
+
+        # Add a couple gaussians along each bond
+        for n in range(len(theta0_rad)):
+            # gaussian well at position theta0_rad[m]
+            f_sym = coeff[n]*sympy.exp(-kappa[n]*sympy.cos(self.theta_ijk_sym - theta0_rad[n]))
+            f_lamb = sympy.lambdify(self.theta_ijk_args, f_sym, modules="numpy")
+
+            temp_df_funcs = []
+            temp_d2f_funcs = []
+            for i in range(len(self.theta_ijk_args)):
+                # take derivative wrt argument n
+                df_sym = f_sym.diff(self.theta_ijk_args[i])
+                d2f_sym = df_sym.diff(self.theta_ijk_args[i])
+                temp_df_funcs.append(sympy.lambdify(self.theta_ijk_args, df_sym, modules="numpy"))
+                temp_d2f_funcs.append(sympy.lambdify(self.theta_ijk_args, d2f_sym, modules="numpy"))
+
+            self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
+
+    def _assign_pairwise_funcs(self, r0_nm, w_nm, coeff=1, bond_cutoff=3):
+        """Assign a Gaussian well a each position"""
+
+        assert self.n_atoms > bond_cutoff, "Not enough number of atoms to have angle interactions"
+        n_args = len(self.rij_args)
+
+        if coeff == 1:
+            coeff = np.ones(len(r0_nm))
+
+        # Add a couple gaussians along each bond
+        for n in range(len(r0_nm)):
+            # gaussian well at position r0_nm[m]
+            f_sym = coeff[n]*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[n])/w_nm[n])**2)
+            f_lamb = sympy.lambdify(self.rij_args, f_sym, modules="numpy")
+
+            temp_f_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+
+            temp_df_funcs = []
+            temp_d2f_funcs = []
+            for i in range(len(self.rij_args)):
+                # take derivative wrt argument n
+                df_sym = f_sym.diff(self.rij_args[i])
+                d2f_sym = df_sym.diff(self.rij_args[i])
+                temp_df_funcs.append(sympy.lambdify(self.rij_args, df_sym, modules="numpy"))
+                temp_d2f_funcs.append(sympy.lambdify(self.rij_args, d2f_sym, modules="numpy"))
+
+            self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
+            
+    def calculate_test_func_gradient(self, traj):
+
+        n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+
+        grad_fj = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
+        start_idx = 0
+        for j in range(len(self.f_funcs)):
+            for n in range(len(self.f_coord_idxs[j])):
+                # coordinates assigned to function j
+                xi_idxs = self.f_coord_idxs[j][n]
+
+                for i in range(len(self.df_funcs[j])):
+                    # first derivative wrt argument i
+                    dxi = xi_idxs[i] 
+
+                    df_j_func = self.df_funcs[j][i]
+                    grad_fj[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
+
+            start_idx += len(self.f_coord_idxs[j])
+
+        return grad_fj
+
+    def calculate_test_func_laplacian(self, traj):
+
+        n_test_funcs = len(self.f_funcs)
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+
+        Lap_fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
+        for j in range(len(self.f_funcs)):
+            for n in range(len(self.f_coord_idxs[j])):
+                # coordinates assigned to function j
+                xi_idxs = self.f_coord_idxs[j][n]
+
+                for i in range(len(self.d2f_funcs[j])):
+                    # add the double derivative wrt argument i
+                    d2f_j_func = self.d2f_funcs[j][i]
+                    Lap_fj[:,j] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
+
+        return Lap_fj
+
+    def calculate_test_func(self, traj):
+
+        n_test_funcs = len(self.f_funcs)
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+
+        fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
+        for j in range(len(self.f_funcs)):
+            f_j_func = self.f_funcs[j]
+            for n in range(len(self.f_coord_idxs[j])):
+                # coordinates assigned to function j
+                xi_idxs = self.f_coord_idxs[j][n]
+                fj[:,j] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
+
+        return fj
+
+    def calculate_grad_ur(self, traj):
+        """Calculate total force due to each parameter along each dimension
+        
+        Parameters
+        ----------
+        traj : mdtraj.Trajectory
+        
+        s_frames : int
+            Number of frames to . s_frames > 0 when using the Kramers-Moyal
+            relation.
+            
+        Returns
+        -------
+        G : np.ndarray
+            Matrix of 
+        """
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        n_params = len(self.U_funcs[1])
+
+        G = np.zeros((traj.n_frames, self.n_dof, n_params), float)
+
+        for i in range(n_params): 
+            # parameter i corresponds to functional form i
+            # coords assigned to functional form i
+            coord_idxs = self.U_coord_idxs[1][i]    # I_r
+
+            for j in range(len(self.dU_funcs[1][i])):
+                # derivative wrt argument j
+                d_func = self.dU_funcs[1][i][j]
+                
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned to this derivative
+                    deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)
+
+                    # derivative is wrt to coordinate index dxi
+                    dxi = coord_idxs[n][j]
+
+                    # force on each coordinate is separated by associated
+                    # parameter
+                    G[:, dxi, i] += deriv.ravel()
+        return G
+
+    def calculate_eigenpair_matrix(self):
+        pass
+
+    def calculate_eigenpair_vector(self):
+        pass
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
@@ -583,6 +827,8 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
         dU_ck += dU_gauss_ck
 
     return dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors
+
+
 
 def many_body_function(n_beads, gaussians=True):
     """ """
