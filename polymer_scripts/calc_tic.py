@@ -242,14 +242,28 @@ if __name__ == "__main__":
 
     raise SystemExit
 
+    msm_savedir = "msm_dih_dists"
+    Y = [] 
+    for n in range(len(traj_idxs)):
+        idx1, idx2 = traj_idxs[n]
+        temp_Y = []
+        for i in range(keep_dims):
+            # save TIC with indices of corresponding traj
+            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
+            temp_Y.append(np.load(tic_saveas))
+        Y.append(np.array(temp_Y).T)
 
 
-    fig, axes = plt.subplots(5, 1, sharex=True)
-    for i in range(5):
+    fig, axes = plt.subplots(keep_dims, 1, sharex=True)
+    for i in range(keep_dims):
         ax = axes[i]
         ax.plot(Y[0][:10000,i])
         ax.set_ylabel("TIC " + str(i + 1))
     fig.savefig(msm_savedir + "/tic_subplot.pdf")
+
+    plt.figure()
+    plt.hist2d(Y[0][:,0], Y[0][:,1], bins=50)
+    plt.savefig(msm_savedir + "/tic1_vs_tic2.pdf")
 
     # plot histogram of tica coordinates
     fig, axes = plt.subplots(4, 4, figsize=(20,20))
