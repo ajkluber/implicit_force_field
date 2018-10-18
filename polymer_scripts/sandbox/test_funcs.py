@@ -1,13 +1,14 @@
 import os
+import sys
 import glob
 import time
+import argparse
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+#import matplotlib
+#matplotlib.use("Agg")
+#import matplotlib.pyplot as plt
 
 import simtk.unit as unit
-import simtk.openmm as omm
 import simtk.openmm.app as app
 
 import mdtraj as md
@@ -16,6 +17,12 @@ import simulation.openmm as sop
 import implicit_force_field as iff
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("run_idx", type=int)
+    args = parser.parse_args()
+
+    run_idx = args.run_idx
+
     n_beads = 25
     #n_beads = 5
     #n_beads = 4
@@ -34,7 +41,6 @@ if __name__ == "__main__":
     lastframe_name = name + "_fin_{}.pdb".format(traj_idx)
 
 
-
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params
     app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
@@ -47,24 +53,29 @@ if __name__ == "__main__":
     theta0_rad = theta0/unit.radian
     r0_nm = r0/unit.nanometer
 
+    gauss_r0_nm = np.linspace(0.3, 1, 10)
+    gauss_w_nm = 0.1*np.ones(len(gauss_r0_nm))
+
     # scaling the terms of the potential reduces the condition number of the
     # force matrix by several orders of magnitude.
 
-    # create polymer model with free parameters
+    # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    #Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
-    #Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
+    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
+    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
     #Ucg._assign_LJ6(sigma_ply_nm, scale_factor=eps_ply_kj)
-    Ucg._assign_harmonic_bonds(r0_nm)
-    Ucg._assign_harmonic_angles(theta0_rad)
-    Ucg._assign_LJ6(sigma_ply_nm)
+    Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=0.5)
+    Ucg._assign_pairwise_gaussians(gauss_r0_nm, gauss_w_nm, scale_factor=0.1)
+
+    #Ucg._assign_harmonic_bonds(r0_nm)
+    #Ucg._assign_harmonic_angles(theta0_rad)
+    #Ucg._assign_LJ6(sigma_ply_nm)
 
     # add test functions
-    
     Ucg._assign_bond_funcs([r0_nm], [0.3])
     Ucg._assign_angle_funcs([theta0_rad], [4])
     #Ucg._assign_pairwise_funcs(sigma_ply_nm)
-
+    Ucg._assign_pairwise_funcs(gauss_r0_nm, gauss_w_nm)
 
     ##########################################################
     # calculate integrated sindy (eigenpair) matrix equation.
@@ -72,9 +83,11 @@ if __name__ == "__main__":
     msm_savedir = "msm_dih_dists"
 
     # load tics
-    topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+    #topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+    #trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
 
-    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+    topfile = glob.glob("run_{}/".format(run_idx) + name + "_min_cent.pdb")[0]
+    trajnames = glob.glob("run_{}/".format(run_idx) + name + "_traj_cent_*.dcd") 
     traj_idxs = []
     for i in range(len(trajnames)):
         tname = trajnames[i]
@@ -96,6 +109,7 @@ if __name__ == "__main__":
         starttime = time.time()
 
         print "traj: ", n+1
+        sys.stdout.flush()
         idx1, idx2 = traj_idxs[n]
 
         # load tics
@@ -109,8 +123,9 @@ if __name__ == "__main__":
         # calculate matrix elements
         start_idx = 0
         chunk_num = 1
-        for chunk in md.iterload(trajnames[n], top=topfile, chunk=10000):
+        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
             print "    chunk: ", chunk_num
+            sys.stdout.flush()
             chunk_num += 1
 
             # calculate model quantities. Potential and test functions gradients, etc.
@@ -125,9 +140,10 @@ if __name__ == "__main__":
 
             # dot products with eigenvectors
             tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U, grad_f).reshape((M*P, R))
+            tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
+
             tempZ = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
             tempY = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
-            tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
 
             tempX2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
 
@@ -141,8 +157,31 @@ if __name__ == "__main__":
 
         min_calc_traj = (time.time() - starttime)
         print "calculation took: {:.4f} sec".format(min_calc_traj)
+        sys.stdout.flush()
+
+        #if n >= 5:
+        #    break
+
+    #X /= float(Ntot)
+    #d /= float(Ntot)
     
-    #c_soln = np.linalg.lstsq(X, d)[0]
+    #eg_savedir = msm_savedir + "/Ucg_eigenpair"
+    eg_savedir = "run_" + str(run_idx) + "/Ucg_eigenpair"
+    if not os.path.exists(eg_savedir):
+        os.mkdir(eg_savedir)
+    os.chdir(eg_savedir)
+
+    np.save("X.npy", X)
+    np.save("d.npy", d)
+
+    with open("X_cond.dat", "w") as fout:
+        fout.write(str(np.linalg.cond(X)))
+
+    with open("Ntot.dat", "w") as fout:
+        fout.write(str(Ntot))
+
+    lstsq_soln = np.linalg.lstsq(X, d)
+    np.save("coeff.npy", lstsq_soln[0])
 
     raise SystemExit
 
