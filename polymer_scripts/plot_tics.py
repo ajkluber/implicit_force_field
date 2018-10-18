@@ -56,6 +56,8 @@ if __name__ == "__main__":
             tic_i.append(np.load("run_{}_TIC_{}.npy".format(n+1,i+1)))
         tics.append(tic_i)
 
+
+
     all_rg = []
     for n in range(n_runs):
         all_rg.append(np.load("../run_{}/rg_1.npy".format(n+1)))

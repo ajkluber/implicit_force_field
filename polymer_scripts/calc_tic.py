@@ -43,7 +43,8 @@ def local_density_feature(traj, pairs, r0, widths):
 
 def plot_tica_stuff():
     # calculate TICA at different lagtimes
-    tica_lags = np.array(range(1, 11) + [12, 15, 20, 25, 50, 75, 100, 150, 200])
+    #tica_lags = np.array(range(1, 11) + [12, 15, 20, 25, 50, 75, 100, 150, 200])
+    tica_lags = np.array([1, 5, 10, 25, 50, 100, 200, 500, 1000])
     all_cumvar = []
     all_tica_ti = []
     for i in range(len(tica_lags)):
@@ -134,14 +135,6 @@ if __name__ == "__main__":
     widths = 0.1
 
     # local density feature DOESN'T WORK YET.
-    #feature_set = ["dih", "rho"]
-    #feature_set = ["dih", "tanh", "rho"]
-
-    #feature_set = ["dih", "tanh"]
-    #feature_set = ["dih", "invdists"]
-    #feature_set = ["dih", "invdists", "rg"]
-    #feature_set = ["dih", "dists"]
-    #feature_set = ["dih", "dists", "rg"]
 
     # determine input features
     feature_set = []
@@ -165,8 +158,17 @@ if __name__ == "__main__":
         fout.write("python " + " ".join(sys.argv) + "\n")
 
     # get trajectory names
-    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+    #trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
+
+    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+    traj_idxs = []
+    for i in range(len(trajnames)):
+        tname = trajnames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+        traj_idxs.append([idx1, idx2])
+
 
     # get indices for dihedral angles and pairwise distances
     feat = coor.featurizer(topfile)
@@ -232,20 +234,36 @@ if __name__ == "__main__":
     #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
     for i in range(keep_dims):
         for n in range(len(Y)):
-            tic_saveas = msm_savedir + "/run_{}_TIC_{}.npy".format(n+1, i+1)
+            # save TIC with indices of corresponding traj
+            idx1, idx2 = traj_idxs[n]
+            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
             if not os.path.exists(tic_saveas) or resave_tic:
                 np.save(tic_saveas, Y[n][:,i])
 
     raise SystemExit
 
+    msm_savedir = "msm_dih_dists"
+    Y = [] 
+    for n in range(len(traj_idxs)):
+        idx1, idx2 = traj_idxs[n]
+        temp_Y = []
+        for i in range(keep_dims):
+            # save TIC with indices of corresponding traj
+            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
+            temp_Y.append(np.load(tic_saveas))
+        Y.append(np.array(temp_Y).T)
 
 
-    fig, axes = plt.subplots(5, 1, sharex=True)
-    for i in range(5):
+    fig, axes = plt.subplots(keep_dims, 1, sharex=True)
+    for i in range(keep_dims):
         ax = axes[i]
         ax.plot(Y[0][:10000,i])
         ax.set_ylabel("TIC " + str(i + 1))
     fig.savefig(msm_savedir + "/tic_subplot.pdf")
+
+    plt.figure()
+    plt.hist2d(Y[0][:,0], Y[0][:,1], bins=50)
+    plt.savefig(msm_savedir + "/tic1_vs_tic2.pdf")
 
     # plot histogram of tica coordinates
     fig, axes = plt.subplots(4, 4, figsize=(20,20))
