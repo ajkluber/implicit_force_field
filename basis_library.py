@@ -9,28 +9,28 @@ import simtk.unit as unit
 import simulation.openmm as sop
 
 
-class PolymerPotential(object):
+class CoarseGrainModel(object):
+    def __init__(self, n_atoms, n_dim=3):
+        """Potential energy terms for polymer
+        
+        Assigns potential forms to sets of participating coordinates. Includes
+        derivatives of each assigned interaction with respect to each
+        participating coordinate.
 
-    def __init__(self, n_atoms):
+        """
         self.n_atoms = n_atoms
-        self.dim = 3*n_atoms
+        self.n_dim = n_dim
+        self.n_dof = n_dim*n_atoms
 
-        # fixed part of the potential
-        self.U0_funcs = []
-        self.U0_arg_idxs = []
-        # TODO: derivatives, etc.
+        # the total potential has two terms U = [U_0, U_1]
+        # U_0 is the fixed term of the potential
+        # U_1 is the parametric term of the potential
+        self.U_sym = [[],[]]             # functional forms, symbolic
+        self.U_funcs = [[],[]]           # functional forms, lambdified
+        self.dU_funcs = [[],[]]          # derivative of each form wrt each of its arguments, lambdified
 
-        # the parametric part of the potential
-        self.U_funcs = []           # functional forms, lambdified
-        self.U_n_args = []          # number of arguments for each form
-        self.U_scale_factors = []    # scale factor of each form
-        self.U_coord_idxs = []      # coordinate indices assigned to form
-
-        self.dU_funcs = []          # derivative of each form wrt each of its arguments, lambdified
-        self.dU_coord_idxs = []     # coordinate indices with this derivative
-        self.dU_d_arg_idx = []      # argument index that deriviate is taken wrt
-        self.dU_d_coord_idx = []    # coordinate index that derivative is wrt 
-        self.dU_ck = []             # parameter index for functional form 
+        self.U_scale_factors = [[],[]]   # scale factor of each form
+        self.U_coord_idxs = [[],[]]      # coordinate indices assigned to form
 
         self._define_symbolic_variables()
 
@@ -45,29 +45,238 @@ class PolymerPotential(object):
             y_i = sympy.symbols('y' + str(i + 1))
             z_i = sympy.symbols('z' + str(i + 1))
             self.xyz_sym.append([x_i, y_i, z_i])
-        x1, y1, z1 = xyz_sym[0]
-        x2, y2, z2 = xyz_sym[1]
-        x3, y3, z3 = xyz_sym[2]
+
+        x1, y1, z1 = self.xyz_sym[0]
+        x2, y2, z2 = self.xyz_sym[1]
 
         # pairwise distance variables
         self.r12_sym = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
-        self.r23_sym = sympy.sqrt((x2 - x3)**2 + (y2 - y3)**2 + (z2 - z3)**2)
-        self.r13_sym = sympy.sqrt((x3 - x1)**2 + (y3 - y1)**2 + (z3 - z1)**2)
 
         # pairwise distance arguments
         self.rij_args = (x1, y1, z1, x2, y2, z2)
 
-        # bond angle variable and arguments
-        self.theta_ijk_sym = sympy.acos((self.r12_sym**2 + self.r23_sym**2 - self.r13_sym**2)/(2*self.r12_sym*self.r23_sym))
-        self.theta_ijk_args = (x1, y1, z1, x2, y2, z2, x3, y3, z3)
+        if self.n_atoms > 2:
+            x3, y3, z3 = self.xyz_sym[2]
+            self.r23_sym = sympy.sqrt((x3 - x2)**2 + (y3 - y2)**2 + (z3 - z2)**2)
+            self.r13_sym = sympy.sqrt((x3 - x1)**2 + (y3 - y1)**2 + (z3 - z1)**2)
 
-        # TODO: dihedral variables?
+            # bond angle variable and arguments
+            self.theta_ijk_sym = sympy.acos((self.r12_sym**2 + self.r23_sym**2 - self.r13_sym**2)/(2*self.r12_sym*self.r23_sym))
+            self.theta_ijk_args = (x1, y1, z1, x2, y2, z2, x3, y3, z3)
+
+        if self.n_atoms > 3:
+            # From wikipedia
+            # Consider four consequentive atoms bonded as: 1-2-3-4
+            # Let
+            #  A = r12
+            #  B = r23
+            #  C = r34
+
+            # and n1 (n2) be the vector normal to plane formed by atoms 1-2-3 (2-3-4)
+            # n1 = (A x B)/(|A||B|)
+            # n2 = (B x C)/(|B||C|)
+
+            # Then the dihedral is angle between n1 n2
+            # cos(phi) = n1*n2
+
+            x3, y3, z3 = self.xyz_sym[2]
+            x4, y4, z4 = self.xyz_sym[3]
+
+            normA = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+            normB = sympy.sqrt((x3 - x2)**2 + (y3 - y2)**2 + (z3 - z2)**2)
+            normC = sympy.sqrt((x4 - x3)**2 + (y4 - y3)**2 + (z4 - z3)**2)
+
+            normA2 = (x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2
+            normB2 = (x3 - x2)**2 + (y3 - y2)**2 + (z3 - z2)**2
+
+            n1x = (y2 - y1)*(z3 - z2) - (z2 - z1)*(y3 - y2)
+            n1y = (x2 - x1)*(z3 - z2) - (z2 - z1)*(x3 - x2)
+            n1z = (x2 - x1)*(y3 - y2) - (y2 - y1)*(x3 - x2)
+
+            n2x = (y3 - y2)*(z4 - z3) - (z3 - z2)*(y4 - y3)
+            n2y = (x3 - x2)*(z4 - z3) - (z3 - z2)*(x4 - x3)
+            n2z = (x3 - x2)*(y4 - y3) - (y3 - y2)*(x4 - x3)
+
+            x = n1x*n2x + n1y*n2y + n1z*n2z
+
+            m1x = n1y*(z3 - z2) - n1z*(y3 - y2) 
+            m1y = n1x*(z3 - z2) - n1z*(x3 - x2)
+            m1z = n1x*(y3 - y2) - n1y*(x3 - x2)
+
+            y = (m1x*n2x + m1y*n2y + m1z*n2z)/normB
+
+            # MDTraj way
+            p1 = (n2x*(x2 - x1) + n2y*(y2 - y1) + n2z*(z2 - z1))*normA
+            p2 = x
+
+            # TODO: Match MDtraj output
+            self.phi_ijkl_sym = sympy.acos(sympy.Abs(x)/(normA*normB2*normC))      # wikipedia
+            self.phi_ijkl_sym_mdtraj = sympy.atan2(p1, p2)                      # MDtraj
+            #self.phi_ijkl_sym2 = sympy.atan2(y, x)                # stackoverflow
+
+            self.phi_ijkl_args = (x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4)
+
         # TODO: many-body variables?
 
-    def _define_symbolic_functions(self):
+    def _add_assignments(self, fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs,
+            temp_dU_funcs):
 
-    def assign_harmonic_bonds(self, r0_nm, scale_factor=1, fixed=False):
-        """Define symbolic variables
+        fixd = int(not fixed) # 0 for fixed, 1 for free
+        self.U_sym[fixd].append(U_sym)
+        self.U_funcs[fixd].append(U_lamb)
+        self.U_scale_factors[fixd].append(scale_factor)
+        self.U_coord_idxs[fixd].append(temp_U_coord_idxs)
+        self.dU_funcs[fixd].append(temp_dU_funcs)
+
+    def calculate_potential_terms(self, traj):
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        U_terms = []
+        for z in [0,1]:
+            temp_U_terms = []
+            for i in range(len(self.U_funcs[z])):
+                U_i_func = self.U_funcs[z][i]
+                U_i_tot = np.zeros(traj.n_frames, float)
+                for n in range(len(self.U_coord_idxs[z][i])):
+                    xi_idxs = self.U_coord_idxs[z][i][n]
+                    U_i_tot += U_i_func(*xyz_flat[:,xi_idxs].T)
+
+                temp_U_terms.append(U_i_tot)
+            U_terms.append(temp_U_terms)
+        return U_terms
+
+    def calculate_fixed_forces(self, traj, s_frames=0, G=None):
+        """Calculate total force due to each parameter along each dimension
+        
+        Parameters
+        ----------
+        traj : mdtraj.Trajectory
+        
+        s_frames : int
+            Number of frames to . s_frames > 0 when using the Kramers-Moyal
+            relation.
+            
+        G : None or np.ndarray
+            If G is None then new matrix is created otherwise results are added
+            to previous calculation.
+        """
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        n_rows = (traj.n_frames - s_frames)*self.n_dof
+        n_terms = len(self.U_funcs[0])
+
+        if G is None:
+            G = np.zeros(n_rows, float)
+
+        for i in range(n_terms):
+            # coordinates assigned fixed potential term i
+            coord_idxs = self.U_coord_idxs[0][i]
+
+            for j in range(len(self.dU_funcs[0][i])):
+                # derivative wrt argument j
+                d_func = self.dU_funcs[0][i][j]
+                
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned to this derivative
+                    if s_frames == 0:
+                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)
+                    else:
+                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
+
+                    # derivative is wrt to coordinate index dxi
+                    dxi = coord_idxs[n][j]
+                    xi_ravel_idxs = np.arange(dxi, n_rows, self.n_dof)
+                    G[xi_ravel_idxs] += deriv.ravel()
+        return G
+
+    def calculate_parametric_forces(self, traj, s_frames=0, G=None):
+        """Calculate total force due to each parameter along each dimension
+        
+        Parameters
+        ----------
+        traj : mdtraj.Trajectory
+        
+        s_frames : int
+            Number of frames to . s_frames > 0 when using the Kramers-Moyal
+            relation.
+            
+        G : None or np.ndarray
+            If G is None then new matrix is created otherwise results are added
+            to previous calculation.
+
+        Returns
+        -------
+        G : np.ndarray (T, P)
+            Matrix of 
+        """
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        n_rows = (traj.n_frames - s_frames)*self.n_dof
+        n_params = len(self.U_funcs[1])
+
+        if G is None:
+            G = np.zeros((n_rows, n_params), float)
+
+        for i in range(n_params): 
+            # parameter i corresponds to functional form i
+            # coords assigned to functional form i
+            coord_idxs = self.U_coord_idxs[1][i]    # I_r
+
+            for j in range(len(self.dU_funcs[1][i])):
+                # derivative wrt argument j
+                d_func = self.dU_funcs[1][i][j]
+                
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned to this derivative
+                    if s_frames == 0:
+                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)
+                    else:
+                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
+
+                    # derivative is wrt to coordinate index dxi
+                    dxi = coord_idxs[n][j]
+                    xi_ravel_idxs = np.arange(dxi, n_rows, self.n_dof)
+
+                    # force on each coordinate is separated by associated
+                    # parameter
+                    G[xi_ravel_idxs, i] += deriv.ravel()
+        return G
+
+class PolymerModel(CoarseGrainModel):
+
+    def __init__(self, n_atoms):
+        """Potential energy terms for polymer
+        
+        Assigns potential forms to sets of participating coordinates. Includes
+        derivatives of each assigned interaction with respect to each
+        participating coordinate.
+
+        """
+        CoarseGrainModel.__init__(self, n_atoms)
+
+    def _generate_pairwise_idxs(self, bond_cutoff=3):
+        coord_idxs = []
+        for i in range(self.n_atoms - bond_cutoff):
+            idxs1 = np.arange(3) + i*3
+            for j in range(i + bond_cutoff, self.n_atoms):
+                # assign coordinates to interaction/derivative
+                idxs2 = np.arange(3) + j*3
+                xi_idxs = np.concatenate([idxs1, idxs2])
+                coord_idxs.append(xi_idxs)
+        return coord_idxs
+
+    def _generate_bonded_idxs(self, n_args):
+
+        coord_idxs = []
+        for i in range(self.n_atoms - (n_args/self.n_dim) + 1):
+            # assign coordinates to interaction/derivative
+            xi_idxs = np.arange(n_args) + i*3
+            coord_idxs.append(xi_idxs)
+        return coord_idxs
+
+
+    def _assign_harmonic_bonds(self, r0_nm, scale_factor=1, fixed=False):
+        """Assign harmonic bond interactions
         
         Parameters
         ----------
@@ -81,161 +290,112 @@ class PolymerPotential(object):
             If True then terms are treated as a fixed part of the potential.
         """
 
-        harmonic_sym = scale_factor*self.one_half*(self.r12_sym - r0_nm)**2 
-        U_lamb = sympy.lambdify(self.rij_args, harmonic_sym, modules="numpy")
-        ck_idx = len(self.U_funcs)  # parameter index
-
-        if fixed:
-            # assign to U0
-            self.U0_funcs.append(U_lamb)
-            self.U0_n_args.append(len(self.rij_args))
-
-            U_coord_idxs = self.U0_coord_idxs
-            dU_funcs = self.dU0_funcs
-            dU_coord_idxs = self.dU0_coord_idxs
-            dU_d_arg_idx = self.dU0_d_arg_idx
-            dU_d_coord_idx = self.dU0_d_coord_idx
-        else:
-            # assign to U
-            self.U_funcs.append(U_lamb)
-            self.U_n_args.append(len(self.rij_args))
-            self.U_scale_factors.append(scale_factor)
-
-            U_coord_idxs = self.U_coord_idxs
-            dU_funcs = self.dU_funcs
-            dU_coord_idxs = self.dU_coord_idxs
-            dU_d_arg_idx = self.dU_d_arg_idx
-            dU_d_coord_idx = self.dU_d_coord_idx
-            dU_ck = self.dU_ck
-
-        temp_dU_funcs = []
-        for i in range(self.n_atoms - 1):
-            # assign bond interactions between two consequentive atoms
-            xi_idxs = np.arange(6) + i*3
-            U_coord_idxs.append(xi_idxs)
-            
-            for n in range(len(self.rij_args)):
-                # specify the derivative wrt each argument
-                dU_coord_idxs.append(xi_idxs)
-                dU_d_arg_idx.append(n)
-                dU_d_coord_idx.append(xi_idxs[n])
-
-                if not fixed:
-                    dU_ck.append(ck_idx)
-                if i == 0:
-                    # take derivative w.r.t. argument n
-                    d_harmonic = harmonic_sym.diff(self.rij_args[n])
-                    temp_dU_funcs.append(sympy.lambdify(self.rij_args, d_harmonic, modules="numpy"))
-
-        dU_funcs.append(temp_dU_funcs)
-
-    def assign_harmonic_angles(self, theta0_rad, scale_factor=1, fixed=False):
-
-        ang_sym = scale_factor*one_half*(self.theta_ijk_sym - theta0_rad)**2
-        U_lamb = sympy.lambdify(self.theta_ijk_args, ang_sym, modules="numpy")
-        n_args = len(self.theta_ijk_args)
-        ck_idx = len(self.U_funcs)  # parameter index
-
-        # TODO: put in separate function?
-        if fixed:
-            # assign to U0
-            self.U0_funcs.append(U_lamb)
-            self.U0_n_args.append(n_args)
-
-            U_coord_idxs = self.U0_coord_idxs
-            dU_funcs = self.dU0_funcs
-            dU_coord_idxs = self.dU0_coord_idxs
-            dU_d_arg_idx = self.dU0_d_arg_idx
-            dU_d_coord_idx = self.dU0_d_coord_idx
-        else:
-            # assign to U
-            self.U_funcs.append(U_lamb)
-            self.U_n_args.append(n_args)
-            self.U_scale_factors.append(scale_factor)
-
-            U_coord_idxs = self.U_coord_idxs
-            dU_funcs = self.dU_funcs
-            dU_coord_idxs = self.dU_coord_idxs
-            dU_d_arg_idx = self.dU_d_arg_idx
-            dU_d_coord_idx = self.dU_d_coord_idx
-            dU_ck = self.dU_ck
-
-        temp_dU_funcs = []
-        for i in range(self.n_atoms - 2):
-            # assign bond angle interactions between three consequentive atoms
-            xi_idxs = np.arange(9) + i*3
-            U_coord_idx.append(xi_idxs)
-
-            for n in range(len(self.theta_ijk_args)):
-                # take derivative wrt each argument
-                dang_idxs.append(xi_idxs)
-                dU_coord_idxs.append(xi_idxs[n])
-                dU_d_arg_idx.append(n)
-                if not fixed:
-                    dU_ck.append(ck_idx)
-
-                if i == 0:
-                    d_ang_sym = ang_sym.diff(self.theta_ijk_args[n])
-                    temp_dU_funcs.append(sympy.lambdify(self.theta_ijk_args, d_ang_sym, modules="numpy"))
-
-        dU_funcs.append(temp_dU_funcs)
-
-    def assign_inverse_r12(self, scale_factor=1, bond_cutoff=3):
-
-        inv_r12_sym = scale_factor*sympy.Rational(1, self.r12_sym**12) 
-
-        U_lamb = sympy.lambdify(self.rij_args, inv_r12_sym, modules="numpy")
-        ck_idx = len(self.U_funcs)  # parameter index
+        U_sym = scale_factor*self.one_half*((self.r12_sym - r0_nm)**2)
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
         n_args = len(self.rij_args)
 
-        if fixed:
-            # assign to U0
-            self.U0_funcs.append(U_lamb)
-            self.U0_n_args.append(n_args)
-
-            U_coord_idxs = self.U0_coord_idxs
-            dU_funcs = self.dU0_funcs
-            dU_coord_idxs = self.dU0_coord_idxs
-            dU_d_arg_idx = self.dU0_d_arg_idx
-            dU_d_coord_idx = self.dU0_d_coord_idx
-        else:
-            # assign to U
-            self.U_funcs.append(U_lamb)
-            self.U_n_args.append(n_args)
-            self.U_scale_factors.append(scale_factor)
-
-            U_coord_idxs = self.U_coord_idxs
-            dU_funcs = self.dU_funcs
-            dU_coord_idxs = self.dU_coord_idxs
-            dU_d_arg_idx = self.dU_d_arg_idx
-            dU_d_coord_idx = self.dU_d_coord_idx
-            dU_ck = self.dU_ck
+        temp_U_coord_idxs = []
+        # list is the same for each n. no need to duplicate
+        for i in range(self.n_atoms - 1):
+            # assign coordinates to interaction/derivative
+            xi_idxs = np.arange(n_args) + i*3
+            temp_U_coord_idxs.append(xi_idxs)   
 
         temp_dU_funcs = []
-        for i in range(self.n_atoms - bond_cutoff - 1):
-            idxs1 = np.arange(3) + i*3
-            for j in range(i + bond_cutoff + 1, self.n_atoms):
-                idxs2 = np.arange(3) + j*3
-                xi_idxs = np.concatenate([idxs1, idxs2])
-                  
-                U_coord_idxs.append(xi_idxs)
+        for n in range(len(self.rij_args)):
+            # take derivative wrt argument n
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-                for n in range(len(self.rij_args)):
-                    dU_coord_idxs.append(xi_idxs)
-                    dU_d_coord_idx.append(xi_idxs[n])
-                    dU_d_arg_idx.append(n)
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-                    if not fixed:
-                        dU_ck.append(ck_idx)
+    def _assign_harmonic_angles(self, theta0_rad, scale_factor=1, fixed=False):
+        """Assign harmonic angle interactions
+        
+        Parameters
+        ----------
+        theta0_rad : float
+            Center of harmonic well in radians
 
-                    if (i == 0) and (j == (bond_cutoff + 1)):
-                        d_inv_r12 = inv_r12_sym.diff(self.rij_args[n])
-                        temp_dU_funcs.append(sympy.lambdify(self.rij_args, inv_r12_sym, modules="numpy"))
+        scale_factor : float
+            Factor to scale function by. If fixed=True then this is coefficient. 
 
-        dU_funcs.append(temp_dU_funcs)
+        fixed : bool
+            If True then terms are treated as a fixed part of the potential.
+        """
 
+        assert self.n_atoms > 2, "Not enough number of atoms to have angle interactions"
+        
+        U_sym = scale_factor*self.one_half*(self.theta_ijk_sym - theta0_rad)**2
+        U_lamb = sympy.lambdify(self.theta_ijk_args, U_sym, modules="numpy")
+        n_args = len(self.theta_ijk_args)
+
+        temp_U_coord_idxs = []
+        for i in range(self.n_atoms - 2):
+            # assign coordinates to interaction/derivative 
+            xi_idxs = np.arange(n_args) + i*3
+            temp_U_coord_idxs.append(xi_idxs)
+
+        temp_dU_funcs = []
+        for n in range(len(self.theta_ijk_args)):
+            # take derivative wrt argument n
+            dU_sym = U_sym.diff(self.theta_ijk_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.theta_ijk_args, dU_sym, modules="numpy"))
+
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+    def _assign_inverse_r12(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+
+        U_sym = scale_factor*(sigma_nm**12)*(self.r12_sym**(-12))
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+        temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+
+        temp_dU_funcs = []
+        for n in range(len(self.rij_args)):
+            # take derivative wrt argument n
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+    def _assign_LJ6(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+
+        U_sym = 4*scale_factor*((sigma_nm/self.r12_sym)**(12) - (sigma_nm/self.r12_sym)**6)
+        U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+        #temp_U_coord_idxs = self._generate_14_pairwise_idxs(bond_cutoff=bond_cutoff)
+        temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+
+        temp_dU_funcs = []
+        for n in range(len(self.rij_args)):
+            # take derivative wrt argument n
+            dU_sym = U_sym.diff(self.rij_args[n])
+            temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+    def _assign_pairwise_gaussians(self, r0_nm, w_nm, scaling=1, fixed=False, bond_cutoff=3):
+        """Assign a Gaussian well a each position"""
+        
+        for m in range(len(r0_nm)):
+            # gaussian well at position r0_nm[m]
+            U_sym = -scaling_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
+            U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+            temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+
+            temp_dU_funcs = []
+            for n in range(len(self.rij_args)):
+                # take derivative wrt argument n
+                dU_sym = U_sym.diff(self.rij_args[n])
+                temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+            self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
+    # Soon to be deprecated oct 2018
+
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params 
 
@@ -307,7 +467,7 @@ def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bon
                 dU_bond_dxi.append(xi_idxs[n])
                 #dU_bond_ck.append(len(dU_funcs))
                 if i == 0:
-                    # take derivative w.r.t. argument n
+                    # take derivative wrt argument n
                     d_bond_sym = -bond_sym.diff(rij_args[n])
                     dU_bond.append(sympy.lambdify(rij_args, d_bond_sym, modules="numpy"))
 

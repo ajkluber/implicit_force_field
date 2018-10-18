@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     
     assert ply_potential in ["LJ", "WCA", "LJ6"]
-    assert slv_potential in ["LJ", "CS", "SPC"]
+    assert slv_potential in ["LJ", "CS", "SPC", "no"]
 
     cwd = os.getcwd()
 
@@ -95,6 +95,9 @@ if __name__ == "__main__":
     if slv_potential == "SPC":
         ff_files.append("spce.xml")
         nonbondedMethod = app.PME
+    elif slv_potential == "no":
+        nonbondedMethod = app.CutoffPeriodic
+        app.element.solvent = app.element.Element(201, "Solvent", "Sv", mass_slv)
     else:
         nonbondedMethod = app.CutoffPeriodic
         if slv_potential == "LJ":
