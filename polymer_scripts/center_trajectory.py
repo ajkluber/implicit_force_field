@@ -10,15 +10,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('subdir', type=str, help='Subdirectory.')
+    parser.add_argument('--nowait', action="store_true", help='Ignore if traj was recently written.')
     args = parser.parse_args()
 
     name = args.name
     subdir = args.subdir
+    nowait = args.nowait
     
     if len(glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))) > 0:
         trajpaths = glob.glob(subdir + "/*/*/run_*/{}_traj_*.dcd".format(name))
     else:
         trajpaths = glob.glob(subdir + "/*/run_*/{}_traj_*.dcd".format(name))
+
+    print trajpaths
 
     cwd = os.getcwd()
     for i in range(len(trajpaths)):
@@ -32,7 +36,7 @@ if __name__ == "__main__":
         # only calc if trajectory if not currently running (i.e., hasn't been
         # modified in 5mins)
         last_change = np.abs(os.path.getmtime(old_name) - time.time())/60.
-        if not os.path.exists(new_name) and last_change > 5:
+        if not os.path.exists(new_name) and ((last_change > 5) or not nowait):
             # get indices for polymer
             topfile = name + "_min.pdb"
             pdb = md.load(topfile)
