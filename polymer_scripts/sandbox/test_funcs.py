@@ -1,4 +1,6 @@
 import os
+import glob
+import time
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -15,11 +17,13 @@ import implicit_force_field as iff
 
 if __name__ == "__main__":
     n_beads = 25
-    n_beads = 5
+    #n_beads = 5
     #n_beads = 4
     #n_beads = 3
     name = "c" + str(n_beads)
     T = 300
+    kb = 0.0083145
+    beta = 1./(kb*T)
 
     traj_idx = 1
     #topname = "c25_nosolv_min.pdb"
@@ -62,17 +66,83 @@ if __name__ == "__main__":
     #Ucg._assign_pairwise_funcs(sigma_ply_nm)
 
 
-
-    msm_savedir = "msm_dists_dih"
+    ##########################################################
+    # calculate integrated sindy (eigenpair) matrix equation.
+    ########################################################## 
+    msm_savedir = "msm_dih_dists"
 
     # load tics
+    topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
 
+    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+    traj_idxs = []
+    for i in range(len(trajnames)):
+        tname = trajnames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+        traj_idxs.append([idx1, idx2])
 
+    M = 3
+    D = Ucg.n_dof 
+    R = Ucg.n_params
+    P = Ucg.n_test_funcs
+    kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[:M]
 
+    X = np.zeros((M*P, R+1), float)
+    d = np.zeros(M*P, float)
 
-    # calculate integrated sindy (eigenpair) matrix equation.
+    Ntot = 0
+    for n in range(len(traj_idxs)):
+        starttime = time.time()
 
-    # 
+        print "traj: ", n+1
+        idx1, idx2 = traj_idxs[n]
+
+        # load tics
+        psi_traj = []
+        for i in range(M):
+            # save TIC with indices of corresponding traj
+            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
+            psi_traj.append(np.load(tic_saveas))
+        psi_traj = np.array(psi_traj).T
+
+        # calculate matrix elements
+        start_idx = 0
+        chunk_num = 1
+        for chunk in md.iterload(trajnames[n], top=topfile, chunk=10000):
+            print "    chunk: ", chunk_num
+            chunk_num += 1
+
+            # calculate model quantities. Potential and test functions gradients, etc.
+            test_f = Ucg.calculate_test_funcs(chunk)
+            grad_U = Ucg.calculate_U_gradient(chunk)
+            grad_U0 = Ucg.calculate_U0_gradient(chunk)
+            grad_f = Ucg.calculate_test_func_gradient(chunk) 
+            Lap_f = Ucg.calculate_test_func_laplacian(chunk) 
+
+            #psi_i = psi_trajs[0,start_idx:start_idx + chunk.n_frames]
+            Psi = psi_traj[start_idx:start_idx + chunk.n_frames,:]
+
+            # dot products with eigenvectors
+            tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U, grad_f).reshape((M*P, R))
+            tempZ = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
+            tempY = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
+            tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
+
+            tempX2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
+
+            #np.reshape(tempX, (M*P, R))
+            X[:,:-1] += tempX
+            X[:,-1] += tempX2
+            d += tempZ + tempY
+
+            start_idx += chunk.n_frames
+            Ntot += chunk.n_frames
+
+        min_calc_traj = (time.time() - starttime)
+        print "calculation took: {:.4f} sec".format(min_calc_traj)
+    
+    #c_soln = np.linalg.lstsq(X, d)[0]
 
     raise SystemExit
 
