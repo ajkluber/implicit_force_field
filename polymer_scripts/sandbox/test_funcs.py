@@ -56,31 +56,59 @@ if __name__ == "__main__":
     gauss_r0_nm = np.linspace(0.3, 1, 10)
     gauss_w_nm = 0.1*np.ones(len(gauss_r0_nm))
 
+
+    #msm_savedir = "msm_dih_dists"
+    msm_savedir = "msm_dists"
+
+    cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10"
+
     # scaling the terms of the potential reduces the condition number of the
-    # force matrix by several orders of magnitude.
+    # force matrix by several orders of magnitude. Pre-conditioning by column
+    # multiplication
 
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
-    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
+    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj, fixed=True)
+    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj, fixed=True)
     #Ucg._assign_LJ6(sigma_ply_nm, scale_factor=eps_ply_kj)
     Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=0.5)
     Ucg._assign_pairwise_gaussians(gauss_r0_nm, gauss_w_nm, scale_factor=0.1)
 
-    #Ucg._assign_harmonic_bonds(r0_nm)
-    #Ucg._assign_harmonic_angles(theta0_rad)
-    #Ucg._assign_LJ6(sigma_ply_nm)
+
+    ply_idxs = np.arange(25)
+    pair_idxs = []
+    for i in range(len(ply_idxs) - 1):
+        for j in range(i + 4, len(ply_idxs)):
+            pair_idxs.append([ply_idxs[i], ply_idxs[j]])
+    pair_idxs = np.array(pair_idxs)
+
+
+    #TODO: Test collective variable test functions
 
     # add test functions
-    Ucg._assign_bond_funcs([r0_nm], [0.3])
-    Ucg._assign_angle_funcs([theta0_rad], [4])
-    #Ucg._assign_pairwise_funcs(sigma_ply_nm)
-    Ucg._assign_pairwise_funcs(gauss_r0_nm, gauss_w_nm)
+    use_cv_f_j = True
+    if use_cv_f_j:
+        # centers of test functions in collective variable (CV) space
+        cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
+        cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
+        cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
+
+        cv_coeff = np.array([ [x] for x in np.load(msm_savedir + "/tica_eigenvects.npy")[:,0]])
+
+        Ucg.define_collective_variables(pair_idxs, cv_coeff)
+        Ucg.collective_variable_test_funcs(self, cv_r0, cv_w)
+    else:
+        #Ucg._assign_harmonic_bonds(r0_nm)
+        #Ucg._assign_harmonic_angles(theta0_rad)
+        #Ucg._assign_LJ6(sigma_ply_nm)
+        Ucg._assign_bond_funcs([r0_nm], [0.3])
+        Ucg._assign_angle_funcs([theta0_rad], [4])
+        #Ucg._assign_pairwise_funcs(sigma_ply_nm)
+        Ucg._assign_pairwise_funcs(gauss_r0_nm, gauss_w_nm)
 
     ##########################################################
     # calculate integrated sindy (eigenpair) matrix equation.
     ########################################################## 
-    msm_savedir = "msm_dih_dists"
 
     # load tics
     #topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
@@ -95,7 +123,8 @@ if __name__ == "__main__":
         idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
         traj_idxs.append([idx1, idx2])
 
-    M = 3
+    #M = 3
+    M = 1
     D = Ucg.n_dof 
     R = Ucg.n_params
     P = Ucg.n_test_funcs
@@ -128,19 +157,27 @@ if __name__ == "__main__":
             sys.stdout.flush()
             chunk_num += 1
 
-            # calculate model quantities. Potential and test functions gradients, etc.
-            test_f = Ucg.calculate_test_funcs(chunk)
-            grad_U = Ucg.calculate_U_gradient(chunk)
-            grad_U0 = Ucg.calculate_U0_gradient(chunk)
-            grad_f = Ucg.calculate_test_func_gradient(chunk) 
-            Lap_f = Ucg.calculate_test_func_laplacian(chunk) 
-
-            #psi_i = psi_trajs[0,start_idx:start_idx + chunk.n_frames]
+            # eigenfunction approximation
             Psi = psi_traj[start_idx:start_idx + chunk.n_frames,:]
 
+            # calculate gradient of fixed and parametric potential terms
+            grad_U0 = Ucg.gradient_U0(chunk)
+            grad_U1 = Ucg.gradient_U1(chunk)
+
+            # calculate test function values, gradient, and Laplacian
+            if use_cv_f_j:
+                test_f = Ucg.test_funcs_cv(Psi)
+                grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
+                Lap_f = Ucg.laplacian_test_functions_cv(Psi) 
+            else:
+                test_f = Ucg.test_funcs(chunk)
+                grad_f = Ucg.gradient_test_functions(chunk) 
+                Lap_f = Ucg.laplacian_test_functions(chunk) 
+
+            # very useful einstein summation function to calculate
             # dot products with eigenvectors
-            tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U, grad_f).reshape((M*P, R))
-            tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
+            tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
+            #tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
 
             tempZ = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
             tempY = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
@@ -165,8 +202,9 @@ if __name__ == "__main__":
     #X /= float(Ntot)
     #d /= float(Ntot)
     
+    #"Ucg_eigenpair"
     #eg_savedir = msm_savedir + "/Ucg_eigenpair"
-    eg_savedir = "run_" + str(run_idx) + "/Ucg_eigenpair"
+    eg_savedir = "run_" + str(run_idx) + "/" + cg_savedir 
     if not os.path.exists(eg_savedir):
         os.mkdir(eg_savedir)
     os.chdir(eg_savedir)
