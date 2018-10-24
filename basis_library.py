@@ -10,17 +10,30 @@ import simulation.openmm as sop
 
 
 class FunctionLibrary(object):
-    def __init__(self, n_atoms, n_dim=3):
+    def __init__(self, n_atoms, n_dim=3, periodic_box_dims=[]):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
         derivatives of each assigned interaction with respect to each
         participating coordinate.
 
+        Parameters
+        ----------
+        n_atoms : int
+            Number of atoms in the system.
+
+        n_dims : int, optional
+            Dimensionality.
+
+        periodic_box_dims : list, (n_dims)
+            List of periodic box dimensions in the x,y,z directions. 
+            Input should be [L_x, L_y, L_z] where L_i is the length of box
+            in i direction.
         """
         self.n_atoms = n_atoms
         self.n_dim = n_dim
         self.n_dof = n_dim*n_atoms
+        self.box_dims = periodic_box_dims
 
         # the total potential has two terms U = [U_0, U_1]
         # U_0 is the fixed term of the potential
@@ -259,16 +272,39 @@ class PolymerModel(FunctionLibrary):
         """
         FunctionLibrary.__init__(self, n_atoms)
 
-        # test functions
+        # Cartesian coordinate test functions
         self.f_sym = []             # functional forms, symbolic
         self.f_funcs = []           # functional forms, lambdified
         self.f_coord_idxs = []      # coordinate indices assigned to form
         self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
         self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
 
+        # Collective variable (CV) test functions
+        self.cv_f_sym = []             # functional forms, symbolic
+        self.cv_f_funcs = []           # functional forms, lambdified
+        self.cv_df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        self.cv_d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+
+        # CVs are linear combination of features (chi)
+        self.chi_sym = []
+        self.chi_funcs = []
+        self.chi_coord_idxs = []
+        self.dchi_funcs = []
+
+        # Need:
+        #  - f_j(CV) functions. Symbolic and lambified.
+        #  - Derviative of f_j(CV) wrt arguments
+        #  - Laplacian of f_j(CV) wrt arguments 
+        #  - CV as function of xyz coordinates. i.e. Jacobian
+        #  - Derivative of CV wrt Cartesian coords
+
     @property
     def n_test_funcs(self):
         return np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+
+    @property
+    def n_test_funcs_cv(self):
+        return len(self.cv_f_funcs)
 
     def _add_test_functions(self, f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs):
 
@@ -423,6 +459,87 @@ class PolymerModel(FunctionLibrary):
     ##########################################################3
     # ASSIGN TEST FUNCTIONS
     ##########################################################3
+
+    def define_collect_variables(self, pair_idxs, cv_coeff):
+        """Enumerate the collective variables in terms of feature functions
+        symbolically and take derivate of features wrt each Cartesian coord"""
+
+        # Currently only pair distances
+
+        # Collective variables as sums of pairwise distances
+        #   a. Feature functions 
+        #   b. Coefficient to represent TICs in feature basis
+
+        # symbolic variables for all degrees of freedom
+        #x_all_sym = sympy.symbols(" ".join(["x"+ str(i+1) + " y" + str(i+1) + " z" + str(i+1) for i in range(self.n_atoms) ]))
+
+        self.n_cv_dim = cv_coeff.shape[0]
+
+        # feature function
+        self.chi_sym.append(r12_sym)
+        self.chi_funcs.append(sympy.lambdify(self.rij_args, r12_sym, modules="numpy"))
+
+        # all derivatives
+        temp_dchi = []
+        for n in range(len(self.rij_args)):
+            d_chi = r12_sym.diff(self.rij_args[n])
+            temp_dchi.append(sympy.lambdify(self.rij_args, d_chi, modules="numpy"))
+        self.dchi_funcs.append(temp_dchi)
+
+        # assign coordinate indices to for feature
+        temp_coord_idxs = []
+        for i in range(len(pair_idxs)):
+            atm_idx1, atm_idx2 = pair_idxs[i]
+            idxs1 = np.arange(3) + atm_idx1*3
+            idxs2 = np.arange(3) + atm_idx2*3
+            xi_idxs = np.concatenate([idxs1, idxs2]) 
+            temp_coord_idxs.append(xi_idxs)
+        self.chi_coord_idxs.append(temp_coord_idxs)
+
+        # coefficients to linearly combine features to make each CV
+        self.cv_chi_coeff = cv_coeff
+
+    def collective_variable_test_funcs(self, cv_r0, cv_w):
+        """Add TICA test functions
+        
+        Parameters
+        ----------
+        cv_r0 : np.ndarray(P_cv, M) 
+            Centers of test functions in collective variable space
+
+        cv_w : np.ndarray(P_cv)
+            Widths of test functions in collective variable space
+        """
+
+        # 1. Test functions as function of TICs
+        #   a. Gaussian centers and widths
+
+        self.cv_sym = [ sympy.symbols("psi" + str(i + 1)) for i in range(self.n_cv_dim) ]
+        self.cv_args = tuple(self.cv_sym)
+
+        for n in range(len(cv_r0)):
+            # test function is Gaussian with center r0 and width w
+            f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
+            for i in range(1, self.n_cv_dim):
+                f_sym += (self.cv_sym[i] - cv_r0[n][i])**2
+            f_sym = sympy.exp(-self.one_half*f_sym/(cv_w[n]**2))
+            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
+
+            self.cv_f_sym.append(f_sym)
+            self.cv_f_funcs.append(f_lamb)
+
+            # first and second derivative wrt each arg
+            temp_cv_df_funcs = []
+            temp_cv_d2f_funcs = []
+            for i in range(len(self.cv_args)):
+                cv_df_sym = f_sym.diff(self.cv_args[i])
+                cv_d2f_sym = df_sym.diff(self.cv_args[i])
+                temp_cv_df_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
+                temp_cv_d2f_funcs.append(sympy.lambdify(self.cv_args, d2f_sym, modules="numpy"))
+
+            selv.cv_df_funcs.append(temp_cv_df_funcs)
+            selv.cv_d2f_funcs.append(temp_cv_d2f_funcs)
+
     def _assign_bond_funcs(self, r0_nm, w_nm, coeff=1):
         """Assign harmonic bond interactions
         
@@ -543,7 +660,7 @@ class PolymerModel(FunctionLibrary):
     ##################################################
     # EVALUATE POTENTIAL ON TRAJECTORY
     ##################################################
-    def calculate_U0_gradient(self, traj):
+    def gradient_U0(self, traj):
         """Gradient of fixed potential terms
         
         Parameters
@@ -581,7 +698,7 @@ class PolymerModel(FunctionLibrary):
                     grad_U0[:, dxi] += deriv
         return grad_U0
 
-    def calculate_U_gradient(self, traj):
+    def gradient_U1(self, traj):
         """Gradient of potential form associated with each parameter
         
         Parameters
@@ -622,7 +739,7 @@ class PolymerModel(FunctionLibrary):
     #########################################################
     # EVALUATE TEST FUNCTIONS ON TRAJECTORY
     #########################################################
-    def calculate_test_funcs(self, traj):
+    def test_functions(self, traj):
         """Test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
@@ -643,7 +760,7 @@ class PolymerModel(FunctionLibrary):
 
         return test_fj
             
-    def calculate_test_func_gradient(self, traj):
+    def gradient_test_functions(self, traj):
         """Gradient of test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
@@ -670,7 +787,7 @@ class PolymerModel(FunctionLibrary):
 
         return grad_fj
 
-    def calculate_test_func_laplacian(self, traj):
+    def laplacian_test_functions(self, traj):
         """Laplacian of test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
@@ -693,6 +810,63 @@ class PolymerModel(FunctionLibrary):
             start_idx += len(self.f_coord_idxs[j])
 
         return Lap_fj
+
+    def test_functions_cv(self, cv_traj):
+        """Collective variable test functions"""
+
+        n_frames = cv_traj.shape[0]
+        test_f_cv = np.zeros((n_frames, self.n_test_funcs_cv), float)
+        for i in range(len(self.cv_f_funcs)):
+            test_f_cv[:,i] = self.cv_f_funcs[i](*cv_traj.T)
+
+        return test_f_cv
+
+    def _Jacobian_cv(self, xyz_flat):
+        """Gradient of features test functions"""
+
+        # partial derivative of CV wrt to cartesian coordinates
+        Jacobian = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
+
+        # add together gradients of each feature 
+        for i in range(len(self.chi_coord_idxs[0])):
+            # coefficients for this feature to each CV 
+            b_coeff = self.cv_chi_coeff[i,:]
+            xi_idxs = self.chi_coord_idxs[0][i]
+
+            for n in range(len(xi_idxs)):
+                dxi = xi_idxs[n]
+                d_chi = self.dchi_funcs[0][n](*xyz_flat[:,xi_idxs].T)
+                Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
+        return Jacobian
+
+    def gradient_test_functions_cv(self, traj, cv_traj):
+        """Gradient of collective variable test functions"""
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+
+        Jac = self._calculate_cv_coord_Jacobian(xyz_flat)
+
+        grad_cv_f = np.zeros((traj.n_frames, self.n_cv_dim, self.n_test_funcs_cv), float)
+        for i in range(len(self.cv_f_funcs)):
+            # for each test functions we have the derivative wrt each argument
+            for j in range(len(self.cv_df_funcs[i])):
+                d_func = self.cv_df_funcs[i]
+                grad_cv_f[:,j,i] = d_func(*cv_traj.T)
+
+        grad_x_f = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
+        return grad_x_f
+
+    def laplacian_test_functions_cv(self, cv_traj):
+        """Laplacian of collective variable test functions"""
+
+        n_frames = cv_traj.shape[0]
+        Lap_f_cv = np.zeros((n_frames, self.n_test_funcs_cv), float)
+
+        for i in range(len(self.cv_d2f_funcs)):
+            for j in range(len(self.cv_d2f_funcs[i])):
+                Lap_f_cv[:,i] += self.cv_d2f_funcs[i][j](*cv_traj.T)
+
+        return Lap_f_cv
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
