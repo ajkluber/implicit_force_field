@@ -172,7 +172,7 @@ if __name__ == "__main__":
 
     # get indices for dihedral angles and pairwise distances
     feat = coor.featurizer(topfile)
-    ply_idxs = feat.topology.select("name PL")
+    ply_idxs = feat.topology.select("resname PLY")
 
     dih_idxs = np.array([[ply_idxs[i], ply_idxs[i + 1], ply_idxs[i + 2], ply_idxs[i + 3]] for i in range(len(ply_idxs) - 4) ])
     pair_idxs = []
@@ -229,6 +229,7 @@ if __name__ == "__main__":
     coor.pipeline([reader, tica])
     Y = tica.get_output(dimensions=range(keep_dims))
     np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
+    np.save(msm_savedir + "/tica_eigenvects.npy", tica.eigenvectors)
 
     print "Saving tica coordinates..."
     #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):

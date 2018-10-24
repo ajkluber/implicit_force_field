@@ -56,7 +56,7 @@ if __name__ == "__main__":
     mid_bin = 0.5*(bin_edges[1:] + bin_edges[:-1])
 
     pdb = md.load(topfile)
-    ply_idxs = pdb.top.select("name PL") 
+    ply_idxs = pdb.top.select("resname PLY") 
 
     dih_idxs = []
     for i in range(len(ply_idxs) - 3):
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     for i in range(len(Tpaths)):
         print " For:",Tpaths[i]
         os.chdir(Tpaths[i])
-        runpaths = glob.glob("run_*")
+        runpaths = glob.glob("run_[1-9]*")
 
         if not os.path.exists(savedir):
             os.mkdir(savedir)

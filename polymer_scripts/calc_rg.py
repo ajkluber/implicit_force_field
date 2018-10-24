@@ -41,7 +41,7 @@ if __name__ == "__main__":
     for i in range(len(Tpaths)):
         #print os.getcwd()
         os.chdir(Tpaths[i])
-        runpaths = glob.glob("run_*")
+        runpaths = glob.glob("run_[1-9]*")
 
         files = ["n.npy", "Pn.npy", "avg_Rg.dat", "bin_edges.npy", "mid_bin.npy"]
         all_files_exist = np.all([ os.path.exists(savedir + "/" + x) for x in files ])
@@ -69,10 +69,7 @@ if __name__ == "__main__":
                         Rg = np.concatenate(Rg)
                         print "  ", "rg_{}.npy".format(traj_idx)
                         np.save("rg_{}.npy".format(traj_idx), Rg)
-                        if traj_idx == 1:
-                            rg_for_run.append(Rg[200:])
-                        else:
-                            rg_for_run.append(Rg)
+                        rg_for_run.append(Rg)
                     all_rg.append(np.concatenate(rg_for_run))
                 os.chdir("..")
 
