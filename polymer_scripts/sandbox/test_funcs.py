@@ -60,12 +60,14 @@ if __name__ == "__main__":
     #msm_savedir = "msm_dih_dists"
     msm_savedir = "msm_dists"
 
-    cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10"
+    #cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10"
+    cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10_CV_1"
 
     # scaling the terms of the potential reduces the condition number of the
     # force matrix by several orders of magnitude. Pre-conditioning by column
     # multiplication
 
+    print "creating Ucg..."
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
     Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj, fixed=True)
@@ -82,9 +84,6 @@ if __name__ == "__main__":
             pair_idxs.append([ply_idxs[i], ply_idxs[j]])
     pair_idxs = np.array(pair_idxs)
 
-
-    #TODO: Test collective variable test functions
-
     # add test functions
     use_cv_f_j = True
     if use_cv_f_j:
@@ -95,8 +94,9 @@ if __name__ == "__main__":
 
         cv_coeff = np.array([ [x] for x in np.load(msm_savedir + "/tica_eigenvects.npy")[:,0]])
 
-        Ucg.define_collective_variables(pair_idxs, cv_coeff)
-        Ucg.collective_variable_test_funcs(self, cv_r0, cv_w)
+        # TODO: add additional features
+        Ucg.define_collective_variables(["dist"], pair_idxs, cv_coeff)
+        Ucg.collective_variable_test_funcs(cv_r0, cv_w)
     else:
         #Ucg._assign_harmonic_bonds(r0_nm)
         #Ucg._assign_harmonic_angles(theta0_rad)
@@ -127,12 +127,14 @@ if __name__ == "__main__":
     M = 1
     D = Ucg.n_dof 
     R = Ucg.n_params
-    P = Ucg.n_test_funcs
+    #P = Ucg.n_test_funcs
+    P = Ucg.n_test_funcs_cv
     kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[:M]
 
     X = np.zeros((M*P, R+1), float)
     d = np.zeros(M*P, float)
 
+    print "calculating matrix elements..."
     Ntot = 0
     for n in range(len(traj_idxs)):
         starttime = time.time()
@@ -148,6 +150,9 @@ if __name__ == "__main__":
             tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
             psi_traj.append(np.load(tic_saveas))
         psi_traj = np.array(psi_traj).T
+
+        if len(psi_traj.shape) == 1:
+            psi_traj = psi_traj.reshape((psi_traj.shape[0], 1))
 
         # calculate matrix elements
         start_idx = 0
@@ -166,11 +171,12 @@ if __name__ == "__main__":
 
             # calculate test function values, gradient, and Laplacian
             if use_cv_f_j:
-                test_f = Ucg.test_funcs_cv(Psi)
-                grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
-                Lap_f = Ucg.laplacian_test_functions_cv(Psi) 
+                test_f = Ucg.test_functions_cv(Psi)
+                grad_f, Lap_f = Ucg.gradient_and_laplacian_test_functions_cv(chunk, Psi) 
+                #grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
+                #Lap_f = Ucg.laplacian_test_functions_cv(chunk, Psi) 
             else:
-                test_f = Ucg.test_funcs(chunk)
+                test_f = Ucg.test_functions(chunk)
                 grad_f = Ucg.gradient_test_functions(chunk) 
                 Lap_f = Ucg.laplacian_test_functions(chunk) 
 
