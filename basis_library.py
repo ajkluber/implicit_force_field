@@ -288,8 +288,11 @@ class PolymerModel(FunctionLibrary):
         # CVs are linear combination of features (chi)
         self.chi_sym = []
         self.chi_funcs = []
+        self.chi_coeff = [] 
         self.chi_coord_idxs = []
+
         self.dchi_funcs = []
+        self.d2chi_funcs = []
 
         # Need:
         #  - f_j(CV) functions. Symbolic and lambified.
@@ -305,6 +308,18 @@ class PolymerModel(FunctionLibrary):
     @property
     def n_test_funcs_cv(self):
         return len(self.cv_f_funcs)
+
+    @property
+    def n_cv_dim(self):
+        return self.chi_coeff[0].shape[1]
+
+    @property
+    def n_feature_types(self):
+        return len(self.chi_coeff)
+
+    @property
+    def n_feature_type_dim(self):
+        return [ x.shape[0] for x in self.chi_coeff ]
 
     def _add_test_functions(self, f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs):
 
@@ -460,44 +475,77 @@ class PolymerModel(FunctionLibrary):
     # ASSIGN TEST FUNCTIONS
     ##########################################################3
 
-    def define_collect_variables(self, pair_idxs, cv_coeff):
+    def define_collect_variables(self, feature_types, feature_atm_idxs, pair_idxs, cv_coeff):
         """Enumerate the collective variables in terms of feature functions
-        symbolically and take derivate of features wrt each Cartesian coord"""
+        symbolically and take derivate of features wrt each Cartesian coord
+        
+        Collective variables are allowed to be linear combination of features
+        which are functions of cartesian coordinates.
 
-        # Currently only pair distances
+        You should use, for example, the result of Time Independent Component
+        Analysis (TICA) as collective variables.
+        """
 
-        # Collective variables as sums of pairwise distances
-        #   a. Feature functions 
-        #   b. Coefficient to represent TICs in feature basis
+        #TODO: 
+        #  - Add more types of features (e.g., angle, dihedral, etc.)
+        #  - Assign participating coords for each type.
 
-        # symbolic variables for all degrees of freedom
-        #x_all_sym = sympy.symbols(" ".join(["x"+ str(i+1) + " y" + str(i+1) + " z" + str(i+1) for i in range(self.n_atoms) ]))
+        available_feature_types = {"dist":self.r12_sym, "invdist":sympy.Rational(1, self.r12_sym)}
+        feature_type_args = {"dist":self.rij_args, "invdist":self.rij_args}
+        feature_type_n_xi = {"dist":3, "invdist":self.rij_args}
 
-        self.n_cv_dim = cv_coeff.shape[0]
+        for m in range(len(feature_types)):
+            if not feature_types[m] in available_feature_types:
+                raise ValueError(feature_types[m] + " not in available features: " + " ".join(available_feature_types.keys()))
 
-        # feature function
-        self.chi_sym.append(r12_sym)
-        self.chi_funcs.append(sympy.lambdify(self.rij_args, r12_sym, modules="numpy"))
+        for m in range(len(feature_types)):
+            # symbolic feature function and variables
+            feat_sym = available_feature_types[feature_types[m]]
+            feat_args = feature_type_args[feature_types[m]] 
 
-        # all derivatives
-        temp_dchi = []
-        for n in range(len(self.rij_args)):
-            d_chi = r12_sym.diff(self.rij_args[n])
-            temp_dchi.append(sympy.lambdify(self.rij_args, d_chi, modules="numpy"))
-        self.dchi_funcs.append(temp_dchi)
+            # collective variables are linear combination of features
+            self.chi_coeff.append(cv_coeff)
 
-        # assign coordinate indices to for feature
-        temp_coord_idxs = []
-        for i in range(len(pair_idxs)):
-            atm_idx1, atm_idx2 = pair_idxs[i]
-            idxs1 = np.arange(3) + atm_idx1*3
-            idxs2 = np.arange(3) + atm_idx2*3
-            xi_idxs = np.concatenate([idxs1, idxs2]) 
-            temp_coord_idxs.append(xi_idxs)
-        self.chi_coord_idxs.append(temp_coord_idxs)
+            # feature function
+            #self.chi_sym.append(self.r12_sym)
+            #self.chi_funcs.append(sympy.lambdify(self.rij_args, r12_sym, modules="numpy"))
+            self.chi_sym.append(feat_sym)
+            self.chi_funcs.append(sympy.lambdify(feat_args, feat_sym, modules="numpy"))
 
-        # coefficients to linearly combine features to make each CV
-        self.cv_chi_coeff = cv_coeff
+            # first and second derivative of feature function wrt each cartesian
+            # coordinate
+            temp_dchi = []
+            temp_d2chi = []
+            for n in range(len(self.rij_args)):
+                #d_chi = r12_sym.diff(self.rij_args[n])
+                #d2_chi = d_chi.diff(self.rij_args[n])
+                #temp_dchi.append(sympy.lambdify(self.rij_args, d_chi, modules="numpy"))
+                #temp_d2chi.append(sympy.lambdify(self.rij_args, d2_chi, modules="numpy"))
+                d_chi = feat_sym.diff(feat_args[n])
+                d2_chi = feat_sym.diff(feat_args[n], 2)
+                temp_dchi.append(sympy.lambdify(feat_args, d_chi, modules="numpy"))
+                temp_d2chi.append(sympy.lambdify(feat_args, d2_chi, modules="numpy"))
+            self.dchi_funcs.append(temp_dchi)
+            self.d2chi_funcs.append(temp_d2chi)
+
+            # assign coordinate indices to for feature
+            temp_coord_idxs = []
+            for i in range(len(feature_atm_idxs)):
+                # determine participating coordinate indices from atom indices
+                #atm_idx1, atm_idx2 = pair_idxs[i]
+                #idxs1 = np.arange(3) + atm_idx1*3
+                #idxs2 = np.arange(3) + atm_idx2*3
+                #xi_idxs = np.concatenate([idxs1, idxs2]) 
+                #temp_coord_idxs.append(xi_idxs)
+
+                temp_idxs = []
+                for z in range(len(feature_atm_idxs[i])):
+                    atm_z = feature_atm_idxs[i][z]
+                    temp_idxs.append(np.arange(3) + atm_z*3)
+                xi_idxs = np.concatenate(temp_idxs) 
+                temp_coord_idxs.append(xi_idxs)
+            self.chi_coord_idxs.append(temp_coord_idxs)
+
 
     def collective_variable_test_funcs(self, cv_r0, cv_w):
         """Add TICA test functions
@@ -535,7 +583,13 @@ class PolymerModel(FunctionLibrary):
                 cv_df_sym = f_sym.diff(self.cv_args[i])
                 cv_d2f_sym = df_sym.diff(self.cv_args[i])
                 temp_cv_df_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
-                temp_cv_d2f_funcs.append(sympy.lambdify(self.cv_args, d2f_sym, modules="numpy"))
+
+                # need all mixed second derivatives of test functions
+                temp_d2f_funcs = []
+                for j in range(len(self.cv_args)):
+                    cv_d2f_sym = df_sym.diff(self.cv_args[j])
+                    temp_d2f_funcs.append(sympy.lambdify(self.cv_args, d2f_sym, modules="numpy"))
+                temp_cv_d2f_funcs.append(temp_d2f_funcs)
 
             selv.cv_df_funcs.append(temp_cv_df_funcs)
             selv.cv_d2f_funcs.append(temp_cv_d2f_funcs)
@@ -839,6 +893,24 @@ class PolymerModel(FunctionLibrary):
                 Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
         return Jacobian
 
+    def _Jacobian_cv_2(self, xyz_flat):
+        """Gradient of features test functions"""
+
+        # partial derivative of CV wrt to cartesian coordinates
+        Jacobian = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
+
+        # add together gradients of each feature 
+        for i in range(len(self.chi_coord_idxs[0])):
+            # coefficients for this feature to each CV 
+            b_coeff = self.cv_chi_coeff[i,:]
+            xi_idxs = self.chi_coord_idxs[0][i]
+
+            for n in range(len(xi_idxs)):
+                dxi = xi_idxs[n]
+                d_chi = self.dchi_funcs[0][n](*xyz_flat[:,xi_idxs].T)
+                Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
+        return Jacobian
+
     def gradient_test_functions_cv(self, traj, cv_traj):
         """Gradient of collective variable test functions"""
 
@@ -861,6 +933,8 @@ class PolymerModel(FunctionLibrary):
 
         n_frames = cv_traj.shape[0]
         Lap_f_cv = np.zeros((n_frames, self.n_test_funcs_cv), float)
+
+        # TODO: NOT THIS SIMPLE :(
 
         for i in range(len(self.cv_d2f_funcs)):
             for j in range(len(self.cv_d2f_funcs[i])):
