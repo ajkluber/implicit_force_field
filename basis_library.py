@@ -890,7 +890,7 @@ class PolymerModel(FunctionLibrary):
                     Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
         return Jacobian
 
-    def _Jacobian2_cv(self, xyz_flat):
+    def _Hessian_cv(self, xyz_flat):
         """Second derivative of features wrt Cartesian coords"""
 
         # partial derivative of CV wrt to cartesian coordinates
@@ -911,7 +911,7 @@ class PolymerModel(FunctionLibrary):
                     Jacobian2[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d2_chi)
         return Jacobian2
 
-    def _Hessian_test_func(self, cv_traj):
+    def _Hessian_test_func_cv(self, cv_traj):
 
         Hess_f = np.zeros((cv_traj.shape[0], self.n_cv_dim, self.n_cv_dim, self.n_test_funcs_cv), float)
 
@@ -938,14 +938,14 @@ class PolymerModel(FunctionLibrary):
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
         Jac = self._Jacobian_cv(xyz_flat)
-        Jac2 = self._Jacobian2_cv(xyz_flat)
-        Hess_f = self._Hessian_test_func(cv_traj)
+        Hess_cv = self._Hessian_cv(xyz_flat)
+        Hess_f = self._Hessian_test_func_cv(cv_traj)
         grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
         One = np.ones(self.n_dof)
 
         grad_x_f = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
-        Lap_term1 = np.einsum("d,tkd,tkp->tp", One, Jac2, grad_cv_f)
-        Lap_term2 = np.einsum("tdn,tmd,tmnp->tp", Jac, Jac, Hess_f)   
+        Lap_term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
+        Lap_term2 = np.einsum("tnd,tmd,tmnp->tp", Jac, Jac, Hess_f)   
 
         return grad_x_f, Lap_term1 + Lap_term2
 
@@ -955,12 +955,12 @@ class PolymerModel(FunctionLibrary):
     #    xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
     #    Jac = self._Jacobian_cv(xyz_flat)
-    #    Jac2 = self._Jacobian2_cv(xyz_flat)
-    #    Hess_f = self._Hessian_test_func(cv_traj)
+    #    Hess_cv = self._Hessian_cv(xyz_flat)
+    #    Hess_f = self._Hessian_test_func_cv(cv_traj)
     #    grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
     #    One = np.ones(self.n_dof)
 
-    #    term1 = np.einsum("d,tkd,tkp->tp", One, Jac2, grad_cv_f)
+    #    term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
 
     #    # If unsure split into two steps.
     #    #Jac_Hess_f = np.einsum("tmd,tmnp->tdnp", Jac, Hess_f)
@@ -968,20 +968,6 @@ class PolymerModel(FunctionLibrary):
     #    term2 = np.einsum("tdn,tmd,tmnp->tp", Jac, Jac, Hess_f)   
 
     #    return term1 + term2 
-
-    #def old_laplacian_test_functions_cv(self, cv_traj):
-    #    """Laplacian of collective variable test functions"""
-
-    #    n_frames = cv_traj.shape[0]
-    #    Lap_f_cv = np.zeros((n_frames, self.n_test_funcs_cv), float)
-
-    #    # TODO: NOT THIS SIMPLE :(
-
-    #    for i in range(len(self.cv_d2f_funcs)):
-    #        for j in range(len(self.cv_d2f_funcs[i])):
-    #            Lap_f_cv[:,i] += self.cv_d2f_funcs[i][j](*cv_traj.T)
-
-    #    return Lap_f_cv
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
