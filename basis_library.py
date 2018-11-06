@@ -45,6 +45,13 @@ class FunctionLibrary(object):
         self.U_scale_factors = [[],[]]   # scale factor of each form
         self.U_coord_idxs = [[],[]]      # coordinate indices assigned to form
 
+        # Cartesian coordinate test functions
+        self.f_sym = []             # functional forms, symbolic
+        self.f_funcs = []           # functional forms, lambdified
+        self.f_coord_idxs = []      # coordinate indices assigned to form
+        self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+
         self._define_symbolic_variables()
 
     def _define_symbolic_variables(self):
@@ -60,13 +67,16 @@ class FunctionLibrary(object):
             self.xyz_sym.append([x_i, y_i, z_i])
 
         x1, y1, z1 = self.xyz_sym[0]
-        x2, y2, z2 = self.xyz_sym[1]
+        self.x_sym = sympy.symbols("x")
 
-        # pairwise distance variables
-        self.r12_sym = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+        if self.n_atoms > 1:
+            x2, y2, z2 = self.xyz_sym[1]
 
-        # pairwise distance arguments
-        self.rij_args = (x1, y1, z1, x2, y2, z2)
+            # pairwise distance variables
+            self.r12_sym = sympy.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+
+            # pairwise distance arguments
+            self.rij_args = (x1, y1, z1, x2, y2, z2)
 
         if self.n_atoms > 2:
             x3, y3, z3 = self.xyz_sym[2]
@@ -131,7 +141,7 @@ class FunctionLibrary(object):
 
         # TODO: many-body variables?
 
-    def _add_assignments(self, fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs,
+    def _add_potential_term(self, fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs,
             temp_dU_funcs):
 
         fixd = int(not fixed) # 0 for fixed, 1 for free
@@ -140,6 +150,14 @@ class FunctionLibrary(object):
         self.U_scale_factors[fixd].append(scale_factor)
         self.U_coord_idxs[fixd].append(temp_U_coord_idxs)
         self.dU_funcs[fixd].append(temp_dU_funcs)
+
+    def _add_test_functions(self, f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs):
+
+        self.f_sym.append(f_sym)
+        self.f_funcs.append(f_lamb)
+        self.f_coord_idxs.append(temp_f_coord_idxs)
+        self.df_funcs.append(temp_df_funcs)
+        self.d2f_funcs.append(temp_d2f_funcs)
 
     @property
     def n_params(self):
@@ -259,6 +277,152 @@ class FunctionLibrary(object):
         return G
 
 
+class OneDimensionalModel(FunctionLibrary):
+    def __init__(self, n_atoms, periodic_box_dims=[]):
+        """One-dimensional model
+        
+        Potential forms, test functions, and their derivatives.
+
+        Parameters
+        ----------
+        n_atoms : int
+            Number of atoms in the system.
+
+        periodic_box_dims : list, [x_L, x_R]
+            Positions of the left and right boundaries, x_L and x_R,
+            respectively.
+        """
+
+        self.n_atoms = n_atoms
+        self.n_dim = 1
+        self.n_dof = n_atoms
+        self.box_dims = periodic_box_dims
+
+        # symbolic variable
+        self.x_sym = sympy.symbols("x")
+        self.one_half = sympy.Rational(1,2)
+
+        # the drift is expanded in basis functions
+        # has two terms b = [b_0, b_1]
+        # b_0 is a fixed term
+        # b_1 is a parametric term
+        self.b_sym = [[],[]]             # functional forms, symbolic
+        self.b_funcs = [[],[]]           # functional forms, lambdified
+        self.b_scale_factors = [[],[]]   # scale factor of each form
+
+        # the noise is expanded in basis functions 
+        self.a_sym = [[],[]]             # functional forms, symbolic
+        self.a_funcs = [[],[]]           # functional forms, lambdified
+        self.a_scale_factors = [[],[]]   # scale factor of each form
+
+        # test functions
+        self.f_sym = []             # functional forms, symbolic
+        self.f_funcs = []           # functional forms, lambdified
+        self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+
+    def add_Gaussian_drift_basis(self, r0, w, scale_factor=1, fixed=False):
+        """Assign a Gaussian well a each position"""
+        
+        fixd = int(not fixed) # 0 for fixed, 1 for free
+        for m in range(len(r0)):
+            # gaussian well at position r0_nm[m]
+            b_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
+            b_lamb = sympy.lambdify(self.x_sym, b_sym, modules="numpy")
+            self.b_sym[fixd].append(b_sym)
+            self.b_funcs[fixd].append(b_lamb)
+            self.b_scale_factors[fixd].append(scale_factor)
+
+    def add_Gaussian_noise_basis(self, r0, w, scale_factor=1, fixed=False):
+        """Assign a Gaussian well a each position"""
+        
+        fixd = int(not fixed) # 0 for fixed, 1 for free
+        for m in range(len(r0)):
+            # gaussian well at position r0_nm[m]
+            a_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
+            a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
+            self.a_sym[fixd].append(a_sym)
+            self.a_funcs[fixd].append(a_lamb)
+            self.a_scale_factors[fixd].append(scale_factor)
+
+    def add_Gaussian_test_functions(self, r0, w, scale_factor=1, fixed=False):
+        """Assign a Gaussian well a each position"""
+        
+        for m in range(len(r0)):
+            # gaussian well at position r0_nm[m]
+            f_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
+            f_lamb = sympy.lambdify(self.x_sym, f_sym, modules="numpy")
+            df_func = sympy.lambdify(self.x_sym, f_sym.diff(self.x_sym), modules="numpy") 
+            d2f_func = sympy.lambdify(self.x_sym, f_sym.diff(self.x_sym, 2), modules="numpy") 
+
+            self.f_sym.append(f_sym)
+            self.f_funcs.append(f_lamb)
+            self.df_funcs.append(df_func)
+            self.d2f_funcs.append(d2f_func)
+
+    #########################################################
+    # EVALUATE DRIFT AND NOISE BASIS FUNCTIONS ON TRAJECTORY
+    #########################################################
+    def evaluate_fixed_drift(self, x_traj):
+        """Fixed term of the drift"""
+        drift_0 = np.zeros(x_traj.shape[0], float)
+        for i in range(len(self.b_lamb[0])):
+            drift_0 += self.b_lamb[0][i](x_traj) 
+        return drift_0
+
+    def evaluate_parametric_drift(self, x_traj):
+        """Parametric term of the drift"""
+        drift_1 = np.zeros((x_traj.shape[0], len(self.b_lamb[1])), float)
+        for i in range(len(self.b_lamb[1])):
+            drift_1[:,i] = self.b_lamb[1][i](x_traj) 
+        return drift_1
+
+    def evaluate_fixed_noise(self, x_traj):
+        """Fixed term of the noise"""
+        noise_0 = np.zeros(x_traj.shape[0], float)
+        for i in range(len(self.a_lamb[0])):
+            noise_0 += self.a_lamb[0][i](x_traj) 
+        return noise_0
+
+    def evaluate_parametric_noise(self, x_traj):
+        """Parametric term of the noise"""
+        noise_1 = np.zeros((x_traj.shape[0], len(self.a_lamb[1])), float)
+        for i in range(len(self.a_lamb[1])):
+            noise_1[:,i] = self.a_lamb[1][i](x_traj) 
+        return noise_1
+
+    #########################################################
+    # EVALUATE TEST FUNCTIONS ON TRAJECTORY
+    #########################################################
+    def test_functions(self, x_traj):
+        """Test functions"""
+
+        test_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        for j in range(len(self.f_funcs)):
+            # test function form j
+            f_j_func = self.f_funcs[j]
+            test_fj[:, j] = f_j_func(x_traj)
+        return test_fj
+
+    def gradient_test_functions(self, x_traj):
+        """Gradient of test functions"""
+
+        grad_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        for j in range(len(self.f_funcs)):
+            # test function form j
+            df_func = self.df_funcs[j]
+            grad_fj[:, j] = df_func(x_traj)
+        return grad_fj
+
+    def laplacian_test_functions(self, x_traj):
+        """Laplacian of test functions"""
+
+        Lap_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        for j in range(len(self.f_funcs)):
+            # test function form j
+            d2f_func = self.d2f_funcs[j]
+            Lap_fj[:, j] = d2f_func(x_traj)
+        return Lap_fj
 
 class PolymerModel(FunctionLibrary):
 
@@ -272,12 +436,6 @@ class PolymerModel(FunctionLibrary):
         """
         FunctionLibrary.__init__(self, n_atoms)
 
-        # Cartesian coordinate test functions
-        self.f_sym = []             # functional forms, symbolic
-        self.f_funcs = []           # functional forms, lambdified
-        self.f_coord_idxs = []      # coordinate indices assigned to form
-        self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
-        self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
 
         # Collective variable (CV) test functions
         self.cv_f_sym = []             # functional forms, symbolic
@@ -289,6 +447,7 @@ class PolymerModel(FunctionLibrary):
         self.chi_sym = []
         self.chi_funcs = []
         self.chi_coeff = [] 
+        self.chi_mean = [] 
         self.chi_coord_idxs = []
 
         self.dchi_funcs = []
@@ -320,14 +479,6 @@ class PolymerModel(FunctionLibrary):
     @property
     def n_features(self):
         return np.sum([ x.shape[0] for x in self.chi_coeff ])
-
-    def _add_test_functions(self, f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs):
-
-        self.f_sym.append(f_sym)
-        self.f_funcs.append(f_lamb)
-        self.f_coord_idxs.append(temp_f_coord_idxs)
-        self.df_funcs.append(temp_df_funcs)
-        self.d2f_funcs.append(temp_d2f_funcs)
 
     def _generate_pairwise_idxs(self, bond_cutoff=3):
         coord_idxs = []
@@ -384,7 +535,7 @@ class PolymerModel(FunctionLibrary):
             dU_sym = U_sym.diff(self.rij_args[n])
             temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_harmonic_angles(self, theta0_rad, scale_factor=1, fixed=False):
         """Assign harmonic angle interactions
@@ -419,7 +570,7 @@ class PolymerModel(FunctionLibrary):
             dU_sym = U_sym.diff(self.theta_ijk_args[n])
             temp_dU_funcs.append(sympy.lambdify(self.theta_ijk_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_inverse_r12(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
@@ -434,7 +585,7 @@ class PolymerModel(FunctionLibrary):
             dU_sym = U_sym.diff(self.rij_args[n])
             temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_LJ6(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
@@ -450,7 +601,7 @@ class PolymerModel(FunctionLibrary):
             dU_sym = U_sym.diff(self.rij_args[n])
             temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-        self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def _assign_pairwise_gaussians(self, r0_nm, w_nm, scale_factor=1, fixed=False, bond_cutoff=3):
         """Assign a Gaussian well a each position"""
@@ -468,14 +619,14 @@ class PolymerModel(FunctionLibrary):
                 dU_sym = U_sym.diff(self.rij_args[n])
                 temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
 
-            self._add_assignments(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+            self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
 
     ##########################################################3
     # ASSIGN TEST FUNCTIONS
     ##########################################################3
 
-    def define_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff):
+    def define_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
         """Enumerate the collective variables in terms of feature functions
         symbolically and take derivate of features wrt each Cartesian coord
         
@@ -484,6 +635,23 @@ class PolymerModel(FunctionLibrary):
 
         You should use, for example, the result of Time Independent Component
         Analysis (TICA) as collective variables.
+
+        Parameters
+        ----------
+        feature_types : list (n_features)
+            Feature types used to define the collective variable.
+
+        feature_atm_idxs : list of arrays
+            Each element is a list of atom indices that participate in the
+            corresponding feature.
+
+        feature_coeff : list of arrays
+            Each element is an array of coefficients that multiple the
+            corresponding feature.
+
+        feature_mean : np.ndarray
+            Mean value of each feature.
+
         """
 
         #TODO: Add more types of features (e.g., angle, dihedral, etc.)
@@ -502,10 +670,9 @@ class PolymerModel(FunctionLibrary):
 
             # collective variables are linear combination of features
             self.chi_coeff.append(feature_coeff)
+            self.chi_mean.append(feature_mean)
 
             # feature function
-            #self.chi_sym.append(self.r12_sym)
-            #self.chi_funcs.append(sympy.lambdify(self.rij_args, r12_sym, modules="numpy"))
             self.chi_sym.append(feat_sym)
             self.chi_funcs.append(sympy.lambdify(feat_args, feat_sym, modules="numpy"))
 
@@ -514,10 +681,6 @@ class PolymerModel(FunctionLibrary):
             temp_dchi = []
             temp_d2chi = []
             for n in range(len(self.rij_args)):
-                #d_chi = r12_sym.diff(self.rij_args[n])
-                #d2_chi = d_chi.diff(self.rij_args[n])
-                #temp_dchi.append(sympy.lambdify(self.rij_args, d_chi, modules="numpy"))
-                #temp_d2chi.append(sympy.lambdify(self.rij_args, d2_chi, modules="numpy"))
                 d_chi = feat_sym.diff(feat_args[n])
                 d2_chi = feat_sym.diff(feat_args[n], 2)
                 temp_dchi.append(sympy.lambdify(feat_args, d_chi, modules="numpy"))
@@ -528,12 +691,6 @@ class PolymerModel(FunctionLibrary):
             # assign coordinate indices to for feature
             temp_coord_idxs = []
             for i in range(len(feature_atm_idxs)):
-                #atm_idx1, atm_idx2 = pair_idxs[i]
-                #idxs1 = np.arange(3) + atm_idx1*3
-                #idxs2 = np.arange(3) + atm_idx2*3
-                #xi_idxs = np.concatenate([idxs1, idxs2]) 
-                #temp_coord_idxs.append(xi_idxs)
-
                 # determine participating coordinate indices from atom indices
                 temp_idxs = []
                 for z in range(len(feature_atm_idxs[i])):
@@ -596,10 +753,10 @@ class PolymerModel(FunctionLibrary):
         Parameters
         ----------
         r0_nm : np.ndarry float
-            Center of Guassians for each bond in nanometers
+            Center of Gaussians for each bond in nanometers
 
         w_nm : np.ndarry float
-            Widths of Guassians for each bond in nanometers
+            Widths of Gaussians for each bond in nanometers
 
         coeff : float or np.ndarray
             Coefficient to multiple each test function
@@ -757,13 +914,13 @@ class PolymerModel(FunctionLibrary):
         
         Returns
         -------
-        grad_U : np.ndarray
+        grad_U1 : np.ndarray
             Matrix of gradients
         """
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        grad_U = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
+        grad_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
 
         for i in range(self.n_params): 
             # parameter i corresponds to functional form i
@@ -783,8 +940,8 @@ class PolymerModel(FunctionLibrary):
 
                     # force on each coordinate is separated by associated
                     # parameter
-                    grad_U[:, dxi, i] += deriv
-        return grad_U
+                    grad_U1[:, dxi, i] += deriv
+        return grad_U1
 
     #########################################################
     # EVALUATE TEST FUNCTIONS ON TRAJECTORY
@@ -861,6 +1018,31 @@ class PolymerModel(FunctionLibrary):
 
         return Lap_fj
 
+    #########################################################################
+    # Collective variable test functions. Gradient and Laplacian
+    #########################################################################
+    def _collective_variable_value(self, traj):
+        """Value of collective variables"""
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+
+        # collective variables are sum of features
+        Vals_cv = np.zeros((xyz_flat.shape[0], self.n_cv_dim), float)
+        for m in range(self.n_feature_types):
+            # loop over feature types
+            chi_m = self.chi_funcs[m]
+
+            for i in range(len(self.chi_coord_idxs[m])):
+                # coefficients of this feature to each cv
+                b_coeff = self.chi_coeff[m][i,:]
+                chi_avg = self.chi_mean[m][i]
+                xi_idxs = self.chi_coord_idxs[m][i]
+
+                mean_free_chi = chi_m(*xyz_flat[:,xi_idxs].T) - chi_avg
+                Vals_cv[:,:] += np.einsum("m,t->tm", b_coeff, mean_free_chi)
+
+        return Vals_cv
+
     def test_functions_cv(self, cv_traj):
         """Collective variable test functions"""
 
@@ -894,7 +1076,7 @@ class PolymerModel(FunctionLibrary):
         """Second derivative of features wrt Cartesian coords"""
 
         # partial derivative of CV wrt to cartesian coordinates
-        Jacobian2 = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
+        Hess_cv = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
 
         for m in range(self.n_feature_types):
             # loop over feature types
@@ -908,8 +1090,8 @@ class PolymerModel(FunctionLibrary):
                 for n in range(len(xi_idxs)):
                     dxi = xi_idxs[n]
                     d2_chi = self.d2chi_funcs[m][n](*xyz_flat[:,xi_idxs].T)
-                    Jacobian2[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d2_chi)
-        return Jacobian2
+                    Hess_cv[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d2_chi)
+        return Hess_cv
 
     def _Hessian_test_func_cv(self, cv_traj):
 
