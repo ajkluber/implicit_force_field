@@ -366,29 +366,29 @@ class OneDimensionalModel(FunctionLibrary):
     def evaluate_fixed_drift(self, x_traj):
         """Fixed term of the drift"""
         drift_0 = np.zeros(x_traj.shape[0], float)
-        for i in range(len(self.b_lamb[0])):
-            drift_0 += self.b_lamb[0][i](x_traj) 
+        for i in range(len(self.b_funcs[0])):
+            drift_0 += self.b_funcs[0][i](x_traj) 
         return drift_0
 
     def evaluate_parametric_drift(self, x_traj):
         """Parametric term of the drift"""
-        drift_1 = np.zeros((x_traj.shape[0], len(self.b_lamb[1])), float)
-        for i in range(len(self.b_lamb[1])):
-            drift_1[:,i] = self.b_lamb[1][i](x_traj) 
+        drift_1 = np.zeros((x_traj.shape[0], len(self.b_funcs[1])), float)
+        for i in range(len(self.b_funcs[1])):
+            drift_1[:,i] = self.b_funcs[1][i](x_traj) 
         return drift_1
 
     def evaluate_fixed_noise(self, x_traj):
         """Fixed term of the noise"""
         noise_0 = np.zeros(x_traj.shape[0], float)
-        for i in range(len(self.a_lamb[0])):
-            noise_0 += self.a_lamb[0][i](x_traj) 
+        for i in range(len(self.a_funcs[0])):
+            noise_0 += self.a_funcs[0][i](x_traj) 
         return noise_0
 
     def evaluate_parametric_noise(self, x_traj):
         """Parametric term of the noise"""
-        noise_1 = np.zeros((x_traj.shape[0], len(self.a_lamb[1])), float)
-        for i in range(len(self.a_lamb[1])):
-            noise_1[:,i] = self.a_lamb[1][i](x_traj) 
+        noise_1 = np.zeros((x_traj.shape[0], len(self.a_funcs[1])), float)
+        for i in range(len(self.a_funcs[1])):
+            noise_1[:,i] = self.a_funcs[1][i](x_traj) 
         return noise_1
 
     #########################################################
