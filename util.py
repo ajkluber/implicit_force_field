@@ -301,3 +301,71 @@ def calc_diffusion(trajfile, topfile, beta, s_frames, s, n_dim, n_frames_tot):
     D_stock = (beta/(2*s*float(N)))*(avg_dxi_dxj - avg_dxi_avg_dxj)
 
     return D, D_stock
+
+def Ruiz_preconditioner(X, d):
+    """Scale the columns and rows of matrix to reduce its condition number
+
+    * Not gauranteed to lower the condition number.
+
+    Parameters
+    ----------
+    X : np.array (M, N)
+        Matrix to be pre-conditioned.
+
+    d : np.array (M)
+        Vector 
+
+
+    Returns
+    -------
+    d1 : np.array (M)
+        Diagonal elements of matrix that left-multiplies X to scale the
+        rows.
+
+    d2 : np.array (N)
+        Diagonal elements of matrix that right-multiplies X to scale the
+        columns.
+
+    pre_X : np.array (M, N)
+        Pre-conditioned matrix.  
+    """
+
+    eps1 = 1
+    eps2 = 1
+    pre_X = X.copy()
+    d1 = np.ones(X.shape[0])
+    d2 = np.ones(X.shape[1])
+    row_norm = np.linalg.norm(pre_X, axis=1)
+    col_norm = np.linalg.norm(pre_X, axis=0)
+    r1 = np.max(row_norm)/np.min(row_norm)
+    r2 = np.max(col_norm)/np.min(col_norm)
+
+    #nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))**(1/4)
+    nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))
+
+    print "cond(X)"
+    print "{:.4f}".format(np.log10(np.linalg.cond(X)))
+
+    max_iter = 20
+    iter = 1
+
+    # Ruiz algorithm seeks to have unit norm rows and columns
+    while ((r1 > eps1) and (r2 > eps2)) and (iter < max_iter):
+        print "{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2)
+        d1 *= 1/np.sqrt(row_norm)
+        d2 *= nm_ratio/np.sqrt(col_norm)
+
+        # scale rows and columns  
+        pre_X = np.einsum("i, ij, j->ij", d1, X, d2)
+
+        row_norm = np.linalg.norm(pre_X, axis=1)
+        col_norm = np.linalg.norm(pre_X, axis=0)
+
+        r1 = np.max(row_norm)/np.min(row_norm)
+        r2 = np.max(col_norm)/np.min(col_norm)
+        iter += 1
+
+    pre_d = np.einsum("i,i->i", d1, d)
+
+    return d1, d2, pre_X, pre_d
+
