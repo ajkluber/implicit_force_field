@@ -4,6 +4,7 @@ import numpy as np
 import scipy.linalg as scl
 
 from sklearn.cross_validation import KFold
+import sklearn.linear_model as sklin
 
 import mdtraj as md
 
@@ -315,19 +316,19 @@ def Ruiz_preconditioner(X, d):
     d : np.array (M)
         Vector 
 
-
     Returns
     -------
     d1 : np.array (M)
-        Diagonal elements of matrix that left-multiplies X to scale the
-        rows.
+        Factors that scale the rows.
 
     d2 : np.array (N)
-        Diagonal elements of matrix that right-multiplies X to scale the
-        columns.
+        Factors that scale the columns.
 
     pre_X : np.array (M, N)
         Pre-conditioned matrix.  
+
+    pre_d : np.array (M)
+        Pre-conditioned vector.  
     """
 
     eps1 = 1
@@ -343,10 +344,10 @@ def Ruiz_preconditioner(X, d):
     #nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))**(1/4)
     nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))
 
-    print "cond(X)"
+    print "cond(X)    r1     r2"
     print "{:.4f}".format(np.log10(np.linalg.cond(X)))
 
-    max_iter = 20
+    max_iter = 40
     iter = 1
 
     # Ruiz algorithm seeks to have unit norm rows and columns
@@ -364,8 +365,114 @@ def Ruiz_preconditioner(X, d):
         r1 = np.max(row_norm)/np.min(row_norm)
         r2 = np.max(col_norm)/np.min(col_norm)
         iter += 1
+    print "{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2)
 
-    pre_d = np.einsum("i,i->i", d1, d)
+    pre_d = d1*d
 
     return d1, d2, pre_X, pre_d
+
+def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
+    """Linear regression with ridge estimator"""
+
+    all_soln = []
+    res_norm = []
+    soln_norm = []
+    for i in range(len(alphas)):
+        ridge = sklin.Ridge(alpha=alphas[i], fit_intercept=fit_intercept)
+        ridge.fit(A,b)
+        
+        coeff = ridge.coef_
+        if not (right_precond is None):
+            all_soln.append(right_precond*coeff)
+        else:
+            all_soln.append(coeff)
+
+        res_norm.append(np.linalg.norm(ridge.predict(A) - b))
+        soln_norm.append(np.linalg.norm(ridge.coef_))
+
+    if len(alphas) > 1:
+        ridge = sklin.RidgeCV(alphas=alphas, cv=5, fit_intercept=fit_intercept)
+        ridge.fit(A,b)
+        alpha_star = ridge.alpha_
+        coeff = ridge.coef_
+        if not (right_precond is None):
+            coeff *= right_precond
+    else:
+        alpha_star = None
+        coeff = all_soln[0]
+
+    return alpha_star, coeff, all_soln, res_norm, soln_norm
+
+def D2_operator(Ucg, r, variable_noise=False):
+    """Second order finite differences of basis functions. For regularization"""
+
+    # number of basis functions
+    n_b = len(Ucg.b_funcs[1])
+    if variable_noise:
+        n_a = len(Ucg.a_funcs[1])
+    else:
+        n_a = 0
+
+    D2 = np.zeros((len(r), n_b + n_a), float)
+    for i in range(n_b + n_a):
+        if i < n_b:
+            y = Ucg.b_funcs[1][i](r)
+        else:
+            y = Ucg.a_funcs[1][i - n_b](r)
+
+         # centered differences
+        D2[1:-1,i] = (y[2:] - 2*y[1:-1] + y[:-2])
+
+        # forward and backward difference
+        D2[0,i] = (y[0] - 2*y[1] + y[2])
+        D2[-1,i] = (y[-1] - 2*y[-2] + y[-3])
+
+    return D2/((r[1] - r[0])**2)
+
+def D1_operator(Ucg, r, variable_noise=False):
+    """First order finite differences of basis functions. For regularization"""
+
+    # number of basis functions
+    n_b = len(Ucg.b_funcs[1])
+    if variable_noise:
+        n_a = len(Ucg.a_funcs[1])
+    else:
+        n_a = 0
+
+    D = np.zeros((len(r), n_b + n_a), float)
+    for i in range(n_b + n_a):
+        if i < n_b:
+            y = Ucg.b_funcs[1][i](r)
+        else:
+            y = Ucg.a_funcs[1][i - n_b](r)
+        D[:-1,i] = y[1:] - y[:-1]
+        D[-1,i] = y[-1] - y[-2]
+
+    return D/(r[1] - r[0])
+
+
+def solve_deriv_regularized(alphas, A, b, Ucg, r, order=1, variable_noise=False):
+    """Solve regularized system for """
+    if order == 1:
+        D = D1_operator(Ucg, r, variable_noise=variable_noise)
+    elif order == 2:
+        D = D2_operator(Ucg, r, variable_noise=variable_noise)
+    else:
+        raise ValueError("order must be 1 or 2")
+
+    all_soln = []
+    res_norm = []
+    deriv_norm = []
+    for i in range(len(alphas)):
+        # regularize the second derivative of solution
+        A_reg = np.dot(A.T, A) + alphas[i]*np.dot(D.T, D)
+        b_reg = np.dot(A.T, b)
+
+        x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+        all_soln.append(x) 
+        res_norm.append(np.linalg.norm(np.dot(A, x) - b))
+        deriv_norm.append(np.linalg.norm(np.dot(D, x)))
+
+    return all_soln, res_norm, deriv_norm
 
