@@ -15,6 +15,99 @@ import sklearn.linear_model as sklin
 
 import implicit_force_field as iff
 
+def Gauss(x, r0, w):
+    return np.exp(-0.5*((r0 - x)/w)**2) 
+
+def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=True):
+    G = np.array([ Gauss(cv_r0, cv_r0[i], cv_w[i]) for i in range(len(cv_r0)) ]).T
+
+    D2 = np.zeros(G.shape, float)
+    for i in range(len(cv_r0)):
+        y = Gauss(cv_r0, cv_r0[i], cv_w[i])
+
+        # centered differences
+        D2[1:-1,i] = (y[2:] - 2*y[1:-1] + y[:-2])
+
+        # forward and backward difference
+        D2[0,i] = (y[0] - 2*y[1] + y[2])
+        D2[-1,i] = (y[-1] - 2*y[-2] + y[-3])
+    D2 /= (cv_r0[1] - cv_r0[0])**2
+
+    if scan_alphas:
+        alphas = np.logspace(-8, -4, 500)
+        all_soln = []
+        res_norm = []
+        reg_norm = []
+        for i in range(len(alphas)):
+            # regularize the second derivative of solution
+            A_reg = np.dot(G.T, G) + alphas[i]*np.dot(D2.T, D2)
+            b_reg = np.dot(G.T, pmf)
+
+            x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+            all_soln.append(x)
+            res_norm.append(np.linalg.norm(np.dot(G, x) - pmf))
+            reg_norm.append(np.linalg.norm(np.dot(D2, x)))
+
+        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, r"||\frac{d^2 F}{dx^2}||_2", "Smooth PMF", "pmf_smooth_", "_100")
+
+    # interpolate pmf with smooth function
+    emp_dF = (pmf[1:] - pmf[:-1])/(cv_r0[1] - cv_r0[0])
+    emp_r = 0.5*(cv_r0[1:] + cv_r0[:-1])
+    r = np.linspace(np.min(cv_r0), np.max(cv_r0), 500)
+
+    alphas = [1e-8, 1e-7, 1e-6, 1e-5]
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
+    ax3.axhline(0, c='k', lw=1)
+    for i in range(len(alphas)):
+        # regularize the second derivative of solution
+        A_reg = np.dot(G.T, G) + alphas[i]*np.dot(D2.T, D2)
+        b_reg = np.dot(G.T, pmf)
+
+        pmf_ck = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+        # plot interpolated pmf
+        int_pmf = np.sum([ pmf_ck[n]*Gauss(r, cv_r0[n], cv_w[n]) for n in range(len(cv_r0)) ], axis=0)
+        ax1.plot(r, int_pmf, label=r"$\alpha = {:.0e}$".format(alphas[i])) 
+
+        # zoom in on barrier region
+        ax2.plot(r, int_pmf)
+
+        # plot interpolated mean force
+        int_dF = (int_pmf[1:] - int_pmf[:-1])/(r[1] - r[0])
+        int_r = 0.5*(r[1:] + r[:-1])
+        ax3.plot(int_r, -int_dF)
+
+    # plot empirical free energy and mean force
+    ax1.plot(cv_r0, pmf, 'k--', label="Empirical", lw=2) 
+    ax2.plot(cv_r0, pmf, 'k--')
+    ax3.plot(emp_r, -emp_dF, 'k--')
+
+    ax1.set_ylim(-.5, 4)
+    ax2.set_ylim(3, 3.6)
+    ax2.set_xlim(-.5, .5)
+    ax3.set_ylim(-13, 13)
+
+    ax1.legend(loc=4, framealpha=1, fancybox=False, edgecolor="k", facecolor="w")
+    ax1.set_xlabel(r"TIC1 $\psi_1$")
+    ax2.set_xlabel(r"TIC1 $\psi_1$")
+    ax3.set_xlabel(r"TIC1 $\psi_1$")
+
+    ax1.set_title("Free energy")
+    ax2.set_title("Free energy")
+    ax3.set_title("Mean Force")
+
+    fig.savefig("pmf_smooth_samples.pdf")
+    fig.savefig("pmf_smooth_samples.png")
+
+    #lalpha_star = 1e-6
+    A_reg = np.dot(G.T, G) + alpha_star*np.dot(D2.T, D2)
+    b_reg = np.dot(G.T, pmf)
+    pmf_ck = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+    return pmf_ck
+
 def calculate_drift_noise(r, Ucg, b_coeff, a_coeff):
 
     drift = np.zeros(len(r), float)
@@ -268,12 +361,42 @@ if __name__ == "__main__":
     emp_dF = (pmf[1:] - pmf[:-1])/(cv_r0[1] - cv_r0[0])
     emp_r = 0.5*(cv_r0[1:] + cv_r0[:-1])
 
+    # interpolate pmf with smooth function
+    alpha_star = 1e-6
+    pmf_ck = get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=False)
+
+    pmf_int = np.sum([ pmf_ck[i]*Gauss(r, cv_r0[i], cv_w[i]) for i in range(len(cv_r0)) ], axis=0)
+
+    int_dF = (pmf_int[1:] - pmf_int[:-1])/(r[1] - r[0])
+    int_r = 0.5*(r[1:] + r[:-1])
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+    ax1.plot(r, pmf_int)
+    ax1.plot(cv_r0, pmf, 'k--')
+    ax1.set_title("Free energy")
+    ax1.set_xlabel("TIC1")
+    ax1.set_ylim(0,3.5)
+
+    ax2.plot(int_r, -int_dF)
+    ax2.plot(emp_r, -emp_dF, 'k--')
+    ax2.set_title("Mean force")
+    ax2.set_xlabel("TIC1")
+
+    fig.suptitle
+
+    fig.savefig("compare_emp_vs_smooth_F_dF.pdf")
+    fig.savefig("compare_emp_vs_smooth_F_dF.png")
+            
+
+    
+    raise SystemExit
+
     Flim = (-50, 50)
     blim = (-0.001, 0.001)
     alim = (0, 0.0005)
 
     # regularize 2nd derivative
-    alphas = np.logspace(-6, 3, 400)
+    alphas = np.logspace(-12, 3, 400)
     all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
 
     xlabel = r"TIC1 $\psi_1$"
@@ -283,7 +406,7 @@ if __name__ == "__main__":
     title = "Regularize 2nd deriv"
     plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
 
-    alphas = [1e-10, 1e-4, 1]
+    alphas = [1e-16, 1e-12, 1e-10]
     plot_select_drift_and_noise(alphas, X, d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, method="2nd_deriv", alim=alim, blim=blim, Flim=Flim)
 
 
