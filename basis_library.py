@@ -163,6 +163,10 @@ class FunctionLibrary(object):
     def n_params(self):
         return len(self.U_funcs[1])
 
+    @property
+    def n_params_cv(self):
+        return len(self.cv_U_funcs)
+
     def calculate_potential_terms(self, traj):
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
@@ -436,6 +440,10 @@ class PolymerModel(FunctionLibrary):
         """
         FunctionLibrary.__init__(self, n_atoms)
 
+        # Collective variable (CV) potential functions
+        self.cv_U_sym = []             # functional forms, symbolic
+        self.cv_U_funcs = []           # functional forms, lambdified
+        self.cv_dU_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
 
         # Collective variable (CV) test functions
         self.cv_f_sym = []             # functional forms, symbolic
@@ -621,11 +629,36 @@ class PolymerModel(FunctionLibrary):
 
             self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
+    def _add_Gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
+
+        if scale_factors == 1:
+            scale_factors = np.ones(len(cv_r0))
+        else:
+            if len(scale_factors) != len(cv_r0):
+                raise ValueError("Number of scale factors should match number of centers")
+
+        for n in range(len(cv_r0)):
+            # basis function is Gaussian with center r0 and width w
+            f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
+            for i in range(1, self.n_cv_dim):
+                f_sym += (self.cv_sym[i] - cv_r0[n][i])**2
+            f_sym = scale_factors[n]*sympy.exp(-self.one_half*f_sym/(cv_w[n]**2))
+            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
+
+            self.cv_U_sym.append(f_sym)
+            self.cv_U_funcs.append(f_lamb)
+
+            # first and second derivative wrt each arg
+            temp_cv_dU_funcs = []
+            for i in range(len(self.cv_args)):
+                df_sym = f_sym.diff(self.cv_args[i])
+                temp_cv_dU_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
+
+            self.cv_dU_funcs.append(temp_cv_dU_funcs)
 
     ##########################################################3
     # ASSIGN TEST FUNCTIONS
     ##########################################################3
-
     def define_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
         """Enumerate the collective variables in terms of feature functions
         symbolically and take derivate of features wrt each Cartesian coord
@@ -655,6 +688,10 @@ class PolymerModel(FunctionLibrary):
         """
 
         #TODO: Add more types of features (e.g., angle, dihedral, etc.)
+
+        n_cv_dim = feature_coeff.shape[1]
+        self.cv_sym = [ sympy.symbols("psi" + str(i + 1)) for i in range(n_cv_dim) ]
+        self.cv_args = tuple(self.cv_sym)
 
         available_feature_types = {"dist":self.r12_sym, "invdist":1/self.r12_sym}
         feature_type_args = {"dist":self.rij_args, "invdist":self.rij_args}
@@ -716,8 +753,6 @@ class PolymerModel(FunctionLibrary):
         # 1. Test functions as function of TICs
         #   a. Gaussian centers and widths
 
-        self.cv_sym = [ sympy.symbols("psi" + str(i + 1)) for i in range(self.n_cv_dim) ]
-        self.cv_args = tuple(self.cv_sym)
 
         for n in range(len(cv_r0)):
             # test function is Gaussian with center r0 and width w
@@ -942,6 +977,34 @@ class PolymerModel(FunctionLibrary):
                     # parameter
                     grad_U1[:, dxi, i] += deriv
         return grad_U1
+
+    def gradient_U1_cv(self, traj, cv_traj):
+        """Gradient of potential form associated with each parameter
+        
+        Parameters
+        ----------
+        traj : mdtraj.Trajectory
+        
+        Returns
+        -------
+        grad_U1 : np.ndarray
+            Matrix of gradients
+        """
+
+        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        #cv_traj = self._collective_variable_value(traj)
+        Jac = self._Jacobian_cv(xyz_flat)
+
+        grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
+        for i in range(self.n_params_cv): 
+            for j in range(len(self.cv_dU_funcs[i])):
+                # derivative wrt argument j
+                d_func = self.cv_dU_funcs[i][j]
+                grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
+
+        grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
+
+        return grad_x_U1
 
     #########################################################
     # EVALUATE TEST FUNCTIONS ON TRAJECTORY
