@@ -212,7 +212,7 @@ def calculate_drift_noise(r, Ucg, b_coeff, a_coeff):
 
     return drift, noise, d_noise, dF
 
-def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, prefix, suffix):
+def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, prefix, suffix, cv_score=None):
     """Plot coefficients from regularization results"""
 
     fig, ax = plt.subplots(1,1)
@@ -240,6 +240,18 @@ def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, p
     plt.savefig("{}Lcurve{}.pdf".format(prefix, suffix))
     plt.savefig("{}Lcurve{}.png".format(prefix, suffix))
 
+    if not cv_score is None:
+        alpha_star = alphas[np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]]
+
+        plt.figure()
+        plt.plot(alphas, cv_score)
+        plt.axvline(alpha_star, ls='--', color='k')
+        plt.semilogx(True)
+        plt.xlabel(r"Regularization $\alpha$")
+        plt.ylabel("Avg MSE on test data")
+        plt.savefig("{}cv_vs_alpha{}.pdf".format(prefix, suffix))
+        plt.savefig("{}cv_vs_alpha{}.png".format(prefix, suffix))
+
 def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
         title, prefix, suffix, method="ridge", weight_a=1, right_precond=None,
         alim=None, blim=None, Flim=None, variable_noise=True, D2=None):
@@ -253,7 +265,7 @@ def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
     ax4.axhline(0, c='k')
 
     if method == "ridge":
-        alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, A, b, right_precond=right_precond)
+        alpha_star, coeff, all_soln, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, A, b, right_precond=right_precond)
     elif method == "1st_deriv":
         all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_noise=variable_noise)
     elif method == "2nd_deriv":
@@ -487,7 +499,7 @@ if __name__ == "__main__":
             ylabel = r"||c||^2_2"
             prefix = "ridge_constD_"
             title = "Ridge"
-            alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+            alpha_star, coeff, all_soln, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
 
 
         plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
@@ -511,8 +523,8 @@ if __name__ == "__main__":
             title = "Regularize 2nd deriv"
             all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=2, variable_noise=True)
         elif reg_method == "ridge":
-            alphas = np.logspace(-15, -10, 400)
-            select_alphas = [1e-10, 1e-7, 1e-4]
+            alphas = np.logspace(-10, -1, 500)
+            select_alphas = [1e-7, 1e-4, 1e-1]
             #select_alphas = [1e-5, 1e-3, 1e-1]
             ylabel = r"||c||^2_2"
             prefix = "ridge_"
@@ -534,7 +546,7 @@ if __name__ == "__main__":
             select_alphas = [1e-11, 1e-7, alpha_star, 1e-3]
             # select_alphas = [1e-11, 1e-7, 1e-3]
 
-        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix, cv_score=cv_score)
 
         # plot a couple solutions
         plot_select_drift_and_noise(select_alphas, X, d, Ucg, r, emp_r, emp_dF,
