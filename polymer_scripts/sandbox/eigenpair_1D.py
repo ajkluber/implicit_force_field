@@ -316,8 +316,8 @@ if __name__ == "__main__":
 
     #constD = True
     constD = False
-    # reg_method = "ridge"
-    reg_method = "D2"
+    reg_method = "ridge"
+    # reg_method = "D2"
 
     if constD:
         cg_savedir = "Ucg_eigenpair_1D_constD"
@@ -517,7 +517,7 @@ if __name__ == "__main__":
             ylabel = r"||c||^2_2"
             prefix = "ridge_"
             title = "Ridge"
-            alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+            alpha_star, coeff, all_soln, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
         elif reg_method == "D2":
             alphas = np.logspace(-20, -6, 500)
             #select_alphas = [1e-12, 1e-10, 1e-8]

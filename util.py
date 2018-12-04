@@ -479,17 +479,19 @@ def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
         soln_norm.append(np.linalg.norm(ridge.coef_))
 
     if len(alphas) > 1:
-        ridge = sklin.RidgeCV(alphas=alphas, cv=5, fit_intercept=fit_intercept)
+        ridge = sklin.RidgeCV(alphas=alphas, fit_intercept=fit_intercept, store_cv_values=True)
         ridge.fit(A,b)
         alpha_star = ridge.alpha_
         coeff = ridge.coef_
+        cv_score = np.mean(ridge.cv_values_, axis=0)
         if not (right_precond is None):
             coeff *= right_precond
     else:
         alpha_star = alphas[0]
         coeff = all_soln[0]
+        cv_score = []
 
-    return alpha_star, coeff, all_soln, res_norm, soln_norm
+    return alpha_star, coeff, all_soln, res_norm, soln_norm, cv_score
 
 def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_folds=5):
     """Solve regularized system for """
