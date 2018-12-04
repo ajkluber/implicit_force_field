@@ -357,16 +357,25 @@ if __name__ == "__main__":
 
     traj_idxs = []
     if len(tranmes) == 0:
-        for i in range(len(trajnames)):
-            tname = trajnames[i]
-            idx1 = (os.path.dirname(tname)).split("_")[-1]
-            idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-            traj_idxs.append([idx1, idx2])
+        temp_filenames = xmlnames
+        notrajs = True
+    else:
+        temp_filenames = trajnames
+        notrajs = False
+
+    for i in range(len(temp_filenames)):
+        tname = temp_filenames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+        traj_idxs.append([idx1, idx2])
 
     kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[0]
 
     if not os.path.exists(cg_savedir + "/X.npy"):
         # penalty on the second derivative
+        if notrajs:
+            raise ValueError("Check that trajectory files exist.")
+            
         D2 = np.zeros((R, R), float)
 
         X = np.zeros((P, R), float)
