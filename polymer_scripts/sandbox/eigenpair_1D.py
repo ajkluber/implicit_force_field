@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
     #constD = True
     constD = False
-    reg_method = "ridge"
+    # reg_method = "ridge"
     reg_method = "D2"
 
     if constD:
@@ -423,7 +423,7 @@ if __name__ == "__main__":
             os.mkdir(cg_savedir)
         os.chdir(cg_savedir)
 
-        print "saving matrix..."
+        print "saving matrix X and d..."
         np.save("D2.npy", D2)
         np.save("X.npy", X)
         np.save("d.npy", d)
@@ -434,7 +434,7 @@ if __name__ == "__main__":
         with open("Ntot.dat", "w") as fout:
             fout.write(str(N_prev))
     else:
-        print "loading..."
+        print "loading X and d..."
         os.chdir(cg_savedir)
         D2 = np.load("D2.npy")
         X = np.load("X.npy")
@@ -464,7 +464,7 @@ if __name__ == "__main__":
     Flim = (-10, 10)
     alim = (0, 0.0005)
 
-    raise SystemExit
+    # raise SystemExit
 
     # regularize 2nd derivative
     print "plotting regularized solutions..."
@@ -527,11 +527,12 @@ if __name__ == "__main__":
             #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_D2_regularized(alphas, X, d)
             all_soln, res_norm, reg_norm, cv_score = iff.util.solve_D2_regularized(alphas, X, d, D2, n_b=100, weight_a=1)
 
-            idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
-            alpha_star = alphas[idx]
-            coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d))[0]
-            b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
-            select_alphas = [1e-18, 1e-14, alpha_star, 1e-8]
+            # idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
+            # alpha_star = alphas[idx]
+            # coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d))[0]
+            # b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
+            # select_alphas = [1e-18, 1e-14, alpha_star, 1e-8]
+            select_alphas = [1e-18, 1e-14, 1e-8]
 
         plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
 

@@ -26,11 +26,11 @@ def calc_derivative(xyz_flat, s, s_frames, n_dim, n_params, n_rows, dU_funcs, dU
 
     # calculate forces
     for i in range(len(dU_dxi)):
-        # derivative 
+        # derivative
         deriv_fun = dU_funcs[dU_ck[i]][dU_d_arg[i]]
         deriv = deriv_fun(*xyz_flat[:,dU_idxs[i]].T)[:-s_frames]   # derivative k dxi_idx = dU_dxi[i]
 
-        # unraveled indices for xi 
+        # unraveled indices for xi
         xi_ravel_idxs = np.arange(dU_dxi[i], n_rows, n_dim)
         G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
     return G
@@ -45,19 +45,19 @@ def calculate_KM_matrix(Ucg, traj, s_frames, G=None):
     if G is None:
         G = np.zeros((n_rows, n_params), float)
 
-    for i in range(n_params): 
+    for i in range(n_params):
         # functional form i corresponds to parameter i.
         for j in range(len(Ucg.dU_funcs[1][i])):
             # derivative wrt argument j
             d_func = Ucg.dU_funcs[1][i][j]
             coord_idxs = Ucg.dU_coord_idxs[1][i][j]
-            
+
             for n in range(len(coord_idxs)):
                 # coordinates assigned to this derivative
                 deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
 
                 # derivative is wrt to coordinate index dxi
-                dxi = Ucg.dU_d_coord_idx[1][i][j][n]    
+                dxi = Ucg.dU_d_coord_idx[1][i][j][n]
                 xi_ravel_idxs = np.arange(dxi, n_rows, n_dim)
                 G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
     return G
@@ -65,7 +65,7 @@ def calculate_KM_matrix(Ucg, traj, s_frames, G=None):
 
 def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot):
     n_params = len(dU_funcs)
-    
+
     G = np.zeros((int(n_frames_tot)*n_dim, n_params), float)
     Y = np.zeros(int(n_frames_tot)*n_dim, float)
 
@@ -141,7 +141,7 @@ def new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=10, m
 
                 X[:n_params,:] = Rk
                 b[:n_params] = np.dot(Qk.T, b[:n_rows])
-                
+
             iteration_idx += 1
     final_R = X[:n_params,:]
     final_b = b[:n_params]
@@ -161,7 +161,7 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
     if method == "full":
         # calculate deriviative matrix on all data
         G, Y = calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_dim, n_frames_tot)
-        
+
         c_soln = np.linalg.lstsq(G, Y)[0]
         cv_score = 0
         c_solns = [c_soln]
@@ -197,11 +197,11 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
 
                 # calculate forces
                 for i in range(len(dU_dxi)):
-                    # derivative 
+                    # derivative
                     deriv_fun = dU_funcs[dU_ck[i]][dU_d_arg[i]]
                     deriv = deriv_fun(*xyz_flat[:,dU_idxs[i]].T)[:-s_frames]   # derivative k dxi_idx = dU_dxi[i]
 
-                    # unraveled indices for xi 
+                    # unraveled indices for xi
                     xi_ravel_idxs = np.arange(dU_dxi[i], n_rows, n_dim)
                     G[xi_ravel_idxs, dU_ck[i]] += deriv.ravel()
 
@@ -265,7 +265,7 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
 
                     X[:n_params,:] = Rk
                     b[:n_params] = np.dot(Qk.T, b[:n_rows])
-                    
+
                 iteration_idx += 1
         final_R = X[:n_params,:]
         final_b = b[:n_params]
@@ -278,12 +278,12 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
     print "calculation took: {} min".format(runmin)
     sys.stdout.flush()
 
-    return c_solns, cv_score 
+    return c_solns, cv_score
 
 def calc_diffusion(trajfile, topfile, beta, s_frames, s, n_dim, n_frames_tot):
     A = np.zeros((n_dim, n_dim), float)
 
-    avg_dxi_dxj = np.zeros((n_dim, n_dim), float) 
+    avg_dxi_dxj = np.zeros((n_dim, n_dim), float)
     avg_dxi = np.zeros(n_dim, float)
 
     total_n_iters = int(np.round(n_frames_tot/1000))
@@ -299,7 +299,7 @@ def calc_diffusion(trajfile, topfile, beta, s_frames, s, n_dim, n_frames_tot):
         avg_dxi_dxj += np.dot(dx.T, dx)
         avg_dxi += dx
         N += chunk.n_frames - s_frames
-    
+
     avg_dxi_avg_dxj = np.outer(avg_dxi, avg_dxi)
     D = (beta/(2*s*float(N)))*avg_dxi_dxj
     D_stock = (beta/(2*s*float(N)))*(avg_dxi_dxj - avg_dxi_avg_dxj)
@@ -317,7 +317,7 @@ def Ruiz_preconditioner(X, d):
         Matrix to be pre-conditioned.
 
     d : np.array (M)
-        Vector 
+        Vector
 
     Returns
     -------
@@ -328,10 +328,10 @@ def Ruiz_preconditioner(X, d):
         Factors that scale the columns.
 
     pre_X : np.array (M, N)
-        Pre-conditioned matrix.  
+        Pre-conditioned matrix.
 
     pre_d : np.array (M)
-        Pre-conditioned vector.  
+        Pre-conditioned vector.
     """
 
     eps1 = 1
@@ -359,7 +359,7 @@ def Ruiz_preconditioner(X, d):
         d1 *= 1/np.sqrt(row_norm)
         d2 *= nm_ratio/np.sqrt(col_norm)
 
-        # scale rows and columns  
+        # scale rows and columns
         pre_X = np.einsum("i, ij, j->ij", d1, X, d2)
 
         row_norm = np.linalg.norm(pre_X, axis=1)
@@ -382,7 +382,7 @@ def D1_operator(Ucg, r, variable_noise=False):
     if variable_noise:
         n_a = len(Ucg.a_funcs[1])
     else:
-        n_a = 1 
+        n_a = 1
 
     D = np.zeros((len(r), n_b + n_a), float)
     for i in range(n_b + n_a):
@@ -451,7 +451,7 @@ def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_
 
         x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
 
-        all_soln.append(x) 
+        all_soln.append(x)
         res_norm.append(np.linalg.norm(np.dot(A, x) - b))
         deriv_norm.append(np.linalg.norm(np.dot(D, x)))
 
@@ -461,14 +461,14 @@ def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
     """Linear regression with ridge estimator"""
 
     # TODO: Add cross validation
-    
+
     all_soln = []
     res_norm = []
     soln_norm = []
     for i in range(len(alphas)):
         ridge = sklin.Ridge(alpha=alphas[i], fit_intercept=fit_intercept)
         ridge.fit(A,b)
-        
+
         coeff = ridge.coef_
         if not (right_precond is None):
             all_soln.append(right_precond*coeff)
@@ -494,8 +494,8 @@ def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
 def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_folds=5):
     """Solve regularized system for """
 
-    if not weight_a is None:
-        D2[n_b:,n_b:] *= weight_a
+    #if not weight_a is None:
+    #    D2[n_b:,n_b:] *= weight_a
 
     # find alpha through cross-validation
     # train and test on different subsets of data
@@ -506,24 +506,27 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
     deriv_norm = []
     cv_score = []
     for i in range(len(alphas)):
-        cv_alpha = 0
-        for train_set, test_set in kf:
-            # regularize the second derivative of solution
-            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
-            b_reg = np.dot(A[train_set,:].T, b[train_set])
-
-            coeff = np.linalg.lstsq(A_reg, b_reg)[0]
-
-            b_test = np.dot(A[test_set,:], coeff)
-
-            MSE = np.mean((b_test - b[test_set])**2)
-            cv_alpha += MSE
-
         # cross-validation score is the average Mean-Squared-Error (MSE) over
         # data folds.
-        cv_score.append(cv_alpha/float(n_folds))
+        # cv_alpha = 0
+        # for train_set, test_set in kf:
+        #     # regularize the second derivative of solution
+        #     A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
+        #     b_reg = np.dot(A[train_set,:].T, b[train_set])
+        #
+        #     coeff = np.linalg.lstsq(A_reg, b_reg)[0]
+        #
+        #     b_test = np.dot(A[test_set,:], coeff)
+        #
+        #     MSE = np.mean((b_test - b[test_set])**2)
+        #     cv_alpha += MSE
 
-        all_soln.append(coeff) 
+        # cv_score.append(cv_alpha/float(n_folds))
+        A_reg = np.dot(A.T, A) + alphas[i]*D2
+        b_reg = np.dot(A.T, b)
+        coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-10)[0]
+
+        all_soln.append(coeff)
         res_norm.append(np.linalg.norm(np.dot(A, coeff) - b))
         deriv_norm.append(np.dot(coeff.T, np.dot(D2, coeff)))
 
@@ -536,7 +539,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
     ramp = lambda c_prime: np.log(1 + np.exp(c_prime))
     d_ramp = lambda c_prime: np.exp(c_prime)/(1 + np.exp(c_prime))
     d2_ramp = lambda c_prime: ((1 + np.exp(c_prime))*np.exp(c_prime) - np.exp(2*c_prime))/((1 + np.exp(c_prime))**2)
-    
+
     x0 = 0.0001*np.ones(A.shape[1])
 
     def nonlinear_residual(coeff):
@@ -549,7 +552,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
         Jac = np.copy(A)
         Jac[:,n_b:] = np.einsum("ij,j->ij", Jac[:,n_b:], d_ramp(coeff[n_b:]))
         return Jac
-        
+
     def nonlinear_model(coeff):
         c = np.copy(coeff)
         c[n_b:] = ramp(c[n_b:])
@@ -613,7 +616,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
 
     output = minimize(objective_reg, x0, args=(alphas[i]), jac=obj_gradient_reg, hess=obj_hessian_reg, method="Newton-CG")
 
-    
+
 
     #output = least_squares(nonlinear_residual, x0, jac=nonlinear_Jacobian,
     #        method="trf", tr_solver="exact", tr_options={"regularize":True}, verbose=1)
@@ -628,7 +631,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
 
     #    output = least_squares(model_residual, x0, jac=model_Jacobian)
 
-    #    all_soln.append(x) 
+    #    all_soln.append(x)
     #    res_norm.append(np.linalg.norm(np.dot(A, x) - b))
     #    deriv_norm.append(np.dot(x.T, np.dot(D2, x)))
 
@@ -648,10 +651,9 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
 
 def simple(alphas):
 
-    # Ridge using Leave-one-out cross validation. 
+    # Ridge using Leave-one-out cross validation.
     ridge = sklin.RidgeCV(alphas=alphas, fit_intercept=False, store_cv_values=True)
     ridge.fit(X,d)
 
-    # cv score is the MSE 
+    # cv score is the MSE
     cv_scores = np.mean(ridge.cv_values_, axis=0)
-
