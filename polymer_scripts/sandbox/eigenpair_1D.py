@@ -8,7 +8,7 @@ mpl.use("Agg")
 mpl.rcParams['mathtext.fontset'] = 'cm'
 mpl.rcParams['mathtext.rm'] = 'serif'
 import matplotlib.pyplot as plt
-import sympy 
+import sympy
 x_sym = sympy.symbols("x")
 
 import sklearn.linear_model as sklin
@@ -17,7 +17,7 @@ import implicit_force_field as iff
 
 def junk():
     pass
-    ## regularize solution norm 
+    ## regularize solution norm
     #print "solving Ridge regression..."
     #alphas = np.logspace(-16, -2, 400)
     #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
@@ -97,7 +97,7 @@ def find_ratio_of_norms(X, d, Ucg, r):
     return ratio_norms
 
 def Gauss(x, r0, w):
-    return np.exp(-0.5*((r0 - x)/w)**2) 
+    return np.exp(-0.5*((r0 - x)/w)**2)
 
 def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=True):
     G = np.array([ Gauss(cv_r0, cv_r0[i], cv_w[i]) for i in range(len(cv_r0)) ]).T
@@ -150,7 +150,7 @@ def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=Tr
 
         # plot interpolated pmf
         int_pmf = np.sum([ pmf_ck[n]*Gauss(r, cv_r0[n], cv_w[n]) for n in range(len(cv_r0)) ], axis=0)
-        ax1.plot(r, int_pmf, label=r"$\alpha = {:.0e}$".format(alphas[i])) 
+        ax1.plot(r, int_pmf, label=r"$\alpha = {:.0e}$".format(alphas[i]))
 
         # zoom in on barrier region
         ax2.plot(r, int_pmf)
@@ -161,7 +161,7 @@ def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=Tr
         ax3.plot(int_r, -int_dF)
 
     # plot empirical free energy and mean force
-    ax1.plot(cv_r0, pmf, 'k--', label="Empirical", lw=2) 
+    ax1.plot(cv_r0, pmf, 'k--', label="Empirical", lw=2)
     ax2.plot(cv_r0, pmf, 'k--')
     ax3.plot(emp_r, -emp_dF, 'k--')
 
@@ -218,7 +218,7 @@ def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, p
     fig, ax = plt.subplots(1,1)
     ax.plot(alphas, coeff)
     ax.set_xscale('log')
-    ax.set_xlim(ax.get_xlim()[::-1]) 
+    ax.set_xlim(ax.get_xlim()[::-1])
     ax.set_xlabel(r"Regularization $\alpha$")
     ax.set_ylabel(r"Coefficients $c_k$")
     fig.savefig("{}coeff_vs_alpha{}.pdf".format(prefix, suffix))
@@ -271,10 +271,10 @@ def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
         ax2.plot(r, noise)
         ax4.plot(r, -dF)
 
-        # compare the mean force from 
+        # compare the mean force from
         drift, noise, d_noise, dF = calculate_drift_noise(emp_r, Ucg, b_coeff, a_coeff)
         emp_drift = -noise*emp_dF + d_noise/beta
-          
+
         ax3.plot(emp_r, emp_drift, label=r"$\alpha = {:.2e}$".format(alphas[i]))
 
     ax1.legend(loc=1, fancybox=False, edgecolor="k", facecolor="w", framealpha=1)
@@ -348,17 +348,20 @@ if __name__ == "__main__":
 
     ##########################################################
     # EIGENPAIR MATRIX ELEMENTS. VARIABLE DIFFUSION COEFF
-    ########################################################## 
+    ##########################################################
     #topfile = glob.glob("run_{}/".format(run_idx) + name + "_min_cent.pdb")[0]
-    #trajnames = glob.glob("run_{}/".format(run_idx) + name + "_traj_cent_*.dcd") 
+    #trajnames = glob.glob("run_{}/".format(run_idx) + name + "_traj_cent_*.dcd")
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
-    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
+    xmlnames = glob.glob("run_*/" + name + "_final_state_*.xml")
+
     traj_idxs = []
-    for i in range(len(trajnames)):
-        tname = trajnames[i]
-        idx1 = (os.path.dirname(tname)).split("_")[-1]
-        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-        traj_idxs.append([idx1, idx2])
+    if len(tranmes) == 0:
+        for i in range(len(trajnames)):
+            tname = trajnames[i]
+            idx1 = (os.path.dirname(tname)).split("_")[-1]
+            idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+            traj_idxs.append([idx1, idx2])
 
     kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[0]
 
@@ -370,7 +373,7 @@ if __name__ == "__main__":
         d = np.zeros(P, float)
 
         print "calculating matrix elements..."
-        N_prev = 0 
+        N_prev = 0
         for n in range(len(traj_idxs)):
             print "traj: ", n+1
             sys.stdout.flush()
@@ -383,8 +386,8 @@ if __name__ == "__main__":
             b1 = Ucg.evaluate_parametric_drift(Psi)
 
             test_f = Ucg.test_functions(Psi)
-            grad_f = Ucg.gradient_test_functions(Psi) 
-            Lap_f = Ucg.laplacian_test_functions(Psi) 
+            grad_f = Ucg.gradient_test_functions(Psi)
+            Lap_f = Ucg.laplacian_test_functions(Psi)
 
             curr_D2 = Ucg.evaluate_D2_matrix(Psi)
 
@@ -696,7 +699,7 @@ if __name__ == "__main__":
     fig.savefig("ridge_drift_noise_1D_100.pdf")
     fig.savefig("ridge_drift_noise_1D_100.png")
 
-    # CROSS VALIDATED RIDGE 
+    # CROSS VALIDATED RIDGE
     ridge = sklin.RidgeCV(alphas=alphas, cv=5, fit_intercept=False)
     ridge.fit(pre_X,pre_d)
     ck = d2*ridge.coef_
