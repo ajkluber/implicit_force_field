@@ -356,7 +356,7 @@ if __name__ == "__main__":
     xmlnames = glob.glob("run_*/" + name + "_final_state_*.xml")
 
     traj_idxs = []
-    if len(tranmes) == 0:
+    if len(trajnames) == 0:
         temp_filenames = xmlnames
         notrajs = True
     else:
@@ -375,7 +375,7 @@ if __name__ == "__main__":
         # penalty on the second derivative
         if notrajs:
             raise ValueError("Check that trajectory files exist.")
-            
+
         D2 = np.zeros((R, R), float)
 
         X = np.zeros((P, R), float)
@@ -529,7 +529,7 @@ if __name__ == "__main__":
 
             idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
             alpha_star = alphas[idx]
-            coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, d)[0]
+            coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d))[0]
             b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
             select_alphas = [1e-18, 1e-14, alpha_star, 1e-8]
 
