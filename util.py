@@ -508,23 +508,23 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
     for i in range(len(alphas)):
         # cross-validation score is the average Mean-Squared-Error (MSE) over
         # data folds.
-        # cv_alpha = 0
-        # for train_set, test_set in kf:
-        #     # regularize the second derivative of solution
-        #     A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
-        #     b_reg = np.dot(A[train_set,:].T, b[train_set])
-        #
-        #     coeff = np.linalg.lstsq(A_reg, b_reg)[0]
-        #
-        #     b_test = np.dot(A[test_set,:], coeff)
-        #
-        #     MSE = np.mean((b_test - b[test_set])**2)
-        #     cv_alpha += MSE
+        cv_alpha = 0
+        for train_set, test_set in kf:
+            # regularize the second derivative of solution
+            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
+            b_reg = np.dot(A[train_set,:].T, b[train_set])
 
-        # cv_score.append(cv_alpha/float(n_folds))
+            coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+            b_test = np.dot(A[test_set,:], coeff)
+
+            MSE = np.mean((b_test - b[test_set])**2)
+            cv_alpha += MSE
+
+        cv_score.append(cv_alpha/float(n_folds))
         A_reg = np.dot(A.T, A) + alphas[i]*D2
         b_reg = np.dot(A.T, b)
-        coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-10)[0]
+        coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
 
         all_soln.append(coeff)
         res_norm.append(np.linalg.norm(np.dot(A, coeff) - b))

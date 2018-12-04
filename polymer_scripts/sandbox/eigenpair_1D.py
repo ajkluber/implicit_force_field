@@ -527,12 +527,12 @@ if __name__ == "__main__":
             #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_D2_regularized(alphas, X, d)
             all_soln, res_norm, reg_norm, cv_score = iff.util.solve_D2_regularized(alphas, X, d, D2, n_b=100, weight_a=1)
 
-            # idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
-            # alpha_star = alphas[idx]
-            # coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d))[0]
-            # b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
-            # select_alphas = [1e-18, 1e-14, alpha_star, 1e-8]
-            select_alphas = [1e-18, 1e-14, 1e-8]
+            idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
+            alpha_star = alphas[idx]
+            coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d), rcond=1e-11)[0]
+            b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
+            select_alphas = [1e-11, 1e-7, alpha_star, 1e-3]
+            # select_alphas = [1e-11, 1e-7, 1e-3]
 
         plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
 
