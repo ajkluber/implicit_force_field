@@ -15,6 +15,87 @@ import sklearn.linear_model as sklin
 
 import implicit_force_field as iff
 
+def junk():
+    pass
+    ## regularize solution norm 
+    #print "solving Ridge regression..."
+    #alphas = np.logspace(-16, -2, 400)
+    #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+
+    #ylabel = "||\hat{c}||_2"
+    #prefix = "ridge_"
+    #suffix = "_{}".format(len(cv_r0))
+    #title = "Ridge"
+
+    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+
+    ## regularize solution norm with preconditioning
+    #print "solving Ridge regression with preconditioning..."
+    #alphas = np.logspace(-16, -2, 400)
+    #d1, d2, pre_X, pre_d = iff.util.Ruiz_preconditioner(X, d)
+    #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, pre_X, pre_d)
+
+    #ylabel = "||\hat{c}||_2"
+    #prefix = "precond_ridge_"
+    #suffix = "_{}".format(len(cv_r0))
+    #title = "Precond Ridge"
+
+    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+
+    # regularize first derivative
+    #print "solving regression. 1st deriv regularized..."
+    #alphas = np.logspace(-6, 4, 400)
+    #r = np.linspace(-1.1, 1.1, 200)
+    #all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
+
+    #xlabel = r"TIC1 $\psi_1$"
+    #ylabel = r"||\nabla b||_2 + ||\nabla a||_2"
+    #prefix = "deriv_reg_"
+    #suffix = "_{}".format(len(cv_r0))
+    #title = "Regularize deriv"
+    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+
+    #alphas = [1e-4, 1, 1e4]
+    #plot_select_drift_and_noise(alphas, X, d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, method="1st_deriv", alim=alim, blim=blim, Flim=Flim)
+
+def plot_cv_score():
+    cv_score = np.array(cv_score)
+    idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
+    alpha_star = alphas[idx]
+
+    plt.figure()
+    plt.plot(alphas,  cv_score)
+    plt.axvline(alpha_star, ls='--', color="k")
+    plt.semilogx(True)
+    plt.semilogy(True)
+    plt.title(r"$\alpha^*={:.4e}$".format(alpha_star))
+    plt.xlabel(r"Regularization $\alpha$")
+    plt.ylabel("MSE on test data")
+    #plt.savefig("D2_penalty_cross_val.pdf")
+    #plt.savefig("D2_penalty_cross_val.png")
+    plt.savefig("ridgecv_cross_val.pdf")
+    plt.savefig("ridgecv_cross_val.png")
+    plt.show()
+
+
+def find_ratio_of_norms(X, d, Ucg, r):
+    """ """
+    soln = iff.util.solve_deriv_regularized([1e-14], X, d, Ucg, r, order=2, variable_noise=True)[0][0]
+    n_b = len(Ucg.b_funcs[1])
+    drift, noise, d_noise, dF = calculate_drift_noise(r, Ucg, soln[:n_b], soln[n_b:])
+
+    D2 = iff.util.D2_operator(Ucg, r, variable_noise=True)
+
+    d2_drift = np.dot(D2[:,:n_b], soln[:n_b])
+    d2_noise = np.dot(D2[:,n_b:], soln[n_b:])
+
+    norm_d2_b = np.linalg.norm(d2_drift)
+    norm_d2_a = np.linalg.norm(d2_noise)
+
+    ratio_norms = (norm_d2_b/norm_d2_a)**2
+
+    return ratio_norms
+
 def Gauss(x, r0, w):
     return np.exp(-0.5*((r0 - x)/w)**2) 
 
@@ -112,18 +193,22 @@ def calculate_drift_noise(r, Ucg, b_coeff, a_coeff):
 
     drift = np.zeros(len(r), float)
     for i in range(len(b_coeff)):
-        drift += b_coeff[i]*Ucg.b_scale_factors[1][i]*Ucg.b_funcs[1][i](r)
+        drift += b_coeff[i]*Ucg.b_funcs[1][i](r)
 
-    noise = np.zeros(len(r), float)
-    for i in range(len(a_coeff)):
-        noise += a_coeff[i]*Ucg.a_scale_factors[1][i]*Ucg.a_funcs[1][i](r)
+    if len(a_coeff) == 1:
+        noise = a_coeff[0]*np.ones(len(r), float)
+        d_noise = np.zeros(len(r), float)
+        dF = -drift/a_coeff[0]
+    else:
+        noise = np.zeros(len(r), float)
+        for i in range(len(a_coeff)):
+            noise += a_coeff[i]*Ucg.a_funcs[1][i](r)
 
-    d_noise = np.zeros(len(r), float)
-    for i in range(len(a_coeff)):
-        da_temp = sympy.lambdify(x_sym, Ucg.a_sym[1][i].diff(x_sym), modules="numpy")(r)
-        d_noise += a_coeff[i]*Ucg.a_scale_factors[1][i]*da_temp
+        d_noise = np.zeros(len(r), float)
+        for i in range(len(a_coeff)):
+            d_noise += a_coeff[i]*sympy.lambdify(x_sym, Ucg.a_sym[1][i].diff(x_sym), modules="numpy")(r)
 
-    dF = (1/noise)*((1/beta)*d_noise - drift)
+        dF = (1/noise)*((1/beta)*d_noise - drift)
 
     return drift, noise, d_noise, dF
 
@@ -156,8 +241,8 @@ def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, p
     plt.savefig("{}Lcurve{}.png".format(prefix, suffix))
 
 def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
-        title, prefix, suffix, method="ridge", right_precond=None, alim=None, blim=None,
-        Flim=None):
+        title, prefix, suffix, method="ridge", weight_a=1, right_precond=None,
+        alim=None, blim=None, Flim=None, variable_noise=True, D2=None):
 
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 10))
 
@@ -165,13 +250,16 @@ def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
     n_a = len(Ucg.a_funcs[1])
 
     ax4.plot(emp_r, -emp_dF, 'k', label="Emp")
+    ax4.axhline(0, c='k')
 
     if method == "ridge":
         alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, A, b, right_precond=right_precond)
     elif method == "1st_deriv":
-        all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
+        all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_noise=variable_noise)
     elif method == "2nd_deriv":
-        all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=2, variable_noise=True)
+        all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=2, variable_noise=variable_noise)
+    elif method == "D2":
+        all_soln, res_norm, reg_norm, cv_score = iff.util.solve_D2_regularized(alphas, A, b, D2, n_b=n_b, weight_a=weight_a)
 
     for i in range(len(alphas)):
         # evaluate drift
@@ -189,8 +277,8 @@ def plot_select_drift_and_noise(alphas, A, b, Ucg, r, emp_r, emp_dF, xlabel,
           
         ax3.plot(emp_r, emp_drift, label=r"$\alpha = {:.2e}$".format(alphas[i]))
 
-    ax1.legend(loc=2, fancybox=False, edgecolor="k", facecolor="w", framealpha=1)
-    ax4.legend(loc=2, fancybox=False, edgecolor="k", facecolor="w", framealpha=1)
+    ax1.legend(loc=1, fancybox=False, edgecolor="k", facecolor="w", framealpha=1)
+    ax4.legend(loc=1, fancybox=False, edgecolor="k", facecolor="w", framealpha=1)
 
     #ax1.set_xlabel(xlabel)
     #ax2.set_xlabel(xlabel)
@@ -226,7 +314,15 @@ if __name__ == "__main__":
 
     M = 1   # number of eigenvectors to use
 
-    cg_savedir = "Ucg_eigenpair_1D"
+    #constD = True
+    constD = False
+    reg_method = "ridge"
+    reg_method = "D2"
+
+    if constD:
+        cg_savedir = "Ucg_eigenpair_1D_constD"
+    else:
+        cg_savedir = "Ucg_eigenpair_1D"
 
     psi_hist = np.load(msm_savedir + "/psi1_n.npy")
     cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
@@ -238,12 +334,16 @@ if __name__ == "__main__":
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.OneDimensionalModel(1)
     Ucg.add_Gaussian_drift_basis(cv_r0, cv_w)
-    Ucg.add_Gaussian_noise_basis(cv_r0, cv_w)
     Ucg.add_Gaussian_test_functions(cv_r0, cv_w)
-
-    n_a = len(Ucg.a_funcs[1])
     n_b = len(Ucg.b_funcs[1])
-    R = n_a + n_b           # number of free model parameters
+
+    if not constD:
+        Ucg.add_Gaussian_noise_basis(cv_r0, cv_w)
+        n_a = len(Ucg.a_funcs[1])
+    else:
+        n_a = 1
+
+    R = n_b + n_a           # number of free model parameters
     P = len(Ucg.f_funcs)    # number of test functions
 
     ##########################################################
@@ -262,8 +362,10 @@ if __name__ == "__main__":
 
     kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[0]
 
-
     if not os.path.exists(cg_savedir + "/X.npy"):
+        # penalty on the second derivative
+        D2 = np.zeros((R, R), float)
+
         X = np.zeros((P, R), float)
         d = np.zeros(P, float)
 
@@ -276,22 +378,31 @@ if __name__ == "__main__":
             Psi = np.load(msm_savedir + "/run_{}_{}_TIC_1.npy".format(idx1, idx2))
             N_curr = Psi.shape[0]
 
-            # matrix elements 
+            # matrix elements calculated using a recursive running average to
+            # reduce floating point errors.
             b1 = Ucg.evaluate_parametric_drift(Psi)
-            a1 = Ucg.evaluate_parametric_noise(Psi)
 
             test_f = Ucg.test_functions(Psi)
             grad_f = Ucg.gradient_test_functions(Psi) 
             Lap_f = Ucg.laplacian_test_functions(Psi) 
 
-            # partial sums for current traj
+            curr_D2 = Ucg.evaluate_D2_matrix(Psi)
+
             curr_X1 = np.einsum("t,tr,tp->pr", Psi, b1, grad_f)
-            curr_X2 = (-1/beta)*np.einsum("t,tr,tp->pr", Psi, a1, Lap_f)
-            curr_d = kappa*np.einsum("t,tp->p", Psi, test_f)
-             
-            # recursive running average. Supposed to reduce floating point errors.
+            curr_d = -kappa*np.einsum("t,tp->p", Psi, test_f)
+
             X[:,:n_b] = (curr_X1 + N_prev*X[:,:n_b])/(N_prev + N_curr)
-            X[:,n_b:] = (curr_X2 + N_prev*X[:,n_b:])/(N_prev + N_curr)
+            D2 = (curr_D2 + N_prev*D2)/(N_prev + N_curr)
+
+            if constD:
+                curr_X2 = np.einsum("t,tp->p", Psi, Lap_f)/beta
+                X[:,-1] = (curr_X2 + N_prev*X[:,-1])/(N_prev + N_curr)
+
+            else:
+                # Is this negative sign is wrong??
+                a1 = Ucg.evaluate_parametric_noise(Psi)
+                curr_X2 = np.einsum("t,tr,tp->pr", Psi, a1, Lap_f)/beta
+                X[:,n_b:] = (curr_X2 + N_prev*X[:,n_b:])/(N_prev + N_curr)
             d = (curr_d + N_prev*d)/(N_prev + N_curr)
 
             N_prev += N_curr
@@ -301,6 +412,7 @@ if __name__ == "__main__":
         os.chdir(cg_savedir)
 
         print "saving matrix..."
+        np.save("D2.npy", D2)
         np.save("X.npy", X)
         np.save("d.npy", d)
 
@@ -310,50 +422,13 @@ if __name__ == "__main__":
         with open("Ntot.dat", "w") as fout:
             fout.write(str(N_prev))
     else:
+        print "loading..."
         os.chdir(cg_savedir)
+        D2 = np.load("D2.npy")
         X = np.load("X.npy")
         d = np.load("d.npy")
 
-    ## regularize solution norm 
-    #print "solving Ridge regression..."
-    #alphas = np.logspace(-16, -2, 400)
-    #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
-
-    #ylabel = "||\hat{c}||_2"
-    #prefix = "ridge_"
-    #suffix = "_{}".format(len(cv_r0))
-    #title = "Ridge"
-
-    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
-
-    ## regularize solution norm with preconditioning
-    #print "solving Ridge regression with preconditioning..."
-    #alphas = np.logspace(-16, -2, 400)
-    #d1, d2, pre_X, pre_d = iff.util.Ruiz_preconditioner(X, d)
-    #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, pre_X, pre_d)
-
-    #ylabel = "||\hat{c}||_2"
-    #prefix = "precond_ridge_"
-    #suffix = "_{}".format(len(cv_r0))
-    #title = "Precond Ridge"
-
-    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
-
-    # regularize first derivative
-    #print "solving regression. 1st deriv regularized..."
-    #alphas = np.logspace(-6, 4, 400)
-    #r = np.linspace(-1.1, 1.1, 200)
-    #all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
-
-    #xlabel = r"TIC1 $\psi_1$"
-    #ylabel = r"||\nabla b||_2 + ||\nabla a||_2"
-    #prefix = "deriv_reg_"
-    #suffix = "_{}".format(len(cv_r0))
-    #title = "Regularize deriv"
-    #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
-
-    #alphas = [1e-4, 1, 1e4]
-    #plot_select_drift_and_noise(alphas, X, d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, method="1st_deriv", alim=alim, blim=blim, Flim=Flim)
+    ratio_norms = np.sqrt(1.238697)  # found using alpha=1e-14
 
     r = np.linspace(min(cv_r0), max(cv_r0), 200)
     pmf = -np.log(psi_hist.astype(float))/beta
@@ -361,58 +436,98 @@ if __name__ == "__main__":
     emp_dF = (pmf[1:] - pmf[:-1])/(cv_r0[1] - cv_r0[0])
     emp_r = 0.5*(cv_r0[1:] + cv_r0[:-1])
 
-    # interpolate pmf with smooth function
-    alpha_star = 1e-6
-    pmf_ck = get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=False)
-
-    pmf_int = np.sum([ pmf_ck[i]*Gauss(r, cv_r0[i], cv_w[i]) for i in range(len(cv_r0)) ], axis=0)
-
-    int_dF = (pmf_int[1:] - pmf_int[:-1])/(r[1] - r[0])
-    int_r = 0.5*(r[1:] + r[:-1])
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-    ax1.plot(r, pmf_int)
-    ax1.plot(cv_r0, pmf, 'k--')
-    ax1.set_title("Free energy")
-    ax1.set_xlabel("TIC1")
-    ax1.set_ylim(0,3.5)
-
-    ax2.plot(int_r, -int_dF)
-    ax2.plot(emp_r, -emp_dF, 'k--')
-    ax2.set_title("Mean force")
-    ax2.set_xlabel("TIC1")
-
-    fig.suptitle
-
-    fig.savefig("compare_emp_vs_smooth_F_dF.pdf")
-    fig.savefig("compare_emp_vs_smooth_F_dF.png")
-            
-
-    
-    raise SystemExit
-
-    Flim = (-50, 50)
-    blim = (-0.001, 0.001)
-    alim = (0, 0.0005)
-
-    # regularize 2nd derivative
-    alphas = np.logspace(-12, 3, 400)
-    all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
-
-    xlabel = r"TIC1 $\psi_1$"
-    ylabel = r"||\nabla b||_2 + ||\nabla a||_2"
-    prefix = "deriv2_reg_"
-    suffix = "_{}".format(len(cv_r0))
-    title = "Regularize 2nd deriv"
-    plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
-
-    alphas = [1e-16, 1e-12, 1e-10]
-    plot_select_drift_and_noise(alphas, X, d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, method="2nd_deriv", alim=alim, blim=blim, Flim=Flim)
-
-
     ###################################################
     # PLOT DRIFT, NOISE, AND MEAN FORCE. RIDGE
     ###################################################
+
+    # interpolate pmf with smooth function
+    alpha_star = 5e-5
+    pmf_ck = get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=False)
+
+    int_pmf = np.sum([ pmf_ck[i]*Gauss(r, cv_r0[i], cv_w[i]) for i in range(len(cv_r0)) ], axis=0)
+    int_dF = (int_pmf[1:] - int_pmf[:-1])/(r[1] - r[0])
+    int_r = 0.5*(r[1:] + r[:-1])
+
+    #Flim = (-50, 50)
+    Flim = (-10, 10)
+    alim = (0, 0.0005)
+
+    raise SystemExit
+
+    # regularize 2nd derivative
+    print "plotting regularized solutions..."
+    if constD:
+        blim = (-0.01, 0.01)
+        xlabel = r"TIC1 $\psi_1$"
+        suffix = "_{}".format(len(cv_r0))
+
+        if reg_method == "2nd_deriv":
+            alphas = np.logspace(-14, -9, 400)
+            select_alphas = [1e-16, 1e-14, 1e-12]
+            ylabel = r"||\frac{d^2 b}{dx^2}||^2_2"
+            prefix = "deriv2_reg_constD_"
+            title = "Regularize 2nd deriv"
+            all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=2, variable_noise=False)
+
+        elif reg_method == "ridge":
+            alphas = np.logspace(-15, -10, 400)
+            select_alphas = [1e-10, 1e-7, 1e-4]
+            ylabel = r"||c||^2_2"
+            prefix = "ridge_constD_"
+            title = "Ridge"
+            alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+
+
+        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+
+        plot_select_drift_and_noise(select_alphas, X, d, Ucg, r, int_r, int_dF,
+                xlabel, title, prefix, suffix, method=reg_method,
+                weight_a=ratio_norms, alim=alim, blim=blim, Flim=Flim,
+                variable_noise=False, D2=D2)
+    else:
+        blim = (-0.001, 0.001)
+        xlabel = r"TIC1 $\psi_1$"
+        suffix = "_{}".format(len(cv_r0))
+
+        if reg_method == "2nd_deriv":
+            alphas = np.logspace(-14, -9, 400)
+            #select_alphas = [1e-14, 1e-12, 1e-10]
+            select_alphas = [1e-16, 1e-10, 5e-4]
+            suffix = "_over_reg_example"
+            ylabel = r"||\frac{d^2 b}{dx^2}||^2_2 + ||\frac{d^2 a}{dx^2}||^2_2"
+            prefix = "deriv2_reg_"
+            title = "Regularize 2nd deriv"
+            all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=2, variable_noise=True)
+        elif reg_method == "ridge":
+            alphas = np.logspace(-15, -10, 400)
+            select_alphas = [1e-10, 1e-7, 1e-4]
+            #select_alphas = [1e-5, 1e-3, 1e-1]
+            ylabel = r"||c||^2_2"
+            prefix = "ridge_"
+            title = "Ridge"
+            alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+        elif reg_method == "D2":
+            alphas = np.logspace(-20, -6, 500)
+            #select_alphas = [1e-12, 1e-10, 1e-8]
+            ylabel = r"||D2||^2_2"
+            prefix = "D2_"
+            title = "D2"
+            #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_D2_regularized(alphas, X, d)
+            all_soln, res_norm, reg_norm, cv_score = iff.util.solve_D2_regularized(alphas, X, d, D2, n_b=100, weight_a=1)
+
+            idx = np.argwhere(cv_score <= 1.10*cv_score.min())[0,0]
+            alpha_star = alphas[idx]
+            coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, d)[0]
+            b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
+            select_alphas = [1e-18, 1e-14, alpha_star, 1e-8]
+
+        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+
+        # plot a couple solutions
+        plot_select_drift_and_noise(select_alphas, X, d, Ucg, r, emp_r, emp_dF,
+                xlabel, title, prefix, suffix, method=reg_method, weight_a=1,
+                alim=alim, blim=blim, Flim=Flim, variable_noise=True, D2=D2)
+
 
     raise SystemExit
 
@@ -423,7 +538,8 @@ if __name__ == "__main__":
     title = "Ridge"
 
 
-    plot_select_drift_and_noise(alphas, X, d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, alim=alim, blim=blim, Flim=Flim)
+
+    plot_select_drift_and_noise(alphas, X, d, Ucg, r, int_r, int_dF, xlabel, title, prefix, suffix, alim=alim, blim=blim, Flim=Flim)
 
     # On preconditioning: We determined that scaling the rows of X is like
     # reweighting the test functions. Since this has no physical justification
@@ -440,7 +556,13 @@ if __name__ == "__main__":
     #title = "Precond Ridge"
     #blim = (-0.025, 0.025)
     #alim = (0, 0.0005)
-    #plot_select_drift_and_noise(alphas, pre_X, pre_d, Ucg, r, emp_r, emp_dF, xlabel, title, prefix, suffix, right_precond=d2, alim=alim, blim=blim, Flim=Flim)
+    #plot_select_drift_and_noise(alphas, pre_X, pre_d, Ucg, r, int_r, int_dF, xlabel, title, prefix, suffix, right_precond=d2, alim=alim, blim=blim, Flim=Flim)
+
+    raise SystemExit
+
+    from scipy.optimize import nnls
+
+    soln, res_norm = nnls(X, d)
 
     raise SystemExit
 

@@ -157,18 +157,8 @@ if __name__ == "__main__":
     with open(msm_savedir + "/cmd.txt", "a") as fout:
         fout.write("python " + " ".join(sys.argv) + "\n")
 
-    # get trajectory names
-    topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
-    #trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
-
-    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
-    traj_idxs = []
-    for i in range(len(trajnames)):
-        tname = trajnames[i]
-        idx1 = (os.path.dirname(tname)).split("_")[-1]
-        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-        traj_idxs.append([idx1, idx2])
-
+    topfile = "run_1/c25_min_cent.pdb"
+    trajnames = ["run_1/fragment.dcd"]
 
     # get indices for dihedral angles and pairwise distances
     feat = coor.featurizer(topfile)
@@ -228,21 +218,18 @@ if __name__ == "__main__":
     tica = coor.tica(lag=lagtime, stride=1)
     coor.pipeline([reader, tica])
     Y = tica.get_output(dimensions=range(keep_dims))
-    np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
-    np.save(msm_savedir + "/tica_eigenvects.npy", tica.eigenvectors)
-    np.save(msm_savedir + "/tica_mean.npy", tica.mean)
-    np.save(msm_savedir + "/tica_cov.npy", tica.cov)
-    np.save(msm_savedir + "/tica_cov_tau.npy", tica.cov_tau)
 
-    print "Saving tica coordinates..."
-    #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
-    for i in range(keep_dims):
-        for n in range(len(Y)):
-            # save TIC with indices of corresponding traj
-            idx1, idx2 = traj_idxs[n]
-            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
-            if not os.path.exists(tic_saveas) or resave_tic:
-                np.save(tic_saveas, Y[n][:,i])
+    #np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
+
+    #print "Saving tica coordinates..."
+    ##if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
+    #for i in range(keep_dims):
+    #    for n in range(len(Y)):
+    #        # save TIC with indices of corresponding traj
+    #        idx1, idx2 = traj_idxs[n]
+    #        tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
+    #        if not os.path.exists(tic_saveas) or resave_tic:
+    #            np.save(tic_saveas, Y[n][:,i])
 
     raise SystemExit
 

@@ -2,9 +2,12 @@ import time
 import sys
 import numpy as np
 import scipy.linalg as scl
+from scipy.optimize import least_squares
+from scipy.optimize import minimize
 
 from sklearn.cross_validation import KFold
 import sklearn.linear_model as sklin
+import sklearn
 
 import mdtraj as md
 
@@ -371,9 +374,94 @@ def Ruiz_preconditioner(X, d):
 
     return d1, d2, pre_X, pre_d
 
+def D1_operator(Ucg, r, variable_noise=False):
+    """First order finite differences of basis functions. For regularization"""
+
+    # number of basis functions
+    n_b = len(Ucg.b_funcs[1])
+    if variable_noise:
+        n_a = len(Ucg.a_funcs[1])
+    else:
+        n_a = 1 
+
+    D = np.zeros((len(r), n_b + n_a), float)
+    for i in range(n_b + n_a):
+        if i < n_b:
+            y = Ucg.b_funcs[1][i](r)
+        else:
+            if variable_noise:
+                y = Ucg.a_funcs[1][i - n_b](r)
+            else:
+                break
+        D[:-1,i] = y[1:] - y[:-1]
+        D[-1,i] = y[-1] - y[-2]
+
+    return D/(r[1] - r[0])
+
+def D2_operator(Ucg, r, variable_noise=False):
+    """Second order finite differences of basis functions. For regularization"""
+
+    # number of basis functions
+    n_b = len(Ucg.b_funcs[1])
+    if variable_noise:
+        n_a = len(Ucg.a_funcs[1])
+    else:
+        n_a = 1
+
+    D2 = np.zeros((len(r), n_b + n_a), float)
+    for i in range(n_b + n_a):
+        if i < n_b:
+            y = Ucg.b_funcs[1][i](r)
+        else:
+            if variable_noise:
+                y = Ucg.a_funcs[1][i - n_b](r)
+            else:
+                break
+
+        # centered differences
+        D2[1:-1,i] = (y[2:] - 2*y[1:-1] + y[:-2])
+
+        # forward and backward difference
+        D2[0,i] = (y[0] - 2*y[1] + y[2])
+        D2[-1,i] = (y[-1] - 2*y[-2] + y[-3])
+
+    return D2/((r[1] - r[0])**2)
+
+def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_noise=False):
+    """Solve regularized system for """
+    if order == 1:
+        D = D1_operator(Ucg, r, variable_noise=variable_noise)
+    elif order == 2:
+        D = D2_operator(Ucg, r, variable_noise=variable_noise)
+    else:
+        raise ValueError("order must be 1 or 2")
+
+    n_b = len(Ucg.b_funcs[1])
+
+    if len(Ucg.a_funcs[1]) > 0:
+        D[:,n_b:] *= weight_a
+
+    all_soln = []
+    res_norm = []
+    deriv_norm = []
+    for i in range(len(alphas)):
+        # regularize the second derivative of solution
+        A_reg = np.dot(A.T, A) + alphas[i]*np.dot(D.T, D)
+        b_reg = np.dot(A.T, b)
+
+        x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+
+        all_soln.append(x) 
+        res_norm.append(np.linalg.norm(np.dot(A, x) - b))
+        deriv_norm.append(np.linalg.norm(np.dot(D, x)))
+
+    return all_soln, res_norm, deriv_norm
+
 def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
     """Linear regression with ridge estimator"""
 
+    # TODO: Add cross validation
+    
     all_soln = []
     res_norm = []
     soln_norm = []
@@ -398,81 +486,172 @@ def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
         if not (right_precond is None):
             coeff *= right_precond
     else:
-        alpha_star = None
+        alpha_star = alphas[0]
         coeff = all_soln[0]
 
     return alpha_star, coeff, all_soln, res_norm, soln_norm
 
-def D2_operator(Ucg, r, variable_noise=False):
-    """Second order finite differences of basis functions. For regularization"""
-
-    # number of basis functions
-    n_b = len(Ucg.b_funcs[1])
-    if variable_noise:
-        n_a = len(Ucg.a_funcs[1])
-    else:
-        n_a = 0
-
-    D2 = np.zeros((len(r), n_b + n_a), float)
-    for i in range(n_b + n_a):
-        if i < n_b:
-            y = Ucg.b_funcs[1][i](r)
-        else:
-            y = Ucg.a_funcs[1][i - n_b](r)
-
-         # centered differences
-        D2[1:-1,i] = (y[2:] - 2*y[1:-1] + y[:-2])
-
-        # forward and backward difference
-        D2[0,i] = (y[0] - 2*y[1] + y[2])
-        D2[-1,i] = (y[-1] - 2*y[-2] + y[-3])
-
-    return D2/((r[1] - r[0])**2)
-
-def D1_operator(Ucg, r, variable_noise=False):
-    """First order finite differences of basis functions. For regularization"""
-
-    # number of basis functions
-    n_b = len(Ucg.b_funcs[1])
-    if variable_noise:
-        n_a = len(Ucg.a_funcs[1])
-    else:
-        n_a = 0
-
-    D = np.zeros((len(r), n_b + n_a), float)
-    for i in range(n_b + n_a):
-        if i < n_b:
-            y = Ucg.b_funcs[1][i](r)
-        else:
-            y = Ucg.a_funcs[1][i - n_b](r)
-        D[:-1,i] = y[1:] - y[:-1]
-        D[-1,i] = y[-1] - y[-2]
-
-    return D/(r[1] - r[0])
-
-
-def solve_deriv_regularized(alphas, A, b, Ucg, r, order=1, variable_noise=False):
+def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_folds=5):
     """Solve regularized system for """
-    if order == 1:
-        D = D1_operator(Ucg, r, variable_noise=variable_noise)
-    elif order == 2:
-        D = D2_operator(Ucg, r, variable_noise=variable_noise)
-    else:
-        raise ValueError("order must be 1 or 2")
+
+    if not weight_a is None:
+        D2[n_b:,n_b:] *= weight_a
+
+    # find alpha through cross-validation
+    # train and test on different subsets of data
+    kf = KFold(len(b), n_folds=n_folds)
 
     all_soln = []
     res_norm = []
     deriv_norm = []
+    cv_score = []
     for i in range(len(alphas)):
-        # regularize the second derivative of solution
-        A_reg = np.dot(A.T, A) + alphas[i]*np.dot(D.T, D)
-        b_reg = np.dot(A.T, b)
+        cv_alpha = 0
+        for train_set, test_set in kf:
+            # regularize the second derivative of solution
+            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
+            b_reg = np.dot(A[train_set,:].T, b[train_set])
 
-        x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+            coeff = np.linalg.lstsq(A_reg, b_reg)[0]
 
-        all_soln.append(x) 
-        res_norm.append(np.linalg.norm(np.dot(A, x) - b))
-        deriv_norm.append(np.linalg.norm(np.dot(D, x)))
+            b_test = np.dot(A[test_set,:], coeff)
 
-    return all_soln, res_norm, deriv_norm
+            MSE = np.mean((b_test - b[test_set])**2)
+            cv_alpha += MSE
+
+        # cross-validation score is the average Mean-Squared-Error (MSE) over
+        # data folds.
+        cv_score.append(cv_alpha/float(n_folds))
+
+        all_soln.append(coeff) 
+        res_norm.append(np.linalg.norm(np.dot(A, coeff) - b))
+        deriv_norm.append(np.dot(coeff.T, np.dot(D2, coeff)))
+
+
+    return np.array(all_soln), np.array(res_norm), np.array(deriv_norm), np.array(cv_score)
+
+def nonlinear_solver(alphas, A, b, D2, n_b):
+    """Solution that ensures positive diffusion coefficient"""
+
+    ramp = lambda c_prime: np.log(1 + np.exp(c_prime))
+    d_ramp = lambda c_prime: np.exp(c_prime)/(1 + np.exp(c_prime))
+    d2_ramp = lambda c_prime: ((1 + np.exp(c_prime))*np.exp(c_prime) - np.exp(2*c_prime))/((1 + np.exp(c_prime))**2)
+    
+    x0 = 0.0001*np.ones(A.shape[1])
+
+    def nonlinear_residual(coeff):
+        c = np.copy(coeff)
+        c[n_b:] = ramp(c[n_b:])
+        #residual = np.zeros(A.shape[0], float)
+        return np.dot(A,c) - b
+
+    def nonlinear_Jacobian(coeff):
+        Jac = np.copy(A)
+        Jac[:,n_b:] = np.einsum("ij,j->ij", Jac[:,n_b:], d_ramp(coeff[n_b:]))
+        return Jac
+        
+    def nonlinear_model(coeff):
+        c = np.copy(coeff)
+        c[n_b:] = ramp(c[n_b:])
+        #residual = np.zeros(A.shape[0], float)
+        return np.dot(A,c)
+
+    def objective_reg(coeff, *args):
+        alpha = args[0]
+
+        nneg_c = np.copy(coeff)
+        nneg_c[n_b:] = ramp(nneg_c[n_b:])
+
+        diff = np.dot(A,nneg_c) - d
+
+        squared_res = np.sum(diff**2)
+        reg_penalty = float(np.einsum("i,ij,j", nneg_c, D2, nneg_c))
+
+        return squared_res + alpha*reg_penalty
+
+    def obj_gradient_reg(coeff, *args):
+        alpha = args[0]
+
+        nneg_c = np.copy(coeff)
+        nneg_c[n_b:] = ramp(nneg_c[n_b:])
+
+        diff = np.dot(A,nneg_c) - d
+
+        Jac = np.copy(A)
+        Jac[:,n_b:] = np.einsum("ij,j->ij", Jac[:,n_b:], d_ramp(coeff[n_b:]))
+
+
+        term1 = 2*np.einsum("i,ik->k", diff, Jac)
+        term2 = 2*alpha*np.einsum("ik,i->k", D2, nneg_c)
+        return term1 + term2
+
+
+    def obj_hessian_reg(coeff, *args):
+        alpha = args[0]
+        N = A.shape[1]
+
+        nneg_c = np.copy(coeff)
+        nneg_c[n_b:] = ramp(nneg_c[n_b:])
+
+        diff = np.dot(A,nneg_c) - d
+
+        Jac = np.copy(A)
+        Jac[:,n_b:] = np.einsum("ij,j->ij", Jac[:,n_b:], d_ramp(coeff[n_b:]))
+
+        mixed_deriv = np.zeros((N, N))
+        mixed_deriv[(np.arange(n_b, N), np.arange(n_b, N))] = np.einsum("i,ik,k->i", diff[n_b:], A[:,n_b:], d2_ramp(coeff[n_b:]))
+
+        return 2*(np.einsum("il,ik", Jac, Jac) + mixed_deriv + alpha*D2)
+
+    alphas = np.logspace(-14, -6, 10)
+    all_soln = []
+    for i in range(len(alphas)):
+        output = minimize(objective_reg, x0, args=(alphas[i]), tol=1e-10, options={"disp":True}, jac=obj_gradient_reg, hess=obj_hessian_reg, method="Newton-CG")
+        temp_coeff = output.x
+        temp_coeff[n_b:] = ramp(output.x[n_b])
+        all_soln.append(temp_coeff)
+
+    output = minimize(objective_reg, x0, args=(alphas[i]), jac=obj_gradient_reg, hess=obj_hessian_reg, method="Newton-CG")
+
+    
+
+    #output = least_squares(nonlinear_residual, x0, jac=nonlinear_Jacobian,
+    #        method="trf", tr_solver="exact", tr_options={"regularize":True}, verbose=1)
+
+    #all_soln = []
+    #res_norm = []
+    #deriv_norm = []
+    #for i in range(len(alphas)):
+    #    # regularize the second derivative of solution
+    #    A_reg = np.dot(A.T, A) + alphas[i]*D2
+    #    b_reg = np.dot(A.T, b)
+
+    #    output = least_squares(model_residual, x0, jac=model_Jacobian)
+
+    #    all_soln.append(x) 
+    #    res_norm.append(np.linalg.norm(np.dot(A, x) - b))
+    #    deriv_norm.append(np.dot(x.T, np.dot(D2, x)))
+
+    return output
+
+## JUNK
+    #lower_bounds = np.zeros(A.shape[1])
+    #lower_bounds[:n_b] = -np.inf
+
+    #upper_bounds = np.zeros(A.shape[1])
+    #upper_bounds = np.inf
+
+    #linear_residual = lambda coeff: np.dot(A, coeff) - b
+    #linear_Jacobian = lambda coeff: A
+    #output = least_squares(linear_residual, x0, jac=linear_Jacobian,
+    #        bounds=(lower_bounds, upper_bounds), method="trf")
+
+def simple(alphas):
+
+    # Ridge using Leave-one-out cross validation. 
+    ridge = sklin.RidgeCV(alphas=alphas, fit_intercept=False, store_cv_values=True)
+    ridge.fit(X,d)
+
+    # cv score is the MSE 
+    cv_scores = np.mean(ridge.cv_values_, axis=0)
 

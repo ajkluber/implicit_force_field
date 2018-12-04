@@ -24,7 +24,8 @@ def save_markov_state_models(T, models):
 
     for i in range(len(models)):
         lagtime = models[i].lagtime
-        msm_info[str(lagtime)] = models[i].transition_matrix
+        msm_info[str(lagtime) + "_T"] = models[i].transition_matrix
+        msm_info[str(lagtime) + "_mu"] = models[i].stationary_distribution
 
     with open("msm.pkl", "wb") as fhandle:
         pickle.dump(msm_info, fhandle)
@@ -55,6 +56,8 @@ if __name__ == "__main__":
     use_rg = args.use_rg
     resave_tic = args.resave_tic
     use_saved_tics = args.use_saved_tics
+
+    #${HOME/miniconda2/bin/python ${HOME}/code/implitcit_force_field/polymer_scripts/calc_msm.py c25 --lagtime 100 --keep_dims 5 --use_dihedrals --use_distances --use_saved_tics
 
     feature_set = []
     if use_dihedrals:
@@ -102,7 +105,7 @@ if __name__ == "__main__":
     else:
         # get indices for dihedral angles and pairwise distances
         feat = coor.featurizer(topfile)
-        ply_idxs = feat.topology.select("name PL")
+        ply_idxs = feat.topology.select("resname PLY")
 
         dih_idxs = np.array([[ply_idxs[i], ply_idxs[i + 1], ply_idxs[i + 2], ply_idxs[i + 3]] for i in range(len(ply_idxs) - 4) ])
         pair_idxs = []
@@ -149,8 +152,8 @@ if __name__ == "__main__":
     lags = [10,25,50,100,200,500,1000]
     its = msm.its(dtrajs, lags=lags)
 
-    #if savemsm:
-    #    save_markov_state_models(T, its.models)
+    T = 300
+    save_markov_state_models(T, its.models)
 
     # save name should have n_clusters
     saveas = "msm_its_vs_lag_{}".format(n_clusters)

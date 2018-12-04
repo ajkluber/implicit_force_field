@@ -312,11 +312,13 @@ class OneDimensionalModel(FunctionLibrary):
         # b_1 is a parametric term
         self.b_sym = [[],[]]             # functional forms, symbolic
         self.b_funcs = [[],[]]           # functional forms, lambdified
+        self.d2b_funcs = [[],[]]           # functional forms, lambdified
         self.b_scale_factors = [[],[]]   # scale factor of each form
 
         # the noise is expanded in basis functions 
         self.a_sym = [[],[]]             # functional forms, symbolic
         self.a_funcs = [[],[]]           # functional forms, lambdified
+        self.d2a_funcs = [[],[]]           # functional forms, lambdified
         self.a_scale_factors = [[],[]]   # scale factor of each form
 
         # test functions
@@ -333,8 +335,10 @@ class OneDimensionalModel(FunctionLibrary):
             # gaussian well at position r0_nm[m]
             b_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
             b_lamb = sympy.lambdify(self.x_sym, b_sym, modules="numpy")
+            d2b_lamb = sympy.lambdify(self.x_sym, b_sym.diff(self.x_sym, 2), modules="numpy")
             self.b_sym[fixd].append(b_sym)
             self.b_funcs[fixd].append(b_lamb)
+            self.d2b_funcs[fixd].append(d2b_lamb)
             self.b_scale_factors[fixd].append(scale_factor)
 
     def add_Gaussian_noise_basis(self, r0, w, scale_factor=1, fixed=False):
@@ -345,8 +349,10 @@ class OneDimensionalModel(FunctionLibrary):
             # gaussian well at position r0_nm[m]
             a_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
             a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
+            d2a_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 2), modules="numpy")
             self.a_sym[fixd].append(a_sym)
             self.a_funcs[fixd].append(a_lamb)
+            self.d2a_funcs[fixd].append(d2a_lamb)
             self.a_scale_factors[fixd].append(scale_factor)
 
     def add_Gaussian_test_functions(self, r0, w, scale_factor=1, fixed=False):
@@ -394,6 +400,28 @@ class OneDimensionalModel(FunctionLibrary):
         for i in range(len(self.a_funcs[1])):
             noise_1[:,i] = self.a_funcs[1][i](x_traj) 
         return noise_1
+
+    def evaluate_D2_matrix(self, x_traj):
+        """Second derivatives"""
+
+        n_b = len(self.d2b_funcs[1])
+        N = n_b + len(self.d2a_funcs[1])
+        D2 = np.zeros((N, N), float)
+
+        for i in range(len(self.d2b_funcs[1])):
+            d2b_i = self.d2b_funcs[1][i](x_traj)
+            for j in range(len(self.d2b_funcs[1])):
+                d2b_j = self.d2b_funcs[1][j](x_traj)
+                D2[i,j] = np.sum(d2b_i*d2b_j)
+
+        for i in range(len(self.d2a_funcs[1])):
+            d2a_i = self.d2a_funcs[1][i](x_traj)
+            for j in range(len(self.d2a_funcs[1])):
+                d2a_j = self.d2a_funcs[1][j](x_traj)
+                D2[n_b + i,n_b + j] = np.sum(d2a_i*d2a_j)
+
+        return D2 
+
 
     #########################################################
     # EVALUATE TEST FUNCTIONS ON TRAJECTORY

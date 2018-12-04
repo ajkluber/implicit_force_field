@@ -4,9 +4,12 @@ import glob
 import time
 import argparse
 import numpy as np
-#import matplotlib
-#matplotlib.use("Agg")
-#import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.use("Agg")
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
+import matplotlib.pyplot as plt
+
 
 import simtk.unit as unit
 import simtk.openmm.app as app
@@ -71,7 +74,8 @@ if __name__ == "__main__":
     M = 1   # number of eigenvectors to use
 
     #cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10"
-    cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_{}_CV_{}".format(n_gauss, M)
+    #cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_{}_CV_{}".format(n_gauss, M)
+    cg_savedir = "Ucg_test_functions"
 
     # scaling the terms of the potential reduces the condition number of the
     # force matrix by several orders of magnitude. Pre-conditioning by column
@@ -96,30 +100,27 @@ if __name__ == "__main__":
 
     # add test functions
     use_cv_f_j = True
-    if use_cv_f_j:
-        # centers of test functions in collective variable (CV) space
-        cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
-        cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
-        #cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
-        cv_r0 = cv_r0.reshape((len(cv_r0),1))
 
-        cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
-        cv_mean = np.load(msm_savedir + "/tica_mean.npy")
+    # centers of test functions in collective variable (CV) space
+    #cv_r0 = np.linspace(-1.3, 1.8, 2000)
+    #cv_r0 = np.linspace(-1.3, 1.8, 100)
+    #cv_r0 = np.linspace(-1.3, 1.8, 10)
+    cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
+    cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
+    #cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
+    cv_r0 = cv_r0.reshape((len(cv_r0),1))
 
-        # TODO: add additional features
-        Ucg.define_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
-        Ucg.collective_variable_test_funcs(cv_r0, cv_w)
-    else:
-        Ucg._assign_bond_funcs([r0_nm], [0.3])
-        Ucg._assign_angle_funcs([theta0_rad], [4])
-        Ucg._assign_pairwise_funcs(gauss_r0_nm, gauss_w_nm)
+    #cv_coeff = np.array([ [x] for x in np.load(msm_savedir + "/tica_eigenvects.npy")[:,0]])
+    cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
+    cv_mean = np.load(msm_savedir + "/tica_mean.npy")
+
+    # TODO: add additional features
+    Ucg.define_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
+    Ucg.collective_variable_test_funcs(cv_r0, cv_w)
 
     D = Ucg.n_dof           # number of degrees of freedom
     R = Ucg.n_params        # number of free model parameters
-    if use_cv_f_j:
-        P = Ucg.n_test_funcs_cv # number of test functions
-    else:
-        P = Ucg.n_test_funcs    # number of test functions
+    P = Ucg.n_test_funcs_cv # number of test functions
 
     ##########################################################
     # calculate integrated sindy (eigenpair) matrix equation.
@@ -136,8 +137,10 @@ if __name__ == "__main__":
 
     kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[:M]
 
-    X = np.zeros((M*P, R+1), float)
-    d = np.zeros(M*P, float)
+    psi_dot_gradU1 = np.zeros((M*P, R), float)
+    psi_dot_gradU0 = np.zeros(M*P, float)
+    psi_dot_Lap_f = np.zeros(M*P, float)
+    psi_dot_f = np.zeros(M*P, float)
 
     print "calculating matrix elements..."
     Ntot = 0
@@ -162,6 +165,7 @@ if __name__ == "__main__":
         # calculate matrix elements
         start_idx = 0
         chunk_num = 1
+
         for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
             print "    chunk: ", chunk_num
             sys.stdout.flush()
@@ -170,35 +174,18 @@ if __name__ == "__main__":
             # eigenfunction approximation
             Psi = psi_traj[start_idx:start_idx + chunk.n_frames,:]
 
-            # calculate gradient of fixed and parametric potential terms
+            # gradient of potential terms
             grad_U0 = Ucg.gradient_U0(chunk)
             grad_U1 = Ucg.gradient_U1(chunk)
 
             # calculate test function values, gradient, and Laplacian
-            if use_cv_f_j:
-                test_f = Ucg.test_functions_cv(Psi)
-                grad_f, Lap_f = Ucg.gradient_and_laplacian_test_functions_cv(chunk, Psi) 
-                #grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
-                #Lap_f = Ucg.laplacian_test_functions_cv(chunk, Psi) 
-            else:
-                test_f = Ucg.test_functions(chunk)
-                grad_f = Ucg.gradient_test_functions(chunk) 
-                Lap_f = Ucg.laplacian_test_functions(chunk) 
+            test_f = Ucg.test_functions_cv(Psi)
+            grad_f, Lap_f = Ucg.gradient_and_laplacian_test_functions_cv(chunk, Psi) 
 
-            # very useful einstein summation function to calculate
-            # dot products with eigenvectors
-            tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
-            #tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
-
-            tempZ = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
-            tempY = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
-
-            tempX2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
-
-            #np.reshape(tempX, (M*P, R))
-            X[:,:-1] += tempX
-            X[:,-1] += tempX2
-            d += tempZ + tempY
+            psi_dot_gradU1 += np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
+            psi_dot_gradU0 += np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
+            psi_dot_Lap_f += (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
+            psi_dot_f += np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
 
             start_idx += chunk.n_frames
             Ntot += chunk.n_frames
@@ -207,77 +194,29 @@ if __name__ == "__main__":
         print "calculation took: {:.4f} sec".format(min_calc_traj)
         sys.stdout.flush()
 
-        #if n >= 5:
-        #    break
-
-    #X /= float(Ntot)
-    #d /= float(Ntot)
-    
-    #"Ucg_eigenpair"
-    #eg_savedir = msm_savedir + "/Ucg_eigenpair"
-    eg_savedir = "run_" + str(run_idx) + "/" + cg_savedir 
-    if not os.path.exists(eg_savedir):
-        os.mkdir(eg_savedir)
-    os.chdir(eg_savedir)
-
-    np.save("X.npy", X)
-    np.save("d.npy", d)
-
-    with open("X_cond.dat", "w") as fout:
-        fout.write(str(np.linalg.cond(X)))
-
-    with open("Ntot.dat", "w") as fout:
-        fout.write(str(Ntot))
-
-    lstsq_soln = np.linalg.lstsq(X, d)
-    np.save("coeff.npy", lstsq_soln[0])
+    psi_dot_f /= kappa[0]
+    psi_dot_f /= float(Ntot)
+    psi_dot_gradU0 /= float(Ntot)
+    d /= float(Ntot)
 
     raise SystemExit
-
-    traj = md.load(traj_name, top=topname)
-
-    from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-    from sklearn.model_selection import cross_val_score
-    from sklearn.model_selection import cross_validate
-
-    import sklearn.model_selection
-
-    cv_mean = []
-    cv_std = []
-    coeffs = []
-    alphas = np.logspace(-10, 3, num=100)
-    for i in range(len(alphas)):
-        print i
-        rdg = Ridge(alpha=alphas[i], fit_intercept=False)
-        rdg = Ridge(alpha=1, fit_intercept=False)
-        #X_train, X_test, y_train, y_test = train_test_split(G, frav, test_size=0.5, random_state=0)
-        #model = rdg.fit(X_train, y_train)
-        #cv_score.append(model.score(X_test, y_test))
-        #coeffs.append(model.coef_)
-
-        #model = rdg.fit(G, frav)
-        #coeffs.append(model.coef_)
-
-        #scores = cross_val_score(rdg, G, frav, cv=5)
-        cv = cross_validate(rdg, G, frav, cv=5, return_estimator=True)
-
-        cv_mean.append(scores.mean())
-        cv_std.append(scores.std())
-        
-
-    train_sc, test_sc = sklearn.model_selection.validation_curve(rdg, G, frav, "alpha", np.logspace(-10, 3), cv=5)
+    plt.figure()
+    plt.plot(psi_dot_f, 'o')
+    plt.xlabel(r"Test functions $f_j$")
+    plt.ylabel(r"$\langle \psi_1 f_j\rangle$")
+    plt.savefig(msm_savedir + "/psi1_dot_test_f.pdf")
+    plt.savefig(msm_savedir + "/psi1_dot_test_f.png")
 
     plt.figure()
-    plt.errorbar(alphas, cv_mean, yerr=cv_std)
-
-    plt.savefig("cv_score_vs_alpha.pdf")
-    plt.savefig("cv_score_vs_alpha.png")
+    plt.plot(d, 'o')
+    plt.xlabel(r"Test functions $f_j$")
+    plt.ylabel(r"$-\langle \psi_1 \Delta f_j\rangle$")
+    plt.savefig(msm_savedir + "/psi1_dot_Lap_test_f.pdf")
+    plt.savefig(msm_savedir + "/psi1_dot_Lap_test_f.png")
 
     plt.figure()
-    plt.plot(alphas, cv_score)
-    plt.xlabel(r"$\alpha$")
-    plt.ylabel(r"CV score")
-    plt.savefig("cv_score_vs_alpha.pdf")
-    plt.savefig("cv_score_vs_alpha.png")
-
+    plt.plot(psi_dot_gradU0, 'o')
+    plt.xlabel(r"Test functions $f_j$")
+    plt.ylabel(r"$-\langle \psi_1 \nabla U_0 \cdot \nabla f_j\rangle$")
+    plt.savefig(msm_savedir + "/psi1_dot_gradU0.pdf")
+    plt.savefig(msm_savedir + "/psi1_dot_gradU0.png")
