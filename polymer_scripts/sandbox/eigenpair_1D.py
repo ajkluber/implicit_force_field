@@ -247,6 +247,7 @@ def plot_regularization_soln(alphas, coeff, res_norm, reg_norm, ylabel, title, p
         plt.plot(alphas, cv_score)
         plt.axvline(alpha_star, ls='--', color='k')
         plt.semilogx(True)
+        plt.semilogy(True)
         plt.xlabel(r"Regularization $\alpha$")
         plt.ylabel("Avg MSE on test data")
         plt.savefig("{}cv_vs_alpha{}.pdf".format(prefix, suffix))
@@ -328,8 +329,8 @@ if __name__ == "__main__":
 
     #constD = True
     constD = False
-    reg_method = "ridge"
-    # reg_method = "D2"
+    # reg_method = "ridge"
+    reg_method = "D2"
 
     if constD:
         cg_savedir = "Ucg_eigenpair_1D_constD"
@@ -502,7 +503,7 @@ if __name__ == "__main__":
             alpha_star, coeff, all_soln, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
 
 
-        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix, cv_score=cv_score)
 
         plot_select_drift_and_noise(select_alphas, X, d, Ucg, r, int_r, int_dF,
                 xlabel, title, prefix, suffix, method=reg_method,
@@ -531,7 +532,7 @@ if __name__ == "__main__":
             title = "Ridge"
             alpha_star, coeff, all_soln, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
         elif reg_method == "D2":
-            alphas = np.logspace(-20, -6, 500)
+            alphas = np.logspace(-11, -1, 500)
             #select_alphas = [1e-12, 1e-10, 1e-8]
             ylabel = r"||D2||^2_2"
             prefix = "D2_"
@@ -543,7 +544,7 @@ if __name__ == "__main__":
             alpha_star = alphas[idx]
             coeff_star = np.linalg.lstsq(np.dot(X.T, X) + alpha_star*D2, np.dot(X.T, d), rcond=1e-11)[0]
             b_coeff, a_coeff = coeff_star[:n_b], coeff_star[n_b:]
-            select_alphas = [1e-11, 1e-7, alpha_star, 1e-3]
+            select_alphas = [1e-11, alpha_star, 1e-1]
             # select_alphas = [1e-11, 1e-7, 1e-3]
 
         plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix, cv_score=cv_score)
