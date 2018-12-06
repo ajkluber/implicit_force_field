@@ -54,9 +54,9 @@ if __name__ == "__main__":
     r0_nm = r0/unit.nanometer
 
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj, fixed=True)
-    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj, fixed=True)
-    Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=eps_ply_kj, fixed=True)
+    Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
+    Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
+    Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=eps_ply_kj, fixed=True)
 
     traj = md.load("c25_traj_cent_1.dcd", top="c25_nosolv_min.pdb")
     phi_sim = md.compute_dihedrals(traj, dih_idxs)

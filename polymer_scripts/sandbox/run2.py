@@ -124,10 +124,10 @@ if __name__ == "__main__":
     r0_nm = r0/unit.nanometer
 
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
-    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
-    #Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=eps_ply_kj)
-    Ucg._assign_LJ6(sigma_ply_nm, eps_ply_kj, scale_factor=1)
+    Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj)
+    Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj)
+    #Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
+    Ucg.LJ6_potentials(sigma_ply_nm, eps_ply_kj, scale_factor=1)
 
     traj = md.load(traj_name, top=topname)
     Eterms = Ucg.calculate_potential_terms(traj)

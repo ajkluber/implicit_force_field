@@ -540,7 +540,7 @@ class PolymerModel(FunctionLibrary):
     ##########################################################3
     # ASSIGN POTENTIAL FUNCTIONS
     ##########################################################3
-    def _assign_harmonic_bonds(self, r0_nm, scale_factor=1, fixed=False):
+    def harmonic_bond_potentials(self, r0_nm, scale_factor=1, fixed=False):
         """Assign harmonic bond interactions
         
         Parameters
@@ -574,7 +574,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _assign_harmonic_angles(self, theta0_rad, scale_factor=1, fixed=False):
+    def harmonic_angle_potentials(self, theta0_rad, scale_factor=1, fixed=False):
         """Assign harmonic angle interactions
         
         Parameters
@@ -609,7 +609,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _assign_inverse_r12(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+    def inverse_r12_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
         U_sym = scale_factor*(sigma_nm**12)*(self.r12_sym**(-12))
         U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
@@ -624,7 +624,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _assign_LJ6(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+    def LJ6_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
 
         U_sym = 4*scale_factor*((sigma_nm/self.r12_sym)**(12) - (sigma_nm/self.r12_sym)**6)
         U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
@@ -640,7 +640,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _assign_pairwise_gaussians(self, r0_nm, w_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+    def gaussian_pair_potentials(self, r0_nm, w_nm, scale_factor=1, fixed=False, bond_cutoff=3):
         """Assign a Gaussian well a each position"""
         
         for m in range(len(r0_nm)):
@@ -658,7 +658,7 @@ class PolymerModel(FunctionLibrary):
 
             self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def _add_Gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
+    def gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
 
         if scale_factors == 1:
             scale_factors = np.ones(len(cv_r0))

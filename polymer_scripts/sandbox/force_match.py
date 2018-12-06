@@ -47,12 +47,12 @@ if __name__ == "__main__":
 
     # create polymer model with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    #Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj)
-    #Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj)
-    #Ucg._assign_LJ6(sigma_ply_nm, scale_factor=eps_ply_kj)
-    Ucg._assign_harmonic_bonds(r0_nm)
-    Ucg._assign_harmonic_angles(theta0_rad)
-    Ucg._assign_LJ6(sigma_ply_nm)
+    #Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj)
+    #Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj)
+    #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
+    Ucg.harmonic_bond_potentials(r0_nm)
+    Ucg.harmonic_angle_potentials(theta0_rad)
+    Ucg.LJ6_potentials(sigma_ply_nm)
 
     raise SystemExit
 

@@ -84,11 +84,11 @@ if __name__ == "__main__":
     print "creating Ucg..."
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg._assign_harmonic_bonds(r0_nm, scale_factor=kb_kj, fixed=True)
-    Ucg._assign_harmonic_angles(theta0_rad, scale_factor=ka_kj, fixed=True)
-    #Ucg._assign_LJ6(sigma_ply_nm, scale_factor=eps_ply_kj)
-    Ucg._assign_inverse_r12(sigma_ply_nm, scale_factor=0.5, fixed=True)
-    Ucg._assign_pairwise_gaussians(gauss_r0_nm, gauss_w_nm, scale_factor=10)
+    Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
+    Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
+    #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
+    Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=True)
+    Ucg.gaussian_pair_potentials(gauss_r0_nm, gauss_w_nm, scale_factor=10)
 
 
     ply_idxs = np.arange(25)
