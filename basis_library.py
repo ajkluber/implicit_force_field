@@ -1067,14 +1067,34 @@ class PolymerModel(FunctionLibrary):
 
         return test_fj
             
-    def gradient_test_functions(self, traj):
+    def test_funcs_gradient_and_laplacian(self, traj, cv_traj):
         """Gradient of test functions"""
-
-        #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        grad_fj = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
+        if self.using_cv:
+            Jac = self._cv_cartesian_Jacobian(xyz_flat)
+            Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
+            Hess_f = self._Hessian_test_func_cv(cv_traj)
+            grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
+            One = np.ones(self.n_dof)
+
+            grad_x_f = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
+
+            Lap_term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
+            Lap_term2 = np.einsum("tnd,tmd,tmnp->tp", Jac, Jac, Hess_f)   
+            Lap_x_f = Lap_term1 + Lap_term2
+        else:
+            #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+
+            # Laplacian of Cartesian coordinate test functions
+            grad_x_f = self._cartesian_test_funcs_gradient(traj)
+            Lap_f = self._cartesian_test_funcs_laplacian(traj)
+
+        return grad_x_f, Lap_x_f
+
+    def _cartesian_test_funcs_gradient(self, traj):
+        grad_x_fj = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
         
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1088,13 +1108,12 @@ class PolymerModel(FunctionLibrary):
                     dxi = xi_idxs[i] 
 
                     df_j_func = self.df_funcs[j][i]
-                    grad_fj[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
+                    grad_x_fj[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
+        return grad_x_fj
 
-        return grad_fj
-
-    def laplacian_test_functions(self, traj):
+    def _cartesian_test_funcs_laplacian(self, traj):
         """Laplacian of test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
@@ -1164,7 +1183,7 @@ class PolymerModel(FunctionLibrary):
                     Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
         return Jacobian
 
-    def _Hessian_cv(self, xyz_flat):
+    def _cv_cartesian_Hessian(self, xyz_flat):
         """Second derivative of features wrt Cartesian coords"""
 
         # partial derivative of CV wrt to cartesian coordinates
@@ -1212,7 +1231,7 @@ class PolymerModel(FunctionLibrary):
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
         Jac = self._cv_cartesian_Jacobian(xyz_flat)
-        Hess_cv = self._Hessian_cv(xyz_flat)
+        Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
         Hess_f = self._Hessian_test_func_cv(cv_traj)
         grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
         One = np.ones(self.n_dof)
@@ -1229,7 +1248,7 @@ class PolymerModel(FunctionLibrary):
     #    xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
     #    Jac = self._cv_cartesian_Jacobian(xyz_flat)
-    #    Hess_cv = self._Hessian_cv(xyz_flat)
+    #    Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
     #    Hess_f = self._Hessian_test_func_cv(cv_traj)
     #    grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
     #    One = np.ones(self.n_dof)

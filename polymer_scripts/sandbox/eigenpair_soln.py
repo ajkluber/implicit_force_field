@@ -177,7 +177,7 @@ if __name__ == "__main__":
             # calculate test function values, gradient, and Laplacian
             if use_cv_f_j:
                 test_f = Ucg.test_functions(chunk, Psi)
-                grad_f, Lap_f = Ucg.gradient_and_laplacian_test_functions_cv(chunk, Psi) 
+                grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(chunk, Psi) 
                 #grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
                 #Lap_f = Ucg.laplacian_test_functions_cv(chunk, Psi) 
             else:
