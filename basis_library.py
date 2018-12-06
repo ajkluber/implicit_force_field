@@ -429,32 +429,29 @@ class OneDimensionalModel(FunctionLibrary):
     def test_functions(self, x_traj):
         """Test functions"""
 
-        test_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        test_f = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
         for j in range(len(self.f_funcs)):
             # test function form j
             f_j_func = self.f_funcs[j]
-            test_fj[:, j] = f_j_func(x_traj)
-        return test_fj
+            test_f[:, j] = f_j_func(x_traj)
+        return test_f
 
-    def gradient_test_functions(self, x_traj):
+    def test_funcs_gradient_and_laplacian(self, x_traj):
         """Gradient of test functions"""
 
-        grad_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        grad_f = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
         for j in range(len(self.f_funcs)):
             # test function form j
             df_func = self.df_funcs[j]
-            grad_fj[:, j] = df_func(x_traj)
-        return grad_fj
-
-    def laplacian_test_functions(self, x_traj):
-        """Laplacian of test functions"""
+            grad_f[:, j] = df_func(x_traj)
 
         Lap_f = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
         for j in range(len(self.f_funcs)):
             # test function form j
             d2f_func = self.d2f_funcs[j]
             Lap_f[:, j] = d2f_func(x_traj)
-        return Lap_f
+
+        return grad_f, Lap_f
 
 class PolymerModel(FunctionLibrary):
 
@@ -1045,15 +1042,15 @@ class PolymerModel(FunctionLibrary):
         """Test functions"""
 
         if self.using_cv:
-            test_fj = np.zeros((cv_traj.shape[0], self.n_test_funcs_cv), float)
+            test_f = np.zeros((cv_traj.shape[0], self.n_test_funcs_cv), float)
             for i in range(len(self.cv_f_funcs)):
-                test_fj[:,i] = self.cv_f_funcs[i](*cv_traj.T)
+                test_f[:,i] = self.cv_f_funcs[i](*cv_traj.T)
 
         else:
             #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
             xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-            test_fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
+            test_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
             start_idx = 0
             for j in range(len(self.f_funcs)):
                 # test function form j
@@ -1062,10 +1059,10 @@ class PolymerModel(FunctionLibrary):
                 for n in range(len(self.f_coord_idxs[j])):
                     # each coordinate assignment is a different test function
                     xi_idxs = self.f_coord_idxs[j][n]
-                    test_fj[:, start_idx + n] = f_j_func(*xyz_flat[:,xi_idxs].T)
+                    test_f[:, start_idx + n] = f_j_func(*xyz_flat[:,xi_idxs].T)
                 start_idx += len(self.f_coord_idxs[j])
 
-        return test_fj
+        return test_f
             
     def test_funcs_gradient_and_laplacian(self, traj, cv_traj):
         """Gradient of test functions"""

@@ -408,8 +408,7 @@ if __name__ == "__main__":
             b1 = Ucg.evaluate_parametric_drift(Psi)
 
             test_f = Ucg.test_functions(Psi)
-            grad_f = Ucg.gradient_test_functions(Psi)
-            Lap_f = Ucg.laplacian_test_functions(Psi)
+            grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(Psi)
 
             curr_D2 = Ucg.evaluate_D2_matrix(Psi)
 

@@ -175,15 +175,8 @@ if __name__ == "__main__":
             grad_U1 = Ucg.gradient_U1(chunk, Psi)
 
             # calculate test function values, gradient, and Laplacian
-            if use_cv_f_j:
-                test_f = Ucg.test_functions(chunk, Psi)
-                grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(chunk, Psi) 
-                #grad_f = Ucg.gradient_test_functions_cv(chunk, Psi) 
-                #Lap_f = Ucg.laplacian_test_functions_cv(chunk, Psi) 
-            else:
-                test_f = Ucg.test_functions(chunk)
-                grad_f = Ucg.gradient_test_functions(chunk) 
-                Lap_f = Ucg.laplacian_test_functions(chunk) 
+            grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(chunk, Psi) 
+            test_f = Ucg.test_functions(chunk, Psi)
 
             # very useful einstein summation function to calculate
             # dot products with eigenvectors
