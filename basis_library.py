@@ -458,7 +458,7 @@ class OneDimensionalModel(FunctionLibrary):
 
 class PolymerModel(FunctionLibrary):
 
-    def __init__(self, n_atoms):
+    def __init__(self, n_atoms, using_cv=False):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -467,6 +467,10 @@ class PolymerModel(FunctionLibrary):
 
         """
         FunctionLibrary.__init__(self, n_atoms)
+
+        # By 
+        self.using_cv = using_cv
+        self.cv_defined = False
 
         # Collective variable (CV) potential functions
         self.cv_U_sym = []             # functional forms, symbolic
@@ -687,7 +691,7 @@ class PolymerModel(FunctionLibrary):
     ##########################################################3
     # ASSIGN TEST FUNCTIONS
     ##########################################################3
-    def define_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
+    def linear_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
         """Enumerate the collective variables in terms of feature functions
         symbolically and take derivate of features wrt each Cartesian coord
         
@@ -764,6 +768,8 @@ class PolymerModel(FunctionLibrary):
                 xi_idxs = np.concatenate(temp_idxs) 
                 temp_coord_idxs.append(xi_idxs)
             self.chi_coord_idxs.append(temp_coord_idxs)
+
+        self.cv_defined = True
 
 
     def collective_variable_test_funcs(self, cv_r0, cv_w):
