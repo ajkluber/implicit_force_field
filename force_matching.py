@@ -16,6 +16,7 @@ if __name__ == "__main__":
     trajfile = "c25_traj_1.dcd"
     forcefile = "c25_forces_1.dat"
 
+    # TODO: Update script with object oriented implementation
     print "building basis function database..."
     dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors = basis_library.polymer_library(n_beads, gaussians=True)
     n_basis_deriv = len(dU_dxi)

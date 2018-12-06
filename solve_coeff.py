@@ -76,19 +76,9 @@ if __name__ == "__main__":
     print "building basis function database..."
     sys.stdout.flush()
 
-    # TODO: Allow for fixed and parametric terms in the potential, such that U = U_0 + U_r
-    # TODO: Allow for degeneracy
-    # as well as a parametric term U_r 
-    # Total potential U = U_0 + \sum c_r u_r
-
-    #U_funcs, U_idxs
-    #U0_funcs, U0_idxs
-
-    # TODO: Return the potential functions as well as their first and second derivatives
-    # TODO: Have library of test functions.
-
     basis_library.PolymerPotential(n_beads)
 
+    # TODO: replace with object oriented implementation
     dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, scale_factors = basis_library.polymer_library(n_beads, bonds=bonds, angles=angles, non_bond_wca=non_bond_wca, non_bond_gaussians=non_bond_gaussians)
     n_basis_deriv = len(dU_dxi)
     n_params = len(dU_funcs)
