@@ -115,7 +115,7 @@ if __name__ == "__main__":
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
     # TODO: add additional features
-    Ucg.define_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
+    Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
     Ucg.collective_variable_test_funcs(cv_r0, cv_w)
 
     D = Ucg.n_dof           # number of degrees of freedom
