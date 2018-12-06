@@ -1083,7 +1083,6 @@ class PolymerModel(FunctionLibrary):
             Lap_x_f = Lap_term1 + Lap_term2
         else:
             #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
-
             # Laplacian of Cartesian coordinate test functions
             grad_x_f = self._cartesian_test_funcs_gradient(traj)
             Lap_f = self._cartesian_test_funcs_laplacian(traj)
@@ -1221,43 +1220,6 @@ class PolymerModel(FunctionLibrary):
                 d_func = self.cv_df_funcs[i][j]
                 grad_cv_f[:,j,i] = d_func(*cv_traj.T)
         return grad_cv_f
-
-    def gradient_and_laplacian_test_functions_cv(self, traj, cv_traj):
-        """Gradient of collective variable test functions"""
-
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
-        Jac = self._cv_cartesian_Jacobian(xyz_flat)
-        Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
-        Hess_f = self._Hessian_test_func_cv(cv_traj)
-        grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
-        One = np.ones(self.n_dof)
-
-        grad_x_f = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
-        Lap_term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
-        Lap_term2 = np.einsum("tnd,tmd,tmnp->tp", Jac, Jac, Hess_f)   
-
-        return grad_x_f, Lap_term1 + Lap_term2
-
-    #def laplacian_test_functions_cv(self, traj, cv_traj):
-    #    """Laplacian of collective variable test functions"""
-
-    #    xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
-    #    Jac = self._cv_cartesian_Jacobian(xyz_flat)
-    #    Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
-    #    Hess_f = self._Hessian_test_func_cv(cv_traj)
-    #    grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
-    #    One = np.ones(self.n_dof)
-
-    #    term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
-
-    #    # If unsure split into two steps.
-    #    #Jac_Hess_f = np.einsum("tmd,tmnp->tdnp", Jac, Hess_f)
-    #    #term2 = np.einsum("tdn,tdnp->tp", Jac, Jac_Hess_f)
-    #    term2 = np.einsum("tdn,tmd,tmnp->tp", Jac, Jac, Hess_f)   
-
-    #    return term1 + term2 
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
