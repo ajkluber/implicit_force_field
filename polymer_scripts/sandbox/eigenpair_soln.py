@@ -171,8 +171,8 @@ if __name__ == "__main__":
             Psi = psi_traj[start_idx:start_idx + chunk.n_frames,:]
 
             # calculate gradient of fixed and parametric potential terms
-            grad_U0 = Ucg.gradient_U0(chunk)
-            grad_U1 = Ucg.gradient_U1(chunk)
+            grad_U0 = Ucg.gradient_U0(chunk, Psi)
+            grad_U1 = Ucg.gradient_U1(chunk, Psi)
 
             # calculate test function values, gradient, and Laplacian
             if use_cv_f_j:

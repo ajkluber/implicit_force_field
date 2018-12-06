@@ -1001,8 +1001,8 @@ class PolymerModel(FunctionLibrary):
             # if potentials depend on collective variables
             # the gradient requires chain rule 
 
-            #cv_traj = self._collective_variable_value(traj)
-            Jac = self._Jacobian_cv(xyz_flat)
+            #cv_traj = self.calculate_cv(traj)
+            Jac = self._cv_cartesian_Jacobian(xyz_flat)
 
             grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
             for i in range(self.n_params_cv): 
@@ -1014,8 +1014,7 @@ class PolymerModel(FunctionLibrary):
             grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
 
         else:
-            # gradient
-
+            # gradient 
             grad_x_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
 
             for i in range(self.n_params): 
@@ -1037,34 +1036,6 @@ class PolymerModel(FunctionLibrary):
                         # force on each coordinate is separated by associated
                         # parameter
                         grad_x_U1[:, dxi, i] += deriv
-        return grad_x_U1
-
-    def gradient_U1_cv(self, traj, cv_traj):
-        """Gradient of potential form associated with each parameter
-        
-        Parameters
-        ----------
-        traj : mdtraj.Trajectory
-        
-        Returns
-        -------
-        grad_U1 : np.ndarray
-            Matrix of gradients
-        """
-
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-        #cv_traj = self._collective_variable_value(traj)
-        Jac = self._Jacobian_cv(xyz_flat)
-
-        grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
-        for i in range(self.n_params_cv): 
-            for j in range(len(self.cv_dU_funcs[i])):
-                # derivative wrt argument j
-                d_func = self.cv_dU_funcs[i][j]
-                grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
-
-        grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
-
         return grad_x_U1
 
     #########################################################
@@ -1145,7 +1116,7 @@ class PolymerModel(FunctionLibrary):
     #########################################################################
     # Collective variable test functions. Gradient and Laplacian
     #########################################################################
-    def _collective_variable_value(self, traj):
+    def calculate_cv(self, traj):
         """Value of collective variables"""
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
@@ -1175,7 +1146,7 @@ class PolymerModel(FunctionLibrary):
             test_f_cv[:,i] = self.cv_f_funcs[i](*cv_traj.T)
         return test_f_cv
 
-    def _Jacobian_cv(self, xyz_flat):
+    def _cv_cartesian_Jacobian(self, xyz_flat):
         """Gradient of features wrt Cartesian coordinates"""
 
         # partial derivative of CV wrt to cartesian coordinates
@@ -1243,7 +1214,7 @@ class PolymerModel(FunctionLibrary):
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        Jac = self._Jacobian_cv(xyz_flat)
+        Jac = self._cv_cartesian_Jacobian(xyz_flat)
         Hess_cv = self._Hessian_cv(xyz_flat)
         Hess_f = self._Hessian_test_func_cv(cv_traj)
         grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
@@ -1260,7 +1231,7 @@ class PolymerModel(FunctionLibrary):
 
     #    xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-    #    Jac = self._Jacobian_cv(xyz_flat)
+    #    Jac = self._cv_cartesian_Jacobian(xyz_flat)
     #    Hess_cv = self._Hessian_cv(xyz_flat)
     #    Hess_f = self._Hessian_test_func_cv(cv_traj)
     #    grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
