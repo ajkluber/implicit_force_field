@@ -449,12 +449,12 @@ class OneDimensionalModel(FunctionLibrary):
     def laplacian_test_functions(self, x_traj):
         """Laplacian of test functions"""
 
-        Lap_fj = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
+        Lap_f = np.zeros((x_traj.shape[0], len(self.f_funcs)), float)
         for j in range(len(self.f_funcs)):
             # test function form j
             d2f_func = self.d2f_funcs[j]
-            Lap_fj[:, j] = d2f_func(x_traj)
-        return Lap_fj
+            Lap_f[:, j] = d2f_func(x_traj)
+        return Lap_f
 
 class PolymerModel(FunctionLibrary):
 
@@ -1094,7 +1094,7 @@ class PolymerModel(FunctionLibrary):
         return grad_x_f, Lap_x_f
 
     def _cartesian_test_funcs_gradient(self, traj):
-        grad_x_fj = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
+        grad_x_f = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
         
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1108,10 +1108,10 @@ class PolymerModel(FunctionLibrary):
                     dxi = xi_idxs[i] 
 
                     df_j_func = self.df_funcs[j][i]
-                    grad_x_fj[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
+                    grad_x_f[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
-        return grad_x_fj
+        return grad_x_f
 
     def _cartesian_test_funcs_laplacian(self, traj):
         """Laplacian of test functions"""
@@ -1120,7 +1120,7 @@ class PolymerModel(FunctionLibrary):
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        Lap_fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
+        Lap_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
 
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1131,11 +1131,11 @@ class PolymerModel(FunctionLibrary):
                 for i in range(len(self.d2f_funcs[j])):
                     # add the double derivative wrt argument i
                     d2f_j_func = self.d2f_funcs[j][i]
-                    Lap_fj[:, start_idx + n] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
+                    Lap_f[:, start_idx + n] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
 
-        return Lap_fj
+        return Lap_f
 
     #########################################################################
     # Collective variable test functions. Gradient and Laplacian
