@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
         # TODO: add additional features
         Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
-        Ucg.collective_variable_test_funcs(cv_r0, cv_w)
+        Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
     else:
         Ucg._assign_bond_funcs([r0_nm], [0.3])
         Ucg._assign_angle_funcs([theta0_rad], [4])

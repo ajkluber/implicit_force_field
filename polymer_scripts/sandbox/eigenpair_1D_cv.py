@@ -219,7 +219,7 @@ if __name__ == "__main__":
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
     Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
-    Ucg.collective_variable_test_funcs(cv_r0, cv_w)
+    Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
     Ucg._add_Gaussian_cv_potentials(cv_r0, cv_w)
 
     R = len(Ucg.cv_U_funcs)    # number of free model parameters

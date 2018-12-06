@@ -772,8 +772,8 @@ class PolymerModel(FunctionLibrary):
         self.cv_defined = True
 
 
-    def collective_variable_test_funcs(self, cv_r0, cv_w):
-        """Add TICA test functions
+    def gaussian_cv_test_funcs(self, cv_r0, cv_w):
+        """Add Gaussian test functions in collective variable space
         
         Parameters
         ----------
