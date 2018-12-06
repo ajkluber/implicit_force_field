@@ -169,7 +169,7 @@ if __name__ == "__main__":
             print "    chunk: ", chunk_num
             sys.stdout.flush()
             chunk_num += 1
-            psi_calc.append(Ucg._collective_variable_value(chunk))
+            psi_calc.append(Ucg.calculate_cv(chunk))
         psi_calc = np.concatenate(psi_calc)
 
         min_calc_traj = (time.time() - starttime)
