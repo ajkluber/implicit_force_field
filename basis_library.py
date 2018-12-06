@@ -1041,24 +1041,29 @@ class PolymerModel(FunctionLibrary):
     #########################################################
     # EVALUATE TEST FUNCTIONS ON TRAJECTORY
     #########################################################
-    def test_functions(self, traj):
+    def test_functions(self, traj, cv_traj):
         """Test functions"""
 
-        #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+        if self.using_cv:
+            test_fj = np.zeros((cv_traj.shape[0], self.n_test_funcs_cv), float)
+            for i in range(len(self.cv_f_funcs)):
+                test_fj[:,i] = self.cv_f_funcs[i](*cv_traj.T)
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
+        else:
+            #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+            xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        test_fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
-        start_idx = 0
-        for j in range(len(self.f_funcs)):
-            # test function form j
-            f_j_func = self.f_funcs[j]
+            test_fj = np.zeros((traj.n_frames, self.n_test_funcs), float)
+            start_idx = 0
+            for j in range(len(self.f_funcs)):
+                # test function form j
+                f_j_func = self.f_funcs[j]
 
-            for n in range(len(self.f_coord_idxs[j])):
-                # each coordinate assignment is a different test function
-                xi_idxs = self.f_coord_idxs[j][n]
-                test_fj[:, start_idx + n] = f_j_func(*xyz_flat[:,xi_idxs].T)
-            start_idx += len(self.f_coord_idxs[j])
+                for n in range(len(self.f_coord_idxs[j])):
+                    # each coordinate assignment is a different test function
+                    xi_idxs = self.f_coord_idxs[j][n]
+                    test_fj[:, start_idx + n] = f_j_func(*xyz_flat[:,xi_idxs].T)
+                start_idx += len(self.f_coord_idxs[j])
 
         return test_fj
             
@@ -1137,14 +1142,6 @@ class PolymerModel(FunctionLibrary):
                 Vals_cv[:,:] += np.einsum("m,t->tm", b_coeff, mean_free_chi)
 
         return Vals_cv
-
-    def test_functions_cv(self, cv_traj):
-        """Collective variable test functions"""
-
-        test_f_cv = np.zeros((cv_traj.shape[0], self.n_test_funcs_cv), float)
-        for i in range(len(self.cv_f_funcs)):
-            test_f_cv[:,i] = self.cv_f_funcs[i](*cv_traj.T)
-        return test_f_cv
 
     def _cv_cartesian_Jacobian(self, xyz_flat):
         """Gradient of features wrt Cartesian coordinates"""

@@ -179,7 +179,7 @@ if __name__ == "__main__":
             grad_U1 = Ucg.gradient_U1(chunk, Psi)
 
             # calculate test function values, gradient, and Laplacian
-            test_f = Ucg.test_functions_cv(Psi)
+            test_f = Ucg.test_functions(chunk, Psi)
             grad_f, Lap_f = Ucg.gradient_and_laplacian_test_functions_cv(chunk, Psi) 
 
             psi_dot_gradU1 += np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
