@@ -113,9 +113,9 @@ if __name__ == "__main__":
         Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
         Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
     else:
-        Ucg._assign_bond_funcs([r0_nm], [0.3])
-        Ucg._assign_angle_funcs([theta0_rad], [4])
-        Ucg._assign_pairwise_funcs(gauss_r0_nm, gauss_w_nm)
+        Ucg.gaussian_bond_test_funcs([r0_nm], [0.3])
+        Ucg.vonMises_angle_test_funcs([theta0_rad], [4])
+        Ucg.gaussian_pair_test_funcs(gauss_r0_nm, gauss_w_nm)
 
     D = Ucg.n_dof           # number of degrees of freedom
     R = Ucg.n_params        # number of free model parameters

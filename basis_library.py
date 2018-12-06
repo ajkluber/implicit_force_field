@@ -816,7 +816,11 @@ class PolymerModel(FunctionLibrary):
             self.cv_df_funcs.append(temp_cv_df_funcs)
             self.cv_d2f_funcs.append(temp_cv_d2f_funcs)
 
-    def _assign_bond_funcs(self, r0_nm, w_nm, coeff=1):
+
+    ########################################################################
+    # TEST FUNCTIONS DEFINED ON CARTESIAN COORDINATES
+    ########################################################################
+    def gaussian_bond_test_funcs(self, r0_nm, w_nm, coeff=1):
         """Assign harmonic bond interactions
         
         Parameters
@@ -859,7 +863,7 @@ class PolymerModel(FunctionLibrary):
 
             self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
 
-    def _assign_angle_funcs(self, theta0_rad, kappa, coeff=1):
+    def vonMises_angle_test_funcs(self, theta0_rad, kappa, coeff=1):
         """Assign harmonic angle interactions
         
         Parameters
@@ -904,7 +908,7 @@ class PolymerModel(FunctionLibrary):
 
             self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
 
-    def _assign_pairwise_funcs(self, r0_nm, w_nm, coeff=1, bond_cutoff=3):
+    def gaussian_pair_test_funcs(self, r0_nm, w_nm, coeff=1, bond_cutoff=3):
         """Assign a Gaussian well a each position"""
 
         assert self.n_atoms > bond_cutoff, "Not enough number of atoms to have angle interactions"
@@ -936,7 +940,7 @@ class PolymerModel(FunctionLibrary):
     ##################################################
     # EVALUATE POTENTIAL ON TRAJECTORY
     ##################################################
-    def gradient_U0(self, traj):
+    def gradient_U0(self, traj, cv_traj):
         """Gradient of fixed potential terms
         
         Parameters
@@ -974,43 +978,66 @@ class PolymerModel(FunctionLibrary):
                     grad_U0[:, dxi] += deriv
         return grad_U0
 
-    def gradient_U1(self, traj):
+    def gradient_U1(self, traj, cv_traj):
         """Gradient of potential form associated with each parameter
         
         Parameters
         ----------
         traj : mdtraj.Trajectory
+            Molecular dynamics trajectory.
+
+        cv_traj : np.ndarray
+            Collective variable trajectory.
         
         Returns
         -------
-        grad_U1 : np.ndarray
-            Matrix of gradients
+        grad_x_U1 : np.ndarray
+            Gradient with respect to Cartesian coordinates
         """
 
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-        grad_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
+        if self.using_cv:
+            # if potentials depend on collective variables
+            # the gradient requires chain rule 
 
-        for i in range(self.n_params): 
-            # parameter i corresponds to functional form i
-            # coords assigned to functional form i
-            coord_idxs = self.U_coord_idxs[1][i]    # I_r
+            #cv_traj = self._collective_variable_value(traj)
+            Jac = self._Jacobian_cv(xyz_flat)
 
-            for j in range(len(self.dU_funcs[1][i])):
-                # derivative wrt argument j
-                d_func = self.dU_funcs[1][i][j]
-                
-                for n in range(len(coord_idxs)):
-                    # coordinates assigned to this derivative
-                    deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)
+            grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
+            for i in range(self.n_params_cv): 
+                for j in range(len(self.cv_dU_funcs[i])):
+                    # derivative wrt argument j
+                    d_func = self.cv_dU_funcs[i][j]
+                    grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
 
-                    # derivative is wrt to coordinate index dxi
-                    dxi = coord_idxs[n][j]
+            grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
 
-                    # force on each coordinate is separated by associated
-                    # parameter
-                    grad_U1[:, dxi, i] += deriv
-        return grad_U1
+        else:
+            # gradient
+
+            grad_x_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
+
+            for i in range(self.n_params): 
+                # parameter i corresponds to functional form i
+                # coords assigned to functional form i
+                coord_idxs = self.U_coord_idxs[1][i]    # I_r
+
+                for j in range(len(self.dU_funcs[1][i])):
+                    # derivative wrt argument j
+                    d_func = self.dU_funcs[1][i][j]
+                    
+                    for n in range(len(coord_idxs)):
+                        # coordinates assigned to this derivative
+                        deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)
+
+                        # derivative is wrt to coordinate index dxi
+                        dxi = coord_idxs[n][j]
+
+                        # force on each coordinate is separated by associated
+                        # parameter
+                        grad_x_U1[:, dxi, i] += deriv
+        return grad_x_U1
 
     def gradient_U1_cv(self, traj, cv_traj):
         """Gradient of potential form associated with each parameter
