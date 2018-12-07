@@ -16,32 +16,25 @@ import mdtraj as md
 import simulation.openmm as sop
 import implicit_force_field as iff
 
+### NOTES
+# scaling the terms of the potential reduces the condition number of the
+# force matrix by several orders of magnitude. Pre-conditioning by column
+# multiplication
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("run_idx", type=int)
-    parser.add_argument("n_gauss", type=int)
-    args = parser.parse_args()
-
-    run_idx = args.run_idx
-    n_gauss = args.n_gauss
-
     n_beads = 25
-    #n_beads = 5
-    #n_beads = 4
-    #n_beads = 3
     name = "c" + str(n_beads)
     T = 300
     kb = 0.0083145
     beta = 1./(kb*T)
+    n_pair_gauss = 10
+    #M = 3
+    M = 1   # number of eigenvectors to use
+    fixed_bonded_terms = True
+    using_cv = True
 
-    traj_idx = 1
-    #topname = "c25_nosolv_min.pdb"
-    topname = name + "_min.pdb"
-    min_name = name + "_min_{}.pdb".format(traj_idx)
-    log_name = name + "_{}.log".format(traj_idx)
-    traj_name = name + "_traj_cent_{}.dcd".format(traj_idx)
-    lastframe_name = name + "_fin_{}.pdb".format(traj_idx)
-
+    #msm_savedir = "msm_dih_dists"
+    msm_savedir = "msm_dists"
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params
@@ -55,68 +48,78 @@ if __name__ == "__main__":
     theta0_rad = theta0/unit.radian
     r0_nm = r0/unit.nanometer
 
-    #gauss_r0_nm = np.linspace(0.3, 1, 10)
-    #gauss_w_nm = 0.1*np.ones(len(gauss_r0_nm))
-
-    gauss_r0_nm = np.linspace(0.3, 1, n_gauss)
+    gauss_r0_nm = np.linspace(0.3, 1, n_pair_gauss)
     gauss_sigma = gauss_r0_nm[1] - gauss_r0_nm[0]
     gauss_w_nm = gauss_sigma*np.ones(len(gauss_r0_nm))
-
-    #n_gauss = len(gauss_r0_nm)
-
-    #msm_savedir = "msm_dih_dists"
-    msm_savedir = "msm_dists"
-
-    #M = 3
-    M = 1   # number of eigenvectors to use
-
-    #cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_10"
-    cg_savedir = "Ucg_eigenpair_fixed_bonds_angles_free_pairs_{}_CV_{}".format(n_gauss, M)
-
-    # scaling the terms of the potential reduces the condition number of the
-    # force matrix by several orders of magnitude. Pre-conditioning by column
-    # multiplication
 
     print "creating Ucg..."
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
-    Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
-    #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
-    Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=True)
-    Ucg.gaussian_pair_potentials(gauss_r0_nm, gauss_w_nm, scale_factor=10)
+    cg_savedir = "Ucg_eigenpair"
 
+    if fixed_bonded_terms:
+        cg_savedir += "_fixed_bonds_angles"
+        Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
+        Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
+        #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
+        Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=True)
 
-    ply_idxs = np.arange(25)
-    pair_idxs = []
-    for i in range(len(ply_idxs) - 1):
-        for j in range(i + 4, len(ply_idxs)):
-            pair_idxs.append([ply_idxs[i], ply_idxs[j]])
-    pair_idxs = np.array(pair_idxs)
-
-    # add test functions
-    use_cv_f_j = True
-    if use_cv_f_j:
+    if using_cv:
         # centers of test functions in collective variable (CV) space
+        ply_idxs = np.arange(n_beads)
+        pair_idxs = []
+        for i in range(len(ply_idxs) - 1):
+            for j in range(i + 4, len(ply_idxs)):
+                pair_idxs.append([ply_idxs[i], ply_idxs[j]])
+        pair_idxs = np.array(pair_idxs)
+
         cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
         cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
-        #cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
         cv_r0 = cv_r0.reshape((len(cv_r0),1))
 
         cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
         cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
-        # TODO: add additional features
         Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
         Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
+        Ucg.gaussian_cv_potentials(cv_r0, cv_w)
+
+        cg_savedir += "_CV_{}_{}".format(M, cv_r0)
     else:
+        cg_savedir += "_gauss_pairs_{}".format(n_pair_gauss)
+        Ucg.gaussian_pair_potentials(gauss_r0_nm, gauss_w_nm, scale_factor=10)
         Ucg.gaussian_bond_test_funcs([r0_nm], [0.3])
         Ucg.vonMises_angle_test_funcs([theta0_rad], [4])
         Ucg.gaussian_pair_test_funcs(gauss_r0_nm, gauss_w_nm)
 
+    topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+    ti_file = msm_savedir + "/tica_ti.npy"
+    psinames = []
+    for i in range(len(trajnames)):
+        tname = trajnames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+        temp_names = []
+        for n in range(M):
+            temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
+        psinames.append(temp_names)
+
+    Ucg.setup_eigenpair(trajnames, topfile, ti_file, psinames=psinames, M=M)
+
+    cg_savedir = "TESTING_" + cg_savedir
+    if not os.path.exists(cg_savedir):
+        os.mkdir(cg_savedir)
+    os.chdir(cg_savedir)
+
+    np.save("X.npy", Ucg.eigenpair_X)
+    np.save("d.npy", Ucg.eigenpair_d)
+
+    raise SystemExit
+
     D = Ucg.n_dof           # number of degrees of freedom
     R = Ucg.n_params        # number of free model parameters
-    if use_cv_f_j:
+    if using_cv:
         P = Ucg.n_test_funcs_cv # number of test functions
     else:
         P = Ucg.n_test_funcs    # number of test functions
@@ -200,14 +203,7 @@ if __name__ == "__main__":
         print "calculation took: {:.4f} sec".format(min_calc_traj)
         sys.stdout.flush()
 
-        #if n >= 5:
-        #    break
-
-    #X /= float(Ntot)
-    #d /= float(Ntot)
     
-    #"Ucg_eigenpair"
-    #eg_savedir = msm_savedir + "/Ucg_eigenpair"
     eg_savedir = "run_" + str(run_idx) + "/" + cg_savedir 
     if not os.path.exists(eg_savedir):
         os.mkdir(eg_savedir)
