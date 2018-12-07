@@ -1201,7 +1201,7 @@ class PolymerModel(FunctionLibrary):
     ###############################################################
     # CALCULATE MATRICES FOR EIGENPAIR METHOD
     ###############################################################
-    def setup_eigenpair(self, trajnames, topfile, ti_file, psinames=[], M=1):
+    def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[]):
         """Calculate eigenpair matrices
        
         Parameters
@@ -1212,16 +1212,19 @@ class PolymerModel(FunctionLibrary):
         topfile : str
             Filename for topology (pdb)
 
+        psinames : list, str
+            Filenames for 
+            
         ti_file : str
             Filename for timescales
-
-        psinames : list, str (opt)
-            Collective variable rilenames if pre-calculated. Will calculate
-            collective variables on the fly if not given. 
 
         M : int (default=1)
             Number of timescales to keep in eigenfunction expansion.
         
+        cv_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
         """
         # TODO: allow collective variable to be different than eigenvector
 
@@ -1235,6 +1238,9 @@ class PolymerModel(FunctionLibrary):
         if self.using_cv and not self.cv_defined:
             raise ValueError("Collective variables are not defined!")
 
+        if len(psinames) != len(trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
         kappa = 1./np.load(ti_file)[:M]
 
         print "calculating eigenpair matrices..."
@@ -1242,29 +1248,34 @@ class PolymerModel(FunctionLibrary):
         for n in range(len(trajnames)):
             print "  traj: ", n+1
             sys.stdout.flush()
-            if len(psinames) > 0:
-                # load tics
-                psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
             else:
-                psi_traj = None
+                cv_traj = None
 
             start_idx = 0
             for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
                 N_curr = chunk.n_frames
-                if psi_traj is None:
-                    Psi = self.calculate_cv(chunk)
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_curr,:]
+
+                if cv_traj is None:
+                    cv_chunk = self.calculate_cv(chunk)
                 else:
-                    Psi = psi_traj[start_idx:start_idx + N_curr,:]
+                    cv_chunk = cv_traj[start_idx:start_idx + N_curr,:]
 
                 # cartesian coordinates unraveled
                 xyz_traj = np.reshape(chunk.xyz, (N_curr, self.n_dof))
 
                 # calculate gradient of fixed and parametric potential terms
-                grad_U1 = self.gradient_U1(xyz_traj, Psi)
+                grad_U1 = self.gradient_U1(xyz_traj, cv_chunk)
 
                 # calculate test function values, gradient, and Laplacian
-                test_f = self.test_functions(xyz_traj, Psi)
-                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, Psi)
+                test_f = self.test_functions(xyz_traj, cv_chunk)
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
                 # very useful einstein summation function to calculate
                 # dot products with eigenvectors

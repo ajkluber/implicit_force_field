@@ -4,9 +4,6 @@ import glob
 import time
 import argparse
 import numpy as np
-#import matplotlib
-#matplotlib.use("Agg")
-#import matplotlib.pyplot as plt
 
 import simtk.unit as unit
 import simtk.openmm.app as app
@@ -15,11 +12,6 @@ import mdtraj as md
 
 import simulation.openmm as sop
 import implicit_force_field as iff
-
-### NOTES
-# scaling the terms of the potential reduces the condition number of the
-# force matrix by several orders of magnitude. Pre-conditioning by column
-# multiplication
 
 if __name__ == "__main__":
     n_beads = 25
@@ -54,7 +46,7 @@ if __name__ == "__main__":
 
     print "creating Ucg..."
     # coarse-grain polymer potential with free parameters
-    Ucg = iff.basis_library.PolymerModel(n_beads, using_cv=using_cv, using_D2=using_D2)
+    Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2)
     cg_savedir = "Ucg_eigenpair"
 
     if fixed_bonded_terms:
@@ -84,7 +76,7 @@ if __name__ == "__main__":
         Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
         Ucg.gaussian_cv_potentials(cv_r0, cv_w)
 
-        cg_savedir += "_CV_{}_{}".format(M, cv_r0)
+        cg_savedir += "_CV_{}_{}".format(M, len(cv_r0))
     else:
         cg_savedir += "_gauss_pairs_{}".format(n_pair_gauss)
         Ucg.gaussian_pair_potentials(gauss_r0_nm, gauss_w_nm, scale_factor=10)
@@ -105,7 +97,7 @@ if __name__ == "__main__":
             temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
         psinames.append(temp_names)
 
-    Ucg.setup_eigenpair(trajnames, topfile, ti_file, psinames=psinames, M=M)
+    Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames)
 
     cg_savedir = "TESTING_" + cg_savedir
     if not os.path.exists(cg_savedir):
@@ -117,109 +109,25 @@ if __name__ == "__main__":
 
     raise SystemExit
 
-    D = Ucg.n_dof           # number of degrees of freedom
-    R = Ucg.n_params        # number of free model parameters
-    if using_cv:
-        P = Ucg.n_test_funcs_cv # number of test functions
-    else:
-        P = Ucg.n_test_funcs    # number of test functions
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-    ##########################################################
-    # calculate integrated sindy (eigenpair) matrix equation.
-    ########################################################## 
-    # load tics
-    topfile = glob.glob("run_{}/".format(run_idx) + name + "_min_cent.pdb")[0]
-    trajnames = glob.glob("run_{}/".format(run_idx) + name + "_traj_cent_*.dcd") 
-    traj_idxs = []
-    for i in range(len(trajnames)):
-        tname = trajnames[i]
-        idx1 = (os.path.dirname(tname)).split("_")[-1]
-        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-        traj_idxs.append([idx1, idx2])
+    coeff = np.linalg.lstsq(Ucg.eigenpair_X, Ucg.eigenpair_d, rcond=1e-6)[0]
 
-    kappa = 1./np.load(msm_savedir + "/tica_ti.npy")[:M]
+    D = 1./coeff[-1]
 
-    X = np.zeros((M*P, R+1), float)
-    d = np.zeros(M*P, float)
+    U = np.zeros(len(cv_r0))
+    for i in range(len(coeff) - 1):
+        U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+    U -= U.min()
 
-    print "calculating matrix elements..."
-    Ntot = 0
-    for n in range(len(traj_idxs)):
-        starttime = time.time()
-
-        print "traj: ", n+1
-        sys.stdout.flush()
-        idx1, idx2 = traj_idxs[n]
-
-        # load tics
-        psi_traj = []
-        for i in range(M):
-            # save TIC with indices of corresponding traj
-            tic_saveas = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, i+1)
-            psi_traj.append(np.load(tic_saveas))
-        psi_traj = np.array(psi_traj).T
-
-        if len(psi_traj.shape) == 1:
-            psi_traj = psi_traj.reshape((psi_traj.shape[0], 1))
-
-        # calculate matrix elements
-        start_idx = 0
-        chunk_num = 1
-        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-            print "    chunk: ", chunk_num
-            sys.stdout.flush()
-            chunk_num += 1
-
-            # eigenfunction approximation
-            Psi = psi_traj[start_idx:start_idx + chunk.n_frames,:]
-
-            # calculate gradient of fixed and parametric potential terms
-            grad_U0 = Ucg.gradient_U0(chunk, Psi)
-            grad_U1 = Ucg.gradient_U1(chunk, Psi)
-
-            # calculate test function values, gradient, and Laplacian
-            grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(chunk, Psi) 
-            test_f = Ucg.test_functions(chunk, Psi)
-
-            # very useful einstein summation function to calculate
-            # dot products with eigenvectors
-            tempX = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
-            #tempX2 = np.einsum("tm,tp->mp", Psi, test_f).reshape(M*P)
-
-            tempZ = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
-            tempY = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
-
-            tempX2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
-
-            #np.reshape(tempX, (M*P, R))
-            X[:,:-1] += tempX
-            X[:,-1] += tempX2
-            d += tempZ + tempY
-
-            start_idx += chunk.n_frames
-            Ntot += chunk.n_frames
-
-        min_calc_traj = (time.time() - starttime)
-        print "calculation took: {:.4f} sec".format(min_calc_traj)
-        sys.stdout.flush()
-
-    
-    eg_savedir = "run_" + str(run_idx) + "/" + cg_savedir 
-    if not os.path.exists(eg_savedir):
-        os.mkdir(eg_savedir)
-    os.chdir(eg_savedir)
-
-    np.save("X.npy", X)
-    np.save("d.npy", d)
-
-    with open("X_cond.dat", "w") as fout:
-        fout.write(str(np.linalg.cond(X)))
-
-    with open("Ntot.dat", "w") as fout:
-        fout.write(str(Ntot))
-
-    lstsq_soln = np.linalg.lstsq(X, d)
-    np.save("coeff.npy", lstsq_soln[0])
+    plt.figure()
+    plt.plot(cv_r0[:,0], U)
+    plt.xlabel("TIC1")
+    plt.ylabel(r"$U_{cg}$")
+    plt.savefig("U_cv.pdf")
+    plt.savefig("U_cv.png")
 
     raise SystemExit
 
