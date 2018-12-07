@@ -455,7 +455,7 @@ class OneDimensionalModel(FunctionLibrary):
 
 class PolymerModel(FunctionLibrary):
 
-    def __init__(self, n_atoms, using_cv=False):
+    def __init__(self, n_atoms, using_cv=False, using_D2=False):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -465,9 +465,10 @@ class PolymerModel(FunctionLibrary):
         """
         FunctionLibrary.__init__(self, n_atoms)
 
-        # By 
+        self.using_D2 = using_D2
         self.using_cv = using_cv
         self.cv_defined = False
+        self.constant_diff = True
 
         # Collective variable (CV) potential functions
         self.cv_U_sym = []             # functional forms, symbolic
@@ -490,20 +491,12 @@ class PolymerModel(FunctionLibrary):
         self.dchi_funcs = []
         self.d2chi_funcs = []
 
-        # Need:
-        #  - f_j(CV) functions. Symbolic and lambified.
-        #  - Derviative of f_j(CV) wrt arguments
-        #  - Laplacian of f_j(CV) wrt arguments 
-        #  - CV as function of xyz coordinates. i.e. Jacobian
-        #  - Derivative of CV wrt Cartesian coords
-
     @property
     def n_test_funcs(self):
-        return np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
-
-    @property
-    def n_test_funcs_cv(self):
-        return len(self.cv_f_funcs)
+        if self.using_cv:
+            return len(self.cv_f_funcs)
+        else:
+            return np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
 
     @property
     def n_cv_dim(self):
@@ -997,8 +990,6 @@ class PolymerModel(FunctionLibrary):
         if self.using_cv:
             # if potentials depend on collective variables
             # the gradient requires chain rule 
-
-            #cv_traj = self.calculate_cv(traj)
             Jac = self._cv_cartesian_Jacobian(xyz_flat)
 
             grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
@@ -1009,9 +1000,8 @@ class PolymerModel(FunctionLibrary):
                     grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
 
             grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
-
         else:
-            # gradient 
+            # gradient with respect to Cartesian coordinates, directly. 
             grad_x_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
 
             for i in range(self.n_params): 
@@ -1041,16 +1031,16 @@ class PolymerModel(FunctionLibrary):
     def test_functions(self, traj, cv_traj):
         """Test functions"""
 
+        test_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
+
         if self.using_cv:
-            test_f = np.zeros((cv_traj.shape[0], self.n_test_funcs_cv), float)
+            # collective variable test functions
             for i in range(len(self.cv_f_funcs)):
                 test_f[:,i] = self.cv_f_funcs[i](*cv_traj.T)
-
         else:
-            #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+            # Cartesian coordinate test functions 
             xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
-            test_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
             start_idx = 0
             for j in range(len(self.f_funcs)):
                 # test function form j
@@ -1070,6 +1060,7 @@ class PolymerModel(FunctionLibrary):
         xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
         if self.using_cv:
+            # collective variable test functions
             Jac = self._cv_cartesian_Jacobian(xyz_flat)
             Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
             Hess_f = self._Hessian_test_func_cv(cv_traj)
@@ -1082,15 +1073,14 @@ class PolymerModel(FunctionLibrary):
             Lap_term2 = np.einsum("tnd,tmd,tmnp->tp", Jac, Jac, Hess_f)   
             Lap_x_f = Lap_term1 + Lap_term2
         else:
-            #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
-            # Laplacian of Cartesian coordinate test functions
-            grad_x_f = self._cartesian_test_funcs_gradient(traj)
-            Lap_f = self._cartesian_test_funcs_laplacian(traj)
+            # Cartesian coordinate test functions 
+            grad_x_f = self._cartesian_test_funcs_gradient(xyz_flat)
+            Lap_x_f = self._cartesian_test_funcs_laplacian(xyz_flat)
 
         return grad_x_f, Lap_x_f
 
-    def _cartesian_test_funcs_gradient(self, traj):
-        grad_x_f = np.zeros((traj.n_frames, self.n_dof, self.n_test_funcs), float)
+    def _cartesian_test_funcs_gradient(self, xyz_flat):
+        grad_x_f = np.zeros((xyz_flat.shape[0], self.n_dof, self.n_test_funcs), float)
         
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1109,14 +1099,12 @@ class PolymerModel(FunctionLibrary):
             start_idx += len(self.f_coord_idxs[j])
         return grad_x_f
 
-    def _cartesian_test_funcs_laplacian(self, traj):
+    def _cartesian_test_funcs_laplacian(self, xyz_flat):
         """Laplacian of test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
-        Lap_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
+        Lap_x_f = np.zeros((xyz_flat.shape[0], self.n_test_funcs), float)
 
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1127,11 +1115,11 @@ class PolymerModel(FunctionLibrary):
                 for i in range(len(self.d2f_funcs[j])):
                     # add the double derivative wrt argument i
                     d2f_j_func = self.d2f_funcs[j][i]
-                    Lap_f[:, start_idx + n] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
+                    Lap_x_f[:, start_idx + n] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
 
-        return Lap_f
+        return Lap_x_f
 
     #########################################################################
     # Collective variable test functions. Gradient and Laplacian
@@ -1202,9 +1190,9 @@ class PolymerModel(FunctionLibrary):
 
     def _Hessian_test_func_cv(self, cv_traj):
 
-        Hess_f = np.zeros((cv_traj.shape[0], self.n_cv_dim, self.n_cv_dim, self.n_test_funcs_cv), float)
+        Hess_f = np.zeros((cv_traj.shape[0], self.n_cv_dim, self.n_cv_dim, self.n_test_funcs), float)
 
-        for m in range(self.n_test_funcs_cv):
+        for m in range(self.n_test_funcs):
             for i in range(self.n_cv_dim):
                 for j in range(self.n_cv_dim):
                     d2_test_func = self.cv_d2f_funcs[m][i][j]
@@ -1213,13 +1201,82 @@ class PolymerModel(FunctionLibrary):
 
     def _gradient_test_functions_cv_wrt_cv(self, cv_traj):
 
-        grad_cv_f = np.zeros((cv_traj.shape[0], self.n_cv_dim, self.n_test_funcs_cv), float)
+        grad_cv_f = np.zeros((cv_traj.shape[0], self.n_cv_dim, self.n_test_funcs), float)
         for i in range(len(self.cv_f_funcs)):
             # for each test functions we have the derivative wrt each argument
             for j in range(len(self.cv_df_funcs[i])):
                 d_func = self.cv_df_funcs[i][j]
                 grad_cv_f[:,j,i] = d_func(*cv_traj.T)
         return grad_cv_f
+
+    def setup_eigenpair(self, trajnames, topfile, ti_file, psinames=[], M=1):
+        """Calculate eigenpair matrices"""
+        R = self.n_params
+        P = self.n_test_funcs
+
+        X = np.zeros((P, R + 1), float)
+        d = np.zeros(P, float)
+        D2 = np.zeros((R + 1, R + 1), float)    # TODO: high-dimensional smoothness 
+
+        if self.using_cv and not self.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        kappa = 1./np.load(ti_file)[:M]
+
+        print "calculating eigenpair matrices..."
+        N_prev = 0
+        for n in range(len(trajnames)):
+            print "  traj: ", n+1
+            sys.stdout.flush()
+            if len(psinames) > 0:
+                # load tics
+                psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+            else:
+                psi_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                N_curr = chunk.n_frames
+                if psi_traj is None:
+                    Psi = self.calculate_cv(chunk)
+                else:
+                    Psi = psi_traj[start_idx:start_idx + N_curr,:]
+
+                # cartesian coordinates unraveled
+                #xyz_flat = np.reshape(chunk.xyz, (N_curr, self.n_dof))
+
+                # calculate gradient of fixed and parametric potential terms
+                grad_U0 = self.gradient_U0(chunk, Psi)
+                grad_U1 = self.gradient_U1(chunk, Psi)
+
+                # calculate test function values, gradient, and Laplacian
+                test_f = self.test_functions(chunk, Psi)
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(chunk, Psi)
+
+                # very useful einstein summation function to calculate
+                # dot products with eigenvectors
+                curr_X1 = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
+                curr_X2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
+
+                curr_d1 = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
+                curr_d2 = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
+                curr_d = curr_d1 + curr_d2
+
+                if self.calc_D2:
+                    #TODO
+                    pass
+
+                # running average to reduce numerical error
+                X[:,:-1] = (curr_X1 + N_prev*X[:,:-1])/(N_prev + N_curr)
+                X[:,-1] = (curr_X2 + N_prev*X[:,-1])/(N_prev + N_curr)
+                d = (curr_d + N_prev*d)/(N_prev + N_curr)
+
+                start_idx += N_curr
+                N_prev += N_curr
+
+        self.eigenpair_X = X
+        self.eigenpair_d = d
+        self.eigenpair_D2 = D2
 
 def polymer_library(n_beads, bonds=True, angles=True, non_bond_wca=True, non_bond_gaussians=True):
     # Soon to be deprecated oct 2018
