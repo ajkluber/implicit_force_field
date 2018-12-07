@@ -28,10 +28,10 @@ if __name__ == "__main__":
     kb = 0.0083145
     beta = 1./(kb*T)
     n_pair_gauss = 10
-    #M = 3
     M = 1   # number of eigenvectors to use
-    fixed_bonded_terms = True
+    fixed_bonded_terms = False
     using_cv = True
+    using_D2 = False
 
     #msm_savedir = "msm_dih_dists"
     msm_savedir = "msm_dists"
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     print "creating Ucg..."
     # coarse-grain polymer potential with free parameters
-    Ucg = iff.basis_library.PolymerModel(n_beads)
+    Ucg = iff.basis_library.PolymerModel(n_beads, using_cv=using_cv, using_D2=using_D2)
     cg_savedir = "Ucg_eigenpair"
 
     if fixed_bonded_terms:

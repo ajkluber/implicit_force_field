@@ -1,16 +1,18 @@
 import time
+import sys
 import numpy as np
 import sympy
 
 import scipy.interpolate
 
+import mdtraj as md
 import simtk.unit as unit
 
 import simulation.openmm as sop
 
 
 class FunctionLibrary(object):
-    def __init__(self, n_atoms, n_dim=3, periodic_box_dims=[]):
+    def __init__(self, n_atoms, n_dim=3, using_cv=False, using_D2=False, periodic_box_dims=[]):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -35,6 +37,12 @@ class FunctionLibrary(object):
         self.n_dof = n_dim*n_atoms
         self.box_dims = periodic_box_dims
 
+        self.using_D2 = using_D2
+        self.using_cv = using_cv
+        self.using_U0 = False
+        self.cv_defined = False
+        self.constant_diff = True
+
         # the total potential has two terms U = [U_0, U_1]
         # U_0 is the fixed term of the potential
         # U_1 is the parametric term of the potential
@@ -52,7 +60,53 @@ class FunctionLibrary(object):
         self.df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
         self.d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
 
+        # Collective variable (CV) potential functions
+        self.cv_U_sym = []             # functional forms, symbolic
+        self.cv_U_funcs = []           # functional forms, lambdified
+        self.cv_dU_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+
+        # Collective variable (CV) test functions
+        self.cv_f_sym = []             # functional forms, symbolic
+        self.cv_f_funcs = []           # functional forms, lambdified
+        self.cv_df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        self.cv_d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+
+        # CVs are linear combination of features (chi)
+        self.chi_sym = []
+        self.chi_funcs = []
+        self.chi_coeff = [] 
+        self.chi_mean = [] 
+        self.chi_coord_idxs = []
+        self.dchi_funcs = []
+        self.d2chi_funcs = []
+
         self._define_symbolic_variables()
+
+    @property
+    def n_params(self):
+        if hasattr(self, "using_cv") and self.using_cv:
+            return len(self.cv_U_funcs)
+        else:
+            return len(self.U_funcs[1])
+
+    @property
+    def n_test_funcs(self):
+        if self.using_cv:
+            return len(self.cv_f_funcs)
+        else:
+            return int(np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ]))
+
+    @property
+    def n_cv_dim(self):
+        return self.chi_coeff[0].shape[1]
+
+    @property
+    def n_feature_types(self):
+        return len(self.chi_coeff)
+
+    @property
+    def n_features(self):
+        return np.sum([ x.shape[0] for x in self.chi_coeff ])
 
     def _define_symbolic_variables(self):
         """Define symbolic variables"""
@@ -144,6 +198,9 @@ class FunctionLibrary(object):
     def _add_potential_term(self, fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs,
             temp_dU_funcs):
 
+        if fixed:
+            self.using_U0 = True
+
         fixd = int(not fixed) # 0 for fixed, 1 for free
         self.U_sym[fixd].append(U_sym)
         self.U_funcs[fixd].append(U_lamb)
@@ -158,14 +215,6 @@ class FunctionLibrary(object):
         self.f_coord_idxs.append(temp_f_coord_idxs)
         self.df_funcs.append(temp_df_funcs)
         self.d2f_funcs.append(temp_d2f_funcs)
-
-    @property
-    def n_params(self):
-        return len(self.U_funcs[1])
-
-    @property
-    def n_params_cv(self):
-        return len(self.cv_U_funcs)
 
     def calculate_potential_terms(self, traj):
 
@@ -463,53 +512,94 @@ class PolymerModel(FunctionLibrary):
         participating coordinate.
 
         """
-        FunctionLibrary.__init__(self, n_atoms)
+        FunctionLibrary.__init__(self, n_atoms, using_cv=using_cv, using_D2=using_D2)
 
-        self.using_D2 = using_D2
-        self.using_cv = using_cv
-        self.cv_defined = False
-        self.constant_diff = True
+    ##########################################################
+    # DEFINE COLLECTIVE VARIABLE
+    ##########################################################
+    def linear_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
+        """Enumerate the collective variables in terms of feature functions
+        symbolically and take derivate of features wrt each Cartesian coord
+        
+        Collective variables are allowed to be linear combination of features
+        which are functions of cartesian coordinates.
 
-        # Collective variable (CV) potential functions
-        self.cv_U_sym = []             # functional forms, symbolic
-        self.cv_U_funcs = []           # functional forms, lambdified
-        self.cv_dU_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+        You should use, for example, the result of Time Independent Component
+        Analysis (TICA) as collective variables.
 
-        # Collective variable (CV) test functions
-        self.cv_f_sym = []             # functional forms, symbolic
-        self.cv_f_funcs = []           # functional forms, lambdified
-        self.cv_df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
-        self.cv_d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
+        Parameters
+        ----------
+        feature_types : list (n_features)
+            Feature types used to define the collective variable.
 
-        # CVs are linear combination of features (chi)
-        self.chi_sym = []
-        self.chi_funcs = []
-        self.chi_coeff = [] 
-        self.chi_mean = [] 
-        self.chi_coord_idxs = []
+        feature_atm_idxs : list of arrays
+            Each element is a list of atom indices that participate in the
+            corresponding feature.
 
-        self.dchi_funcs = []
-        self.d2chi_funcs = []
+        feature_coeff : list of arrays
+            Each element is an array of coefficients that multiple the
+            corresponding feature.
 
-    @property
-    def n_test_funcs(self):
-        if self.using_cv:
-            return len(self.cv_f_funcs)
-        else:
-            return np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
+        feature_mean : np.ndarray
+            Mean value of each feature.
 
-    @property
-    def n_cv_dim(self):
-        return self.chi_coeff[0].shape[1]
+        """
 
-    @property
-    def n_feature_types(self):
-        return len(self.chi_coeff)
+        #TODO: Add more types of features (e.g., angle, dihedral, etc.)
 
-    @property
-    def n_features(self):
-        return np.sum([ x.shape[0] for x in self.chi_coeff ])
+        n_cv_dim = feature_coeff.shape[1]
+        self.cv_sym = [ sympy.symbols("psi" + str(i + 1)) for i in range(n_cv_dim) ]
+        self.cv_args = tuple(self.cv_sym)
 
+        available_feature_types = {"dist":self.r12_sym, "invdist":1/self.r12_sym}
+        feature_type_args = {"dist":self.rij_args, "invdist":self.rij_args}
+
+        for m in range(len(feature_types)):
+            if not feature_types[m] in available_feature_types:
+                raise ValueError(feature_types[m] + " not in available features: " + " ".join(available_feature_types.keys()))
+
+        for m in range(len(feature_types)):
+            # symbolic feature function and variables
+            feat_sym = available_feature_types[feature_types[m]]
+            feat_args = feature_type_args[feature_types[m]] 
+
+            # collective variables are linear combination of features
+            self.chi_coeff.append(feature_coeff)
+            self.chi_mean.append(feature_mean)
+
+            # feature function
+            self.chi_sym.append(feat_sym)
+            self.chi_funcs.append(sympy.lambdify(feat_args, feat_sym, modules="numpy"))
+
+            # first and second derivative of feature function wrt each cartesian
+            # coordinate
+            temp_dchi = []
+            temp_d2chi = []
+            for n in range(len(self.rij_args)):
+                d_chi = feat_sym.diff(feat_args[n])
+                d2_chi = feat_sym.diff(feat_args[n], 2)
+                temp_dchi.append(sympy.lambdify(feat_args, d_chi, modules="numpy"))
+                temp_d2chi.append(sympy.lambdify(feat_args, d2_chi, modules="numpy"))
+            self.dchi_funcs.append(temp_dchi)
+            self.d2chi_funcs.append(temp_d2chi)
+
+            # assign coordinate indices to for feature
+            temp_coord_idxs = []
+            for i in range(len(feature_atm_idxs)):
+                # determine participating coordinate indices from atom indices
+                temp_idxs = []
+                for z in range(len(feature_atm_idxs[i])):
+                    atm_z = feature_atm_idxs[i][z]
+                    temp_idxs.append(np.arange(self.n_dim) + atm_z*self.n_dim)
+                xi_idxs = np.concatenate(temp_idxs) 
+                temp_coord_idxs.append(xi_idxs)
+            self.chi_coord_idxs.append(temp_coord_idxs)
+
+        self.cv_defined = True
+
+    ##########################################################
+    # POTENTIAL FUNCTIONS
+    ##########################################################
     def _generate_pairwise_idxs(self, bond_cutoff=3):
         coord_idxs = []
         for i in range(self.n_atoms - bond_cutoff):
@@ -530,9 +620,6 @@ class PolymerModel(FunctionLibrary):
             coord_idxs.append(xi_idxs)
         return coord_idxs
 
-    ##########################################################3
-    # ASSIGN POTENTIAL FUNCTIONS
-    ##########################################################3
     def harmonic_bond_potentials(self, r0_nm, scale_factor=1, fixed=False):
         """Assign harmonic bond interactions
         
@@ -679,137 +766,8 @@ class PolymerModel(FunctionLibrary):
             self.cv_dU_funcs.append(temp_cv_dU_funcs)
 
     ##########################################################3
-    # ASSIGN TEST FUNCTIONS
+    # TEST FUNCTIONS
     ##########################################################3
-    def linear_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
-        """Enumerate the collective variables in terms of feature functions
-        symbolically and take derivate of features wrt each Cartesian coord
-        
-        Collective variables are allowed to be linear combination of features
-        which are functions of cartesian coordinates.
-
-        You should use, for example, the result of Time Independent Component
-        Analysis (TICA) as collective variables.
-
-        Parameters
-        ----------
-        feature_types : list (n_features)
-            Feature types used to define the collective variable.
-
-        feature_atm_idxs : list of arrays
-            Each element is a list of atom indices that participate in the
-            corresponding feature.
-
-        feature_coeff : list of arrays
-            Each element is an array of coefficients that multiple the
-            corresponding feature.
-
-        feature_mean : np.ndarray
-            Mean value of each feature.
-
-        """
-
-        #TODO: Add more types of features (e.g., angle, dihedral, etc.)
-
-        n_cv_dim = feature_coeff.shape[1]
-        self.cv_sym = [ sympy.symbols("psi" + str(i + 1)) for i in range(n_cv_dim) ]
-        self.cv_args = tuple(self.cv_sym)
-
-        available_feature_types = {"dist":self.r12_sym, "invdist":1/self.r12_sym}
-        feature_type_args = {"dist":self.rij_args, "invdist":self.rij_args}
-
-        for m in range(len(feature_types)):
-            if not feature_types[m] in available_feature_types:
-                raise ValueError(feature_types[m] + " not in available features: " + " ".join(available_feature_types.keys()))
-
-        for m in range(len(feature_types)):
-            # symbolic feature function and variables
-            feat_sym = available_feature_types[feature_types[m]]
-            feat_args = feature_type_args[feature_types[m]] 
-
-            # collective variables are linear combination of features
-            self.chi_coeff.append(feature_coeff)
-            self.chi_mean.append(feature_mean)
-
-            # feature function
-            self.chi_sym.append(feat_sym)
-            self.chi_funcs.append(sympy.lambdify(feat_args, feat_sym, modules="numpy"))
-
-            # first and second derivative of feature function wrt each cartesian
-            # coordinate
-            temp_dchi = []
-            temp_d2chi = []
-            for n in range(len(self.rij_args)):
-                d_chi = feat_sym.diff(feat_args[n])
-                d2_chi = feat_sym.diff(feat_args[n], 2)
-                temp_dchi.append(sympy.lambdify(feat_args, d_chi, modules="numpy"))
-                temp_d2chi.append(sympy.lambdify(feat_args, d2_chi, modules="numpy"))
-            self.dchi_funcs.append(temp_dchi)
-            self.d2chi_funcs.append(temp_d2chi)
-
-            # assign coordinate indices to for feature
-            temp_coord_idxs = []
-            for i in range(len(feature_atm_idxs)):
-                # determine participating coordinate indices from atom indices
-                temp_idxs = []
-                for z in range(len(feature_atm_idxs[i])):
-                    atm_z = feature_atm_idxs[i][z]
-                    temp_idxs.append(np.arange(self.n_dim) + atm_z*self.n_dim)
-                xi_idxs = np.concatenate(temp_idxs) 
-                temp_coord_idxs.append(xi_idxs)
-            self.chi_coord_idxs.append(temp_coord_idxs)
-
-        self.cv_defined = True
-
-
-    def gaussian_cv_test_funcs(self, cv_r0, cv_w):
-        """Add Gaussian test functions in collective variable space
-        
-        Parameters
-        ----------
-        cv_r0 : np.ndarray(P_cv, M) 
-            Centers of test functions in collective variable space
-
-        cv_w : np.ndarray(P_cv)
-            Widths of test functions in collective variable space
-        """
-
-        # 1. Test functions as function of TICs
-        #   a. Gaussian centers and widths
-
-
-        for n in range(len(cv_r0)):
-            # test function is Gaussian with center r0 and width w
-            f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
-            for i in range(1, self.n_cv_dim):
-                f_sym += (self.cv_sym[i] - cv_r0[n][i])**2
-            f_sym = sympy.exp(-self.one_half*f_sym/(cv_w[n]**2))
-            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
-
-            self.cv_f_sym.append(f_sym)
-            self.cv_f_funcs.append(f_lamb)
-
-            # first and second derivative wrt each arg
-            temp_cv_df_funcs = []
-            temp_cv_d2f_funcs = []
-            for i in range(len(self.cv_args)):
-                df_sym = f_sym.diff(self.cv_args[i])
-                temp_cv_df_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
-
-                # need all mixed second derivatives of test functions
-                temp_d2f_funcs = []
-                for j in range(len(self.cv_args)):
-                    d2f_sym = df_sym.diff(self.cv_args[j])
-                    temp_d2f_funcs.append(sympy.lambdify(self.cv_args, d2f_sym, modules="numpy"))
-                temp_cv_d2f_funcs.append(temp_d2f_funcs)
-
-            self.cv_df_funcs.append(temp_cv_df_funcs)
-            self.cv_d2f_funcs.append(temp_cv_d2f_funcs)
-
-
-    ########################################################################
-    # TEST FUNCTIONS DEFINED ON CARTESIAN COORDINATES
-    ########################################################################
     def gaussian_bond_test_funcs(self, r0_nm, w_nm, coeff=1):
         """Assign harmonic bond interactions
         
@@ -926,9 +884,52 @@ class PolymerModel(FunctionLibrary):
 
             self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
             
+    def gaussian_cv_test_funcs(self, cv_r0, cv_w):
+        """Add Gaussian test functions in collective variable space
+        
+        Parameters
+        ----------
+        cv_r0 : np.ndarray(P_cv, M) 
+            Centers of test functions in collective variable space
+
+        cv_w : np.ndarray(P_cv)
+            Widths of test functions in collective variable space
+        """
+
+        # 1. Test functions as function of TICs
+        #   a. Gaussian centers and widths
+
+
+        for n in range(len(cv_r0)):
+            # test function is Gaussian with center r0 and width w
+            f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
+            for i in range(1, self.n_cv_dim):
+                f_sym += (self.cv_sym[i] - cv_r0[n][i])**2
+            f_sym = sympy.exp(-self.one_half*f_sym/(cv_w[n]**2))
+            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
+
+            self.cv_f_sym.append(f_sym)
+            self.cv_f_funcs.append(f_lamb)
+
+            # first and second derivative wrt each arg
+            temp_cv_df_funcs = []
+            temp_cv_d2f_funcs = []
+            for i in range(len(self.cv_args)):
+                df_sym = f_sym.diff(self.cv_args[i])
+                temp_cv_df_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
+
+                # need all mixed second derivatives of test functions
+                temp_d2f_funcs = []
+                for j in range(len(self.cv_args)):
+                    d2f_sym = df_sym.diff(self.cv_args[j])
+                    temp_d2f_funcs.append(sympy.lambdify(self.cv_args, d2f_sym, modules="numpy"))
+                temp_cv_d2f_funcs.append(temp_d2f_funcs)
+
+            self.cv_df_funcs.append(temp_cv_df_funcs)
+            self.cv_d2f_funcs.append(temp_cv_d2f_funcs)
 
     ##################################################
-    # EVALUATE POTENTIAL ON TRAJECTORY
+    # EVALUATE GRADIENT OF POTENTIAL
     ##################################################
     def gradient_U0(self, traj, cv_traj):
         """Gradient of fixed potential terms
@@ -992,8 +993,8 @@ class PolymerModel(FunctionLibrary):
             # the gradient requires chain rule 
             Jac = self._cv_cartesian_Jacobian(xyz_flat)
 
-            grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params_cv), float)
-            for i in range(self.n_params_cv): 
+            grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params), float)
+            for i in range(self.n_params): 
                 for j in range(len(self.cv_dU_funcs[i])):
                     # derivative wrt argument j
                     d_func = self.cv_dU_funcs[i][j]
@@ -1026,7 +1027,7 @@ class PolymerModel(FunctionLibrary):
         return grad_x_U1
 
     #########################################################
-    # EVALUATE TEST FUNCTIONS ON TRAJECTORY
+    # EVALUATE TEST FUNCTIONS
     #########################################################
     def test_functions(self, traj, cv_traj):
         """Test functions"""
@@ -1214,6 +1215,9 @@ class PolymerModel(FunctionLibrary):
         R = self.n_params
         P = self.n_test_funcs
 
+        import pdb
+        pdb.set_trace()
+
         X = np.zeros((P, R + 1), float)
         d = np.zeros(P, float)
         D2 = np.zeros((R + 1, R + 1), float)    # TODO: high-dimensional smoothness 
@@ -1246,7 +1250,6 @@ class PolymerModel(FunctionLibrary):
                 #xyz_flat = np.reshape(chunk.xyz, (N_curr, self.n_dof))
 
                 # calculate gradient of fixed and parametric potential terms
-                grad_U0 = self.gradient_U0(chunk, Psi)
                 grad_U1 = self.gradient_U1(chunk, Psi)
 
                 # calculate test function values, gradient, and Laplacian
@@ -1258,9 +1261,11 @@ class PolymerModel(FunctionLibrary):
                 curr_X1 = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
                 curr_X2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
 
-                curr_d1 = np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
-                curr_d2 = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
-                curr_d = curr_d1 + curr_d2
+                curr_d = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
+
+                if self.using_U0:
+                    grad_U0 = self.gradient_U0(chunk, Psi)
+                    curr_d += np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
 
                 if self.calc_D2:
                     #TODO
