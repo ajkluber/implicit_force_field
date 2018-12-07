@@ -12,7 +12,7 @@ import simulation.openmm as sop
 
 
 class FunctionLibrary(object):
-    def __init__(self, n_atoms, n_dim=3, using_cv=False, using_D2=False, periodic_box_dims=[]):
+    def __init__(self, n_atoms, beta, n_dim=3, using_cv=False, using_D2=False, periodic_box_dims=[]):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -36,6 +36,7 @@ class FunctionLibrary(object):
         self.n_dim = n_dim
         self.n_dof = n_dim*n_atoms
         self.box_dims = periodic_box_dims
+        self.beta = beta
 
         self.using_D2 = using_D2
         self.using_cv = using_cv
@@ -216,24 +217,23 @@ class FunctionLibrary(object):
         self.df_funcs.append(temp_df_funcs)
         self.d2f_funcs.append(temp_d2f_funcs)
 
-    def calculate_potential_terms(self, traj):
+    def calculate_potential_terms(self, xyz_traj):
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
         U_terms = []
         for z in [0,1]:
             temp_U_terms = []
             for i in range(len(self.U_funcs[z])):
                 U_i_func = self.U_funcs[z][i]
-                U_i_tot = np.zeros(traj.n_frames, float)
+                U_i_tot = np.zeros(xyz_traj.shape[0], float)
                 for n in range(len(self.U_coord_idxs[z][i])):
                     xi_idxs = self.U_coord_idxs[z][i][n]
-                    U_i_tot += U_i_func(*xyz_flat[:,xi_idxs].T)
+                    U_i_tot += U_i_func(*xyz_traj[:,xi_idxs].T)
 
                 temp_U_terms.append(U_i_tot)
             U_terms.append(temp_U_terms)
         return U_terms
 
-    def calculate_fixed_forces(self, traj, s_frames=0, G=None):
+    def calculate_fixed_forces(self, xyz_traj, s_frames=0, G=None):
         """Calculate total force due to each parameter along each dimension
         
         Parameters
@@ -249,8 +249,7 @@ class FunctionLibrary(object):
             to previous calculation.
         """
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-        n_rows = (traj.n_frames - s_frames)*self.n_dof
+        n_rows = (xyz_traj.shape[0] - s_frames)*self.n_dof
         n_terms = len(self.U_funcs[0])
 
         if G is None:
@@ -267,9 +266,9 @@ class FunctionLibrary(object):
                 for n in range(len(coord_idxs)):
                     # coordinates assigned to this derivative
                     if s_frames == 0:
-                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)
+                        deriv = -d_func(*xyz_traj[:,coord_idxs[n]].T)
                     else:
-                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
+                        deriv = -d_func(*xyz_traj[:,coord_idxs[n]].T)[:-s_frames]
 
                     # derivative is wrt to coordinate index dxi
                     dxi = coord_idxs[n][j]
@@ -277,7 +276,7 @@ class FunctionLibrary(object):
                     G[xi_ravel_idxs] += deriv.ravel()
         return G
 
-    def calculate_parametric_forces(self, traj, s_frames=0, G=None):
+    def calculate_parametric_forces(self, xyz_traj, s_frames=0, G=None):
         """Calculate total force due to each parameter along each dimension
         
         Parameters
@@ -298,8 +297,7 @@ class FunctionLibrary(object):
             Matrix of 
         """
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-        n_rows = (traj.n_frames - s_frames)*self.n_dof
+        n_rows = (xyz_traj.shape[0] - s_frames)*self.n_dof
 
         if G is None:
             G = np.zeros((n_rows, self.n_params), float)
@@ -316,9 +314,9 @@ class FunctionLibrary(object):
                 for n in range(len(coord_idxs)):
                     # coordinates assigned to this derivative
                     if s_frames == 0:
-                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)
+                        deriv = -d_func(*xyz_traj[:,coord_idxs[n]].T)
                     else:
-                        deriv = -d_func(*xyz_flat[:,coord_idxs[n]].T)[:-s_frames]
+                        deriv = -d_func(*xyz_traj[:,coord_idxs[n]].T)[:-s_frames]
 
                     # derivative is wrt to coordinate index dxi
                     dxi = coord_idxs[n][j]
@@ -504,7 +502,7 @@ class OneDimensionalModel(FunctionLibrary):
 
 class PolymerModel(FunctionLibrary):
 
-    def __init__(self, n_atoms, using_cv=False, using_D2=False):
+    def __init__(self, n_atoms, beta, using_cv=False, using_D2=False):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -512,7 +510,7 @@ class PolymerModel(FunctionLibrary):
         participating coordinate.
 
         """
-        FunctionLibrary.__init__(self, n_atoms, using_cv=using_cv, using_D2=using_D2)
+        FunctionLibrary.__init__(self, n_atoms, beta, using_cv=using_cv, using_D2=using_D2)
 
     ##########################################################
     # DEFINE COLLECTIVE VARIABLE
@@ -931,7 +929,7 @@ class PolymerModel(FunctionLibrary):
     ##################################################
     # EVALUATE GRADIENT OF POTENTIAL
     ##################################################
-    def gradient_U0(self, traj, cv_traj):
+    def gradient_U0(self, xyz_traj, cv_traj):
         """Gradient of fixed potential terms
         
         Parameters
@@ -944,9 +942,7 @@ class PolymerModel(FunctionLibrary):
             Matrix of gradients
         """
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
-        grad_U0 = np.zeros((traj.n_frames, self.n_dof), float)
+        grad_U0 = np.zeros((xyz_traj.shape[0], self.n_dof), float)
 
         for i in range(len(self.U_funcs[0])): 
             # parameter i corresponds to functional form i
@@ -959,7 +955,7 @@ class PolymerModel(FunctionLibrary):
                 
                 for n in range(len(coord_idxs)):
                     # coordinates assigned to this derivative
-                    deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)
+                    deriv = d_func(*xyz_traj[:,coord_idxs[n]].T)
 
                     # derivative is wrt to coordinate index dxi
                     dxi = coord_idxs[n][j]
@@ -969,7 +965,7 @@ class PolymerModel(FunctionLibrary):
                     grad_U0[:, dxi] += deriv
         return grad_U0
 
-    def gradient_U1(self, traj, cv_traj):
+    def gradient_U1(self, xyz_traj, cv_traj):
         """Gradient of potential form associated with each parameter
         
         Parameters
@@ -986,14 +982,12 @@ class PolymerModel(FunctionLibrary):
             Gradient with respect to Cartesian coordinates
         """
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
         if self.using_cv:
             # if potentials depend on collective variables
             # the gradient requires chain rule 
-            Jac = self._cv_cartesian_Jacobian(xyz_flat)
+            Jac = self._cv_cartesian_Jacobian(xyz_traj)
 
-            grad_cv_U1 = np.zeros((traj.n_frames, self.n_cv_dim, self.n_params), float)
+            grad_cv_U1 = np.zeros((xyz.shape[0], self.n_cv_dim, self.n_params), float)
             for i in range(self.n_params): 
                 for j in range(len(self.cv_dU_funcs[i])):
                     # derivative wrt argument j
@@ -1003,7 +997,7 @@ class PolymerModel(FunctionLibrary):
             grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
         else:
             # gradient with respect to Cartesian coordinates, directly. 
-            grad_x_U1 = np.zeros((traj.n_frames, self.n_dof, self.n_params), float)
+            grad_x_U1 = np.zeros((xyz.shape[0], self.n_dof, self.n_params), float)
 
             for i in range(self.n_params): 
                 # parameter i corresponds to functional form i
@@ -1016,7 +1010,7 @@ class PolymerModel(FunctionLibrary):
                     
                     for n in range(len(coord_idxs)):
                         # coordinates assigned to this derivative
-                        deriv = d_func(*xyz_flat[:,coord_idxs[n]].T)
+                        deriv = d_func(*xyz_traj[:,coord_idxs[n]].T)
 
                         # derivative is wrt to coordinate index dxi
                         dxi = coord_idxs[n][j]
@@ -1029,10 +1023,10 @@ class PolymerModel(FunctionLibrary):
     #########################################################
     # EVALUATE TEST FUNCTIONS
     #########################################################
-    def test_functions(self, traj, cv_traj):
+    def test_functions(self, xyz_traj, cv_traj):
         """Test functions"""
 
-        test_f = np.zeros((traj.n_frames, self.n_test_funcs), float)
+        test_f = np.zeros((xyz_traj.shape[0], self.n_test_funcs), float)
 
         if self.using_cv:
             # collective variable test functions
@@ -1040,8 +1034,6 @@ class PolymerModel(FunctionLibrary):
                 test_f[:,i] = self.cv_f_funcs[i](*cv_traj.T)
         else:
             # Cartesian coordinate test functions 
-            xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
             start_idx = 0
             for j in range(len(self.f_funcs)):
                 # test function form j
@@ -1050,20 +1042,18 @@ class PolymerModel(FunctionLibrary):
                 for n in range(len(self.f_coord_idxs[j])):
                     # each coordinate assignment is a different test function
                     xi_idxs = self.f_coord_idxs[j][n]
-                    test_f[:, start_idx + n] = f_j_func(*xyz_flat[:,xi_idxs].T)
+                    test_f[:, start_idx + n] = f_j_func(*xyz_traj[:,xi_idxs].T)
                 start_idx += len(self.f_coord_idxs[j])
 
         return test_f
             
-    def test_funcs_gradient_and_laplacian(self, traj, cv_traj):
+    def test_funcs_gradient_and_laplacian(self, xyz_traj, cv_traj):
         """Gradient of test functions"""
-
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
 
         if self.using_cv:
             # collective variable test functions
-            Jac = self._cv_cartesian_Jacobian(xyz_flat)
-            Hess_cv = self._cv_cartesian_Hessian(xyz_flat)
+            Jac = self._cv_cartesian_Jacobian(xyz_traj)
+            Hess_cv = self._cv_cartesian_Hessian(xyz_traj)
             Hess_f = self._Hessian_test_func_cv(cv_traj)
             grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
             One = np.ones(self.n_dof)
@@ -1075,13 +1065,13 @@ class PolymerModel(FunctionLibrary):
             Lap_x_f = Lap_term1 + Lap_term2
         else:
             # Cartesian coordinate test functions 
-            grad_x_f = self._cartesian_test_funcs_gradient(xyz_flat)
-            Lap_x_f = self._cartesian_test_funcs_laplacian(xyz_flat)
+            grad_x_f = self._cartesian_test_funcs_gradient(xyz_traj)
+            Lap_x_f = self._cartesian_test_funcs_laplacian(xyz_traj)
 
         return grad_x_f, Lap_x_f
 
-    def _cartesian_test_funcs_gradient(self, xyz_flat):
-        grad_x_f = np.zeros((xyz_flat.shape[0], self.n_dof, self.n_test_funcs), float)
+    def _cartesian_test_funcs_gradient(self, xyz_traj):
+        grad_x_f = np.zeros((xyz_traj.shape[0], self.n_dof, self.n_test_funcs), float)
         
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1095,17 +1085,17 @@ class PolymerModel(FunctionLibrary):
                     dxi = xi_idxs[i] 
 
                     df_j_func = self.df_funcs[j][i]
-                    grad_x_f[:, dxi, start_idx + n] = df_j_func(*xyz_flat[:,xi_idxs].T)
+                    grad_x_f[:, dxi, start_idx + n] = df_j_func(*xyz_traj[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
         return grad_x_f
 
-    def _cartesian_test_funcs_laplacian(self, xyz_flat):
+    def _cartesian_test_funcs_laplacian(self, xyz_traj):
         """Laplacian of test functions"""
 
         #n_test_funcs = np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ])
 
-        Lap_x_f = np.zeros((xyz_flat.shape[0], self.n_test_funcs), float)
+        Lap_x_f = np.zeros((xyz_traj.shape[0], self.n_test_funcs), float)
 
         start_idx = 0
         for j in range(len(self.f_funcs)):
@@ -1116,7 +1106,7 @@ class PolymerModel(FunctionLibrary):
                 for i in range(len(self.d2f_funcs[j])):
                     # add the double derivative wrt argument i
                     d2f_j_func = self.d2f_funcs[j][i]
-                    Lap_x_f[:, start_idx + n] += d2f_j_func(*xyz_flat[:,xi_idxs].T)
+                    Lap_x_f[:, start_idx + n] += d2f_j_func(*xyz_traj[:,xi_idxs].T)
 
             start_idx += len(self.f_coord_idxs[j])
 
@@ -1125,13 +1115,11 @@ class PolymerModel(FunctionLibrary):
     #########################################################################
     # Collective variable test functions. Gradient and Laplacian
     #########################################################################
-    def calculate_cv(self, traj):
+    def calculate_cv(self, xyz_traj):
         """Value of collective variables"""
 
-        xyz_flat = np.reshape(traj.xyz, (traj.n_frames, self.n_dof))
-
         # collective variables are sum of features
-        Vals_cv = np.zeros((xyz_flat.shape[0], self.n_cv_dim), float)
+        Vals_cv = np.zeros((xyz_traj.shape[0], self.n_cv_dim), float)
         for m in range(self.n_feature_types):
             # loop over feature types
             chi_m = self.chi_funcs[m]
@@ -1142,16 +1130,16 @@ class PolymerModel(FunctionLibrary):
                 chi_avg = self.chi_mean[m][i]
                 xi_idxs = self.chi_coord_idxs[m][i]
 
-                mean_free_chi = chi_m(*xyz_flat[:,xi_idxs].T) - chi_avg
+                mean_free_chi = chi_m(*xyz_traj[:,xi_idxs].T) - chi_avg
                 Vals_cv[:,:] += np.einsum("m,t->tm", b_coeff, mean_free_chi)
 
         return Vals_cv
 
-    def _cv_cartesian_Jacobian(self, xyz_flat):
+    def _cv_cartesian_Jacobian(self, xyz_traj):
         """Gradient of features wrt Cartesian coordinates"""
 
         # partial derivative of CV wrt to cartesian coordinates
-        Jacobian = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
+        Jacobian = np.zeros((xyz_traj.shape[0], self.n_cv_dim, self.n_dof), float)
 
         for m in range(self.n_feature_types):
             # loop over feature types
@@ -1164,15 +1152,15 @@ class PolymerModel(FunctionLibrary):
                 # add together gradients of each feature 
                 for n in range(len(xi_idxs)):
                     dxi = xi_idxs[n]
-                    d_chi = self.dchi_funcs[m][n](*xyz_flat[:,xi_idxs].T)
+                    d_chi = self.dchi_funcs[m][n](*xyz_traj[:,xi_idxs].T)
                     Jacobian[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d_chi)
         return Jacobian
 
-    def _cv_cartesian_Hessian(self, xyz_flat):
+    def _cv_cartesian_Hessian(self, xyz_traj):
         """Second derivative of features wrt Cartesian coords"""
 
         # partial derivative of CV wrt to cartesian coordinates
-        Hess_cv = np.zeros((xyz_flat.shape[0], self.n_cv_dim, self.n_dof), float)
+        Hess_cv = np.zeros((xyz_traj.shape[0], self.n_cv_dim, self.n_dof), float)
 
         for m in range(self.n_feature_types):
             # loop over feature types
@@ -1185,7 +1173,7 @@ class PolymerModel(FunctionLibrary):
                 # add together gradients of each feature 
                 for n in range(len(xi_idxs)):
                     dxi = xi_idxs[n]
-                    d2_chi = self.d2chi_funcs[m][n](*xyz_flat[:,xi_idxs].T)
+                    d2_chi = self.d2chi_funcs[m][n](*xyz_traj[:,xi_idxs].T)
                     Hess_cv[:,:,dxi] += np.einsum("m,t -> tm", b_coeff, d2_chi)
         return Hess_cv
 
@@ -1210,13 +1198,35 @@ class PolymerModel(FunctionLibrary):
                 grad_cv_f[:,j,i] = d_func(*cv_traj.T)
         return grad_cv_f
 
+    ###############################################################
+    # CALCULATE MATRICES FOR EIGENPAIR METHOD
+    ###############################################################
     def setup_eigenpair(self, trajnames, topfile, ti_file, psinames=[], M=1):
-        """Calculate eigenpair matrices"""
+        """Calculate eigenpair matrices
+       
+        Parameters
+        ----------
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        ti_file : str
+            Filename for timescales
+
+        psinames : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        """
+        # TODO: allow collective variable to be different than eigenvector
+
         R = self.n_params
         P = self.n_test_funcs
-
-        import pdb
-        pdb.set_trace()
 
         X = np.zeros((P, R + 1), float)
         d = np.zeros(P, float)
@@ -1247,27 +1257,27 @@ class PolymerModel(FunctionLibrary):
                     Psi = psi_traj[start_idx:start_idx + N_curr,:]
 
                 # cartesian coordinates unraveled
-                #xyz_flat = np.reshape(chunk.xyz, (N_curr, self.n_dof))
+                xyz_traj = np.reshape(chunk.xyz, (N_curr, self.n_dof))
 
                 # calculate gradient of fixed and parametric potential terms
-                grad_U1 = self.gradient_U1(chunk, Psi)
+                grad_U1 = self.gradient_U1(xyz_traj, Psi)
 
                 # calculate test function values, gradient, and Laplacian
-                test_f = self.test_functions(chunk, Psi)
-                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(chunk, Psi)
+                test_f = self.test_functions(xyz_traj, Psi)
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, Psi)
 
                 # very useful einstein summation function to calculate
                 # dot products with eigenvectors
                 curr_X1 = np.einsum("tm,tdr,tdp->mpr", Psi, -grad_U1, grad_f).reshape((M*P, R))
                 curr_X2 = np.einsum("m,tm,tp->mp", kappa, Psi, test_f).reshape(M*P)
 
-                curr_d = (-1./beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
+                curr_d = (-1./self.beta)*np.einsum("tm,tp->mp", Psi, Lap_f).reshape(M*P)
 
                 if self.using_U0:
-                    grad_U0 = self.gradient_U0(chunk, Psi)
+                    grad_U0 = self.gradient_U0(xyz_traj, Psi)
                     curr_d += np.einsum("tm,td,tdp->mp", Psi, grad_U0, grad_f).reshape(M*P)
 
-                if self.calc_D2:
+                if self.using_D2:
                     #TODO
                     pass
 
