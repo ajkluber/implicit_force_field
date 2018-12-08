@@ -32,7 +32,7 @@ if __name__ == "__main__":
     #python ~/code/implicit_force_field/solve_coeff.py c25_traj_1.dcd c25_min_1.pdb --dt_frame 0.0002 --method qr --bonds --angles --non_bond_wca
 
     assert method in ["full", "chunks", "qr"], "IOError. method must be full, chunks, or qr"
-    print "method: ", method
+    print("method: " + method)
 
 
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     #gamma = 100
     #n_chunks = 50
 
-    print "building basis function database..."
+    print("building basis function database...")
     sys.stdout.flush()
 
     basis_library.PolymerPotential(n_beads)
@@ -175,7 +175,7 @@ if __name__ == "__main__":
             #c_avg = np.mean(coeff, axis=1)
             #c_avg_err = np.std(coeff, axis=1)/np.sqrt(float(coeff.shape[1]))
 
-            #print c_avg, c_avg_err
+            #print(str(c_avg) + " " + str(c_avg_err))
 
             ax = axes[i]
             ax.errorbar(dt_frame*s_complete, c_avg, yerr=c_avg_err)

@@ -1243,10 +1243,10 @@ class PolymerModel(FunctionLibrary):
 
         kappa = 1./np.load(ti_file)[:M]
 
-        print "calculating eigenpair matrices..."
+        print("calculating eigenpair matrices...")
         N_prev = 0
         for n in range(len(trajnames)):
-            print "  traj: ", n+1
+            print("  traj: " + str(n+1))
             sys.stdout.flush()
             # load eigenvectors
             psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T

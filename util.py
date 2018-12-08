@@ -74,7 +74,7 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
     iteration_idx = 0
     for chunk in md.iterload(trajfile, top=topfile, chunk=1000):
         if ((iteration_idx + 1) % 10) == 0:
-            print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+            print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
             sys.stdout.flush()
         if chunk.n_frames > s_frames:
             xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
@@ -94,7 +94,7 @@ def calc_deriv_and_drift(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi,
     return G, Y
 
 def new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=10, method="full", n_chunks=50):
-    print "calculating trajectory derivatives..."
+    print("calculating trajectory derivatives...")
     starttime = time.time()
 
     n_params = len(Ucg.U_funcs[1])
@@ -111,7 +111,7 @@ def new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=10, m
     for chunk in md.iterload(trajfile, top=topfile, chunk=chunksize):
         # solve the problem on each chunk
         if ((iteration_idx + 1) % 10) == 0:
-            print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+            print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
             sys.stdout.flush()
 
         if chunk.n_frames > s_frames:
@@ -152,7 +152,7 @@ def new_solve_KM_coefficients(trajfile, topfile, Ucg, s_frames, s, n_folds=10, m
     return c_solns, cv_score
 
 def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi, dU_ck, s_frames, s, n_folds=10, method="full", n_chunks=50):
-    print "calculating trajectory derivatives..."
+    print("calculating trajectory derivatives...")
     starttime = time.time()
 
     n_params = len(dU_funcs)
@@ -186,7 +186,7 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
         for chunk in md.iterload(trajfile, top=topfile, chunk=chunksize):
             # solve the problem on each chunk
             if ((iteration_idx + 1) % 10) == 0:
-                print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+                print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
                 sys.stdout.flush()
 
             if chunk.n_frames > s_frames:
@@ -237,7 +237,7 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
         for chunk in md.iterload(trajfile, top=topfile, chunk=chunksize):
             # solve the problem on each chunk
             if ((iteration_idx + 1) % 10) == 0:
-                print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+                print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
                 sys.stdout.flush()
 
             if chunk.n_frames > s_frames:
@@ -275,7 +275,7 @@ def solve_KM_coefficients(trajfile, topfile, dU_funcs, dU_idxs, dU_d_arg, dU_dxi
 
     stoptime = time.time()
     runmin = (stoptime - starttime)/60.
-    print "calculation took: {} min".format(runmin)
+    print("calculation took: {} min".format(runmin))
     sys.stdout.flush()
 
     return c_solns, cv_score
@@ -291,7 +291,7 @@ def calc_diffusion(trajfile, topfile, beta, s_frames, s, n_dim, n_frames_tot):
     N = 0
     for chunk in md.iterload(trajfile, top=topfile, chunk=1000):
         if ((iteration_idx + 1) % 10) == 0:
-            print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+            print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
             sys.stdout.flush()
 
         xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
@@ -347,15 +347,15 @@ def Ruiz_preconditioner(X, d):
     #nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))**(1/4)
     nm_ratio = (float(pre_X.shape[0])/float(pre_X.shape[1]))
 
-    print "cond(X)    r1     r2"
-    print "{:.4f}".format(np.log10(np.linalg.cond(X)))
+    print("cond(X)    r1     r2")
+    print("{:.4f}".format(np.log10(np.linalg.cond(X))))
 
     max_iter = 40
     iter = 1
 
     # Ruiz algorithm seeks to have unit norm rows and columns
     while ((r1 > eps1) and (r2 > eps2)) and (iter < max_iter):
-        print "{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2)
+        print("{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2))
         d1 *= 1/np.sqrt(row_norm)
         d2 *= nm_ratio/np.sqrt(col_norm)
 
@@ -368,7 +368,7 @@ def Ruiz_preconditioner(X, d):
         r1 = np.max(row_norm)/np.min(row_norm)
         r2 = np.max(col_norm)/np.min(col_norm)
         iter += 1
-    print "{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2)
+    print("{:.4f}  {:.4f}  {:.4f}".format(np.log10(np.linalg.cond(pre_X)), r1, r2))
 
     pre_d = d1*d
 

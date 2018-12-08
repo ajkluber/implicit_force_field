@@ -38,7 +38,7 @@ if __name__ == "__main__":
     one_half = sympy.Rational(1,2)
 
     # define all variables of the system symbolically
-    print "making variables..."
+    print("making variables...")
     x_idxs = []
     xyz_sym = []
     for i in range(n_beads):
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
     # calculate gradient with respect to each coordinate
     # for each function have list of participating coordinates.
-    print "making derivative lambda functions..."
+    print("making derivative lambda functions...")
     idxs_for_dfk_dxi = [] 
     col_idx = 0
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         fk_with_dxi[np.argwhere(dU_deriv_idxs == i)[:,0],i] = 1
     fk_with_dxi = fk_with_dxi.astype(bool)
 
-    print "getting column indices for derivatives... "
+    print("getting column indices for derivatives... ")
     fk_and_fk_prime_with_dxi = {}
     for i in range(n_basis):
         for j in range(i, n_basis):
@@ -197,14 +197,14 @@ if __name__ == "__main__":
         n_frames_tot += chunk.n_frames
     n_frames_tot = float(n_frames_tot)
 
-    #print "calculating trajectory derivatives..."
+    #print("calculating trajectory derivatives...")
     #starttime = time.time()
     #D_T_D = np.zeros((n_basis, n_basis), float)
     #D_T_Y = np.zeros(n_basis, float) 
     #iteration_idx = 0
     #total_n_iters = int(np.round(n_frames_tot/1000))
     #for chunk in md.iterload(trajfile, top=topfile, chunk=1000):
-    #    print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+    #    print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
     #    xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
     #    D_ikl = np.zeros((chunk.n_frames, n_basis_deriv), float)
 
@@ -243,16 +243,16 @@ if __name__ == "__main__":
 
     #stoptime = time.time()
     #runmin = (stoptime - starttime)/60.
-    #print "calculation took: {} min".format(runmin)
+    #print("calculation took: {} min".format(runmin)
 
-    print "calculating trajectory derivatives..."
+    print("calculating trajectory derivatives...")
     starttime = time.time()
     avgD = np.zeros((n_basis, n_dim), float)
     avgY = np.zeros(n_basis, float) 
     iteration_idx = 0
     total_n_iters = int(np.round(n_frames_tot/1000))
     for chunk in md.iterload(trajfile, top=topfile, chunk=1000):
-        print "  ({}/{})".format(iteration_idx + 1, total_n_iters)
+        print("  ({}/{})".format(iteration_idx + 1, total_n_iters))
         xyz_flat = np.reshape(chunk.xyz, (chunk.n_frames, n_dim))
         D_ikl = np.zeros((chunk.n_frames, n_basis_deriv), float)
 
@@ -270,7 +270,7 @@ if __name__ == "__main__":
 
     stoptime = time.time()
     runmin = (stoptime - starttime)/60.
-    print "calculation took: {} min".format(runmin)
+    print("calculation took: {} min".format(runmin))
 
     raise SystemExit
     q = np.diag(D_T_D)

@@ -10,7 +10,7 @@ import simtk.unit as unit
 import simulation.openmm as sop
 
 def compare_calculated_forces_to_simulation():
-    print "calculating trajectory derivatives..."
+    print("calculating trajectory derivatives...")
     starttime = time.time()
     total_err = 0
     for chunk in md.iterload(trajfile, top=topfile):
@@ -30,7 +30,7 @@ def compare_calculated_forces_to_simulation():
         break
     stoptime = time.time()
     runmin = (stoptime - starttime)/60.
-    print "calculation took: {} min".format(runmin)
+    print("calculation took: {} min".format(runmin))
 
     # compare computed forces to real forces
     f_calc = np.dot(D_ikl, fk_with_dxi)

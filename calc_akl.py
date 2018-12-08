@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     all_s = [1, 2, 5, 10, 20, 50, 100, 500]
     for i in range(len(all_s)):
-        print " ({}/{})".format(i + 1, len(all_s)) 
+        print(" ({}/{})".format(i + 1, len(all_s)))
         s_frames = all_s[i]
         s = dt_frame*s_frames
         A = util.calc_diffusion(trajfile, topfile, beta, s_frames, s, n_dim, n_frames_tot)
