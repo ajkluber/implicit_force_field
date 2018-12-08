@@ -56,7 +56,7 @@ if __name__ == "__main__":
         idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
         traj_idxs.append([idx1, idx2])
 
-    print "loading tica..."
+    print("loading tica...")
     tics = [] 
     for i in range(keep_dims):
         temp_tic = []
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     tic2_bounds = [[-1.75, -0.5], [0.8, 1.6]]
 
     # find frames that are in states
-    print "finding indices of each state..."
+    print("finding indices of each state...")
     A_idxs = []
     B_idxs = []
     for n in range(len(traj_idxs)):
@@ -110,13 +110,13 @@ if __name__ == "__main__":
 
     tanh_contact = lambda rij: 0.5*(np.tanh((r0 - rij)/width) + 1)
 
-    print "calculating contact maps..."
+    print("calculating contact maps...")
     A_qij = np.zeros(len(pair_idxs), float)
     B_qij = np.zeros(len(pair_idxs), float)
     n_tot_A = 0
     n_tot_B = 0
     for n in range(len(traj_idxs)):
-        print "   traj:", trajnames[n]
+        print("   traj:" + trajnames[n])
         traj = md.load(trajnames[n], top=topfile)
         if len(A_idxs[n]) > 0:
             traj[A_idxs[n]].save("run_{}/traj_A_{}.dcd".format(traj_idxs[n][0], traj_idxs[n][1]))
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     C_A_msk = np.ma.array(C_A, mask=C_A == 0)
     C_B_msk = np.ma.array(C_B, mask=C_B == 0)
 
-    print "plotting..."
+    print("plotting...")
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
     #axes[0].pcolormesh(C_A, vmin=0, vmax=1)
     #axes[1].pcolormesh(C_B, vmin=0, vmax=1)

@@ -39,7 +39,7 @@ if __name__ == "__main__":
         Tpaths = glob.glob("T_*")
 
     for i in range(len(Tpaths)):
-        #print os.getcwd()
+        #print(os.getcwd())
         os.chdir(Tpaths[i])
         runpaths = glob.glob("run_[1-9]*")
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
                     ply_idxs = pdb.top.select("name PL") 
 
                     rg_for_run = []
-                    print "calculating Rg for rundir:", os.getcwd()
+                    print("calculating Rg for rundir:" + os.getcwd())
                     for j in range(len(trajnames)):
                         traj_idx = (trajnames[j]).split(".dcd")[0].split("_")[-1]
                         Rg = []
@@ -67,7 +67,7 @@ if __name__ == "__main__":
                             rg = md.compute_rg(chunk)
                             Rg.append(rg)
                         Rg = np.concatenate(Rg)
-                        print "  ", "rg_{}.npy".format(traj_idx)
+                        print("  " + "rg_{}.npy".format(traj_idx))
                         np.save("rg_{}.npy".format(traj_idx), Rg)
                         rg_for_run.append(Rg)
                     all_rg.append(np.concatenate(rg_for_run))

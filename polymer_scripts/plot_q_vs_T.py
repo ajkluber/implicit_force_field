@@ -40,7 +40,7 @@ if __name__ == "__main__":
         T = [ float((x.split("/")[0])[2:]) for x in Tdirs ]
         T.sort()
 
-        print os.getcwd() 
+        print(os.getcwd())
  
         plt.figure()
         avgQ = []
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         T = [ float((x.split("/")[0])[2:]) for x in Tdirs ]
         T.sort()
 
-        print os.getcwd() 
+        print(os.getcwd())
  
         plt.figure()
         for j in range(len(T)):
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         eps_ply, eps_slv = eps_vals[i]
         os.chdir("eps_ply_{:.2f}_eps_slv_{:.2f}".format(eps_ply, eps_slv))
 
-        print os.getcwd()
+        print(os.getcwd())
 
         Tpaths = glob.glob("T_*")
         T = [ float((os.path.basename(x)).split("_")[1]) for x in Tpaths ]

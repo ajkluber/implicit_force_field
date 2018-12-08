@@ -35,7 +35,7 @@ if __name__ == "__main__":
     pairs = None
 
     for i in range(len(Tpaths)):
-        #print os.getcwd()
+        #print(os.getcwd())
         os.chdir(Tpaths[i])
         runpaths = glob.glob("run_*")
 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
                         pairs = np.array(pairs)
 
                     q_for_run = []
-                    print "calculating Q for rundir:", os.getcwd()
+                    print("calculating Q for rundir:" + os.getcwd())
                     for j in range(len(trajnames)):
                         traj_idx = (trajnames[j]).split(".dcd")[0].split("_")[-1]
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
                             q = np.sum(contact(md.compute_distances(chunk, pairs)), axis=1)
                             Q.append(q)
                         Q = np.concatenate(Q)
-                        print "  ", "q_{}.npy".format(traj_idx)
+                        print("  " + "q_{}.npy".format(traj_idx))
                         np.save("q_{}.npy".format(traj_idx), Q)
 
                         if traj_idx == 1:

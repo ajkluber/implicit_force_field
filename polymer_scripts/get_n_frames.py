@@ -34,13 +34,13 @@ if __name__ == "__main__":
 
         runpaths = [ x.split("/")[0] for x in glob.glob("run_*/{}_min_cent.pdb".format(name)) ]
         #runpaths.sort()
-        print "T = {}".format(Tpaths[i])
+        print("T = {}".format(Tpaths[i]))
 
         #status_str = ""
         for j in range(len(runpaths)):
             os.chdir(runpaths[j])
             trajnames = glob.glob(name + "_traj_cent_*.dcd")
-            #print os.getcwd(), len(trajnames)
+            #print(os.getcwd() + str(len(trajnames)))
 
             status_str = "{:<6s} ".format(runpaths[j])
             status_str += " ".join([ "{:^9s}".format((x).split(".dcd")[0].split("_")[-1]) for x in trajnames ])
@@ -54,10 +54,10 @@ if __name__ == "__main__":
                 status_str += "{:.2e}  ".format(N)
             status_str += "  {:.2e}".format(Ntot) + "\n"
 
-            print status_str
+            print(status_str)
 
             os.chdir("..")
         os.chdir("..")
-        #print status_str
+        #print(status_str)
         break
 

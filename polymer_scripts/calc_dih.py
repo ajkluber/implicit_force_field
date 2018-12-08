@@ -76,7 +76,7 @@ if __name__ == "__main__":
     my_hist = lambda data: np.histogram(data, bins=bin_edges)[0]
 
     for i in range(len(Tpaths)):
-        print " For:",Tpaths[i]
+        print(" For:" + Tpaths[i])
         os.chdir(Tpaths[i])
         runpaths = glob.glob("run_[1-9]*")
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
                 trajnames = glob.glob(name + "_traj_cent_*.dcd")
 
                 if len(trajnames) > 0:
-                    print "calculating Rg for rundir:", os.getcwd()
+                    print("calculating Rg for rundir:" +  os.getcwd())
                     for j in range(len(trajnames)):
                         traj_idx = (trajnames[j]).split(".dcd")[0].split("_")[-1]
                         run_L = []

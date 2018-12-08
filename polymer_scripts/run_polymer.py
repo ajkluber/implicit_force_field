@@ -159,7 +159,7 @@ if __name__ == "__main__":
         peq_state_name = Pdir + "/" + "final_state.xml"
         peq_log = Pdir + "/pressure_in_atm_vs_step.npy"
         if not (os.path.exists(peq_log) and os.path.exists(peq_state_name)):
-            print "Reference pressure search"
+            print("Reference pressure search")
             if not os.path.exists(Pdir):
                 os.mkdir(Pdir)
             os.chdir(Pdir)
@@ -175,17 +175,17 @@ if __name__ == "__main__":
                     saveas=ff_filename, **ff_kwargs)
 
             # adaptive change pressure in order to get target unitcell volume (density). 
-            print "  running adaptive simulations..."
+            print("  running adaptive simulations...")
             sop.run.adaptively_find_best_pressure(target_volume, ff_files, name,
                     n_beads, cutoff, r_switch, refT, save_forces=save_forces,
                     cuda=cuda, p0=p0)
 
             os.chdir("..")
         else:
-            print "Loading reference pressure"
+            print("Loading reference pressure")
         pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
     else:
-        print "Using pressure", p_mag, " atm"
+        print("Using pressure" + str(p_mag) + " atm")
         peq_state_name = ini_pdb_file
         pressure = p_mag*unit.atmosphere
     os.chdir(cwd)
@@ -201,7 +201,7 @@ if __name__ == "__main__":
         os.mkdir(Vdir)
     veq_state_name = Vdir + "/final_state_nvt.xml"
     if not os.path.exists(veq_state_name):
-        print "Unitcell volume equilibration"
+        print("Unitcell volume equilibration")
         os.chdir("volume_equil")
 
         # let volume equilibrate at this pressure
@@ -210,7 +210,7 @@ if __name__ == "__main__":
         sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
                 saveas=ff_filename, **ff_kwargs)
 
-        print "  equilibrating V at this T and P..."
+        print("  equilibrating V at this T and P...")
         sop.run.equilibrate_unitcell_volume(pressure, ff_files, name,
                 n_beads, refT, T, cutoff, r_switch, peq_state_name, cuda=cuda)
 
@@ -256,7 +256,7 @@ if __name__ == "__main__":
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
     # Run simulation
-    print "Running production..."
+    print("Running production...")
     sop.run.production(topology, positions, ensemble, temperature, timestep,
             collision_rate, pressure, n_steps, nsteps_out, ff_files,
             min_name, log_name, traj_name, final_state_name, cutoff, templates,
@@ -267,4 +267,4 @@ if __name__ == "__main__":
     stoptime = time.time()
     with open("running_time.log", "w") as fout:
         fout.write("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
-    print "{} steps took {} min".format(n_steps, (stoptime - starttime)/60.)
+    print("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))

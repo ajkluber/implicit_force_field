@@ -219,7 +219,7 @@ if __name__ == "__main__":
     #keep_dims = 23
 
     if not noplots:
-        print "Plotting tica timescales vs lagtime..."
+        print("Plotting tica timescales vs lagtime...")
         plot_tica_stuff()
 
     #tica_lag = 50 # lagtime where TICA timescales are converged 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     np.save(msm_savedir + "/tica_cov.npy", tica.cov)
     np.save(msm_savedir + "/tica_cov_tau.npy", tica.cov_tau)
 
-    print "Saving tica coordinates..."
+    print("Saving tica coordinates...")
     #if not os.path.exists(msm_savedir + "/run_1_TIC_1.npy"):
     for i in range(keep_dims):
         for n in range(len(Y)):

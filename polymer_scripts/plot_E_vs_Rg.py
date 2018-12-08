@@ -67,7 +67,7 @@ if __name__ == "__main__":
                     if os.path.exists(rg_names[i]) and os.path.exists(E_name):
                         temp_rg = np.load(rg_names[i])
                         temp_E = np.loadtxt(E_name, delimiter=",", usecols=(1,))
-                        #print len(temp_rg), len(temp_E)
+                        #print(str(len(temp_rg)) + str(len(temp_E)))
 
                         #if os.path.basename(x) == "rg_1.npy":
                         if idx == "1":
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                 np.save("bin_counts.npy", bin_counts)
                 os.chdir("..")
             else:
-                print "No rg.npy for this temperature: ", Tpaths[i]
+                print("No rg.npy for this temperature: " + Tpaths[i])
                 no_data = True
 
         if not no_data:

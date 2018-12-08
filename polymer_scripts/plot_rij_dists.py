@@ -21,7 +21,7 @@ if __name__ == "__main__":
     #sep = [24]
     sep = range(1, 25)
     for k in sep:
-        print "sep: ", k
+        print("sep: " + str(k))
         all_n = np.load("{}/dist_{}.npy".format(subdir, k))
         pairs_k = np.load("{}/pairs_{}.npy".format(subdir, k))
         n_frames_k = np.loadtxt("{}/n_frames_{}.dat".format(subdir, k))

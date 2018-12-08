@@ -56,5 +56,5 @@ if __name__ == "__main__":
         np.save("{}/bin_edges_{}.npy".format(subdir, k), bin_edges)
 
         stoptime = time.time()
-        print "sep {}  took: {} min".format(k, (stoptime - starttime)/60.)
+        print("sep {}  took: {} min".format(k, (stoptime - starttime)/60.))
 

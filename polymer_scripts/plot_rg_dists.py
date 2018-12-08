@@ -87,7 +87,7 @@ if __name__ == "__main__":
                     np.save("dPn.npy", dPn)
                 os.chdir("..")
             else:
-                print "No rg.npy for this temperature: ", Tpaths[i]
+                print("No rg.npy for this temperature: " + Tpaths[i])
                 no_data = True
 
         if not no_data:

@@ -24,7 +24,7 @@ if __name__ == "__main__":
     else:
         trajpaths = glob.glob(subdir + "/*/run_*/{}_traj_*.dcd".format(name))
 
-    #print trajpaths
+    #print(str(trajpaths))
 
     cwd = os.getcwd()
     for i in range(len(trajpaths)):
@@ -44,7 +44,7 @@ if __name__ == "__main__":
             pdb = md.load(topfile)
             ply_idxs = pdb.top.select("name PL") 
 
-            print "centering:", os.getcwd() + "/" + old_name, "  saving centered traj as:", new_name
+            print("centering:" + os.getcwd() + "/" + old_name + "  saving centered traj as:" + new_name)
             traj = md.load(old_name, top=pdb, atom_indices=ply_idxs)
             traj.center_coordinates()
             traj[0].save_pdb(new_pdbname)
