@@ -34,7 +34,7 @@ if __name__ == "__main__":
     #cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
     #cv_r0 = cv_r0.reshape((len(cv_r0),1))
 
-    print "creating Ucg..."
+    print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.OneDimensionalModel(1)
     Ucg.add_Gaussian_drift_basis(cv_r0, cv_w)
@@ -63,10 +63,10 @@ if __name__ == "__main__":
     X = np.zeros((P, R+1), float)
     d = np.zeros(P, float)
 
-    print "calculating matrix elements..."
+    print("calculating matrix elements...")
     Ntot = 0
     for n in range(len(traj_idxs)):
-        print "traj: ", n+1
+        print("traj: " + str(n+1))
         sys.stdout.flush()
         idx1, idx2 = traj_idxs[n]
         Psi = np.load(msm_savedir + "/run_{}_{}_TIC_1.npy".format(idx1, idx2))

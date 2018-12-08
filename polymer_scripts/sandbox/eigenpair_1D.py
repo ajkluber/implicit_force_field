@@ -18,7 +18,7 @@ import implicit_force_field as iff
 def junk():
     pass
     ## regularize solution norm
-    #print "solving Ridge regression..."
+    #print("solving Ridge regression...")
     #alphas = np.logspace(-16, -2, 400)
     #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
 
@@ -30,7 +30,7 @@ def junk():
     #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
 
     ## regularize solution norm with preconditioning
-    #print "solving Ridge regression with preconditioning..."
+    #print("solving Ridge regression with preconditioning...")
     #alphas = np.logspace(-16, -2, 400)
     #d1, d2, pre_X, pre_d = iff.util.Ruiz_preconditioner(X, d)
     #alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, pre_X, pre_d)
@@ -43,7 +43,7 @@ def junk():
     #plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
 
     # regularize first derivative
-    #print "solving regression. 1st deriv regularized..."
+    #print("solving regression. 1st deriv regularized...")
     #alphas = np.logspace(-6, 4, 400)
     #r = np.linspace(-1.1, 1.1, 200)
     #all_soln, res_norm, reg_norm = iff.util.solve_deriv_regularized(alphas, X, d, Ucg, r, order=1, variable_noise=True)
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     #cv_r0 = np.array([ [cv_r0[i]] for i in range(len(cv_r0)) ])
     #cv_r0 = cv_r0.reshape((len(cv_r0),1))
 
-    print "creating Ucg..."
+    print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.OneDimensionalModel(1)
     Ucg.add_Gaussian_drift_basis(cv_r0, cv_w)
@@ -394,10 +394,10 @@ if __name__ == "__main__":
         X = np.zeros((P, R), float)
         d = np.zeros(P, float)
 
-        print "calculating matrix elements..."
+        print("calculating matrix elements...")
         N_prev = 0
         for n in range(len(traj_idxs)):
-            print "traj: ", n+1
+            print("traj: " + str(n+1))
             sys.stdout.flush()
             idx1, idx2 = traj_idxs[n]
             Psi = np.load(msm_savedir + "/run_{}_{}_TIC_1.npy".format(idx1, idx2))
@@ -435,7 +435,7 @@ if __name__ == "__main__":
             os.mkdir(cg_savedir)
         os.chdir(cg_savedir)
 
-        print "saving matrix X and d..."
+        print("saving matrix X and d...")
         np.save("D2.npy", D2)
         np.save("X.npy", X)
         np.save("d.npy", d)
@@ -446,7 +446,7 @@ if __name__ == "__main__":
         with open("Ntot.dat", "w") as fout:
             fout.write(str(N_prev))
     else:
-        print "loading X and d..."
+        print("loading X and d...")
         os.chdir(cg_savedir)
         D2 = np.load("D2.npy")
         X = np.load("X.npy")
@@ -479,7 +479,7 @@ if __name__ == "__main__":
     # raise SystemExit
 
     # regularize 2nd derivative
-    print "plotting regularized solutions..."
+    print("plotting regularized solutions...")
     if constD:
         blim = (-0.01, 0.01)
         xlabel = r"TIC1 $\psi_1$"

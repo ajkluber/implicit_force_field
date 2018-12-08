@@ -81,7 +81,7 @@ if __name__ == "__main__":
     # force matrix by several orders of magnitude. Pre-conditioning by column
     # multiplication
 
-    print "creating Ucg..."
+    print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
     Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
@@ -142,12 +142,12 @@ if __name__ == "__main__":
     psi_dot_Lap_f = np.zeros(M*P, float)
     psi_dot_f = np.zeros(M*P, float)
 
-    print "calculating matrix elements..."
+    print("calculating matrix elements...")
     Ntot = 0
     for n in range(len(traj_idxs)):
         starttime = time.time()
 
-        print "traj: ", n+1
+        print("traj: " + str(n+1))
         sys.stdout.flush()
         idx1, idx2 = traj_idxs[n]
 
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         chunk_num = 1
 
         for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-            print "    chunk: ", chunk_num
+            print("    chunk: " + str(chunk_num))
             sys.stdout.flush()
             chunk_num += 1
 
@@ -191,7 +191,7 @@ if __name__ == "__main__":
             Ntot += chunk.n_frames
 
         min_calc_traj = (time.time() - starttime)
-        print "calculation took: {:.4f} sec".format(min_calc_traj)
+        print("calculation took: {:.4f} sec".format(min_calc_traj))
         sys.stdout.flush()
 
     psi_dot_f /= kappa[0]

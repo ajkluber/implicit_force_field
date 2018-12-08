@@ -44,7 +44,7 @@ if __name__ == "__main__":
     gauss_sigma = gauss_r0_nm[1] - gauss_r0_nm[0]
     gauss_w_nm = gauss_sigma*np.ones(len(gauss_r0_nm))
 
-    print "creating Ucg..."
+    print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2)
     cg_savedir = "Ucg_eigenpair"
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     coeffs = []
     alphas = np.logspace(-10, 3, num=100)
     for i in range(len(alphas)):
-        print i
+        print(i)
         rdg = Ridge(alpha=alphas[i], fit_intercept=False)
         rdg = Ridge(alpha=1, fit_intercept=False)
         #X_train, X_test, y_train, y_test = train_test_split(G, frav, test_size=0.5, random_state=0)

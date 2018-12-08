@@ -129,7 +129,7 @@ if __name__ == "__main__":
     xyz_flat = np.concatenate(temp_x)
 
     raise SystemExit
-    print "{:>10s}   {:>10s}   {:>10s}".format("Eb","Ea","Ew")
+    print("{:>10s}   {:>10s}   {:>10s}".format("Eb","Ea","Ew"))
     Eb = []
     Ea = []
     Ew = []
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         temp_Ew = state.getPotentialEnergy()/unit.kilojoule_per_mole
         Ew.append(temp_Ew)
 
-        print "{:10.5f}   {:10.5f}   {:10.5f}".format(temp_Eb, temp_Ea, temp_Ew)
+        print("{:10.5f}   {:10.5f}   {:10.5f}".format(temp_Eb, temp_Ea, temp_Ew))
     Eb = np.array(Eb)
     Ea = np.array(Ea)
     Ew = np.array(Ew)
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     Ecg_tot = Eb_cg + Ea_cg + Ew_cg
 
     Esim_tot = Eb + Ea + Ew
-    print np.corrcoef(Ecg_tot, Esim_tot)[0,1]
+    print(str(np.corrcoef(Ecg_tot, Esim_tot)[0,1]))
 
     E1 = [Eb, Ea, Ew, Esim_tot]
     E2 = [Eb_cg, Ea_cg, Ew_cg, Ecg_tot]

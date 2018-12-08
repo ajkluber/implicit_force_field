@@ -215,7 +215,7 @@ if __name__ == "__main__":
     cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
-    print "creating Ucg..."
+    print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads)
     Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
@@ -246,10 +246,10 @@ if __name__ == "__main__":
         X = np.zeros((P, R + 1), float)
         d = np.zeros(P, float)
 
-        print "calculating matrix elements..."
+        print("calculating matrix elements...")
         N_prev = 0 
         for n in range(len(traj_idxs)):
-            print "traj: ", n+1
+            print("traj: " + str(n+1))
             sys.stdout.flush()
             idx1, idx2 = traj_idxs[n]
             psi_traj = np.load(msm_savedir + "/run_{}_{}_TIC_1.npy".format(idx1, idx2)).reshape(-1,1)
@@ -257,7 +257,7 @@ if __name__ == "__main__":
             start_idx = 0
             chunk_num = 1
             for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-                print "    chunk: ", chunk_num
+                print("    chunk: " + str(chunk_num)
                 sys.stdout.flush()
                 chunk_num += 1
                 N_curr = chunk.n_frames
@@ -292,7 +292,7 @@ if __name__ == "__main__":
             os.mkdir(cg_savedir)
         os.chdir(cg_savedir)
 
-        print "saving matrix..."
+        print("saving matrix...")
         np.save("X.npy", X)
         np.save("d.npy", d)
 
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     alim = (0, 0.0005)
 
     # regularize 2nd derivative
-    print "plotting regularized solutions..."
+    print("plotting regularized solutions...")
     blim = (-0.01, 0.01)
     xlabel = r"TIC1 $\psi_1$"
     suffix = "_{}".format(len(cv_r0))

@@ -79,7 +79,7 @@ if __name__ == "__main__":
     coeffs = []
     alphas = np.logspace(-10, 3, num=100)
     for i in range(len(alphas)):
-        print i
+        print(i)
         rdg = Ridge(alpha=alphas[i], fit_intercept=False)
         rdg = Ridge(alpha=1, fit_intercept=False)
         #X_train, X_test, y_train, y_test = train_test_split(G, frav, test_size=0.5, random_state=0)
