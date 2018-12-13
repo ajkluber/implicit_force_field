@@ -1,13 +1,18 @@
 import os
 import sys
+from __future__ import print_function
 import glob
 import time
 import argparse
 import numpy as np
+import matplotlib as mpl
+mpl.use("Agg")
+import matplotlib.pyplot as plt
+
+import sklearn.linear_model as sklin
 
 import simtk.unit as unit
 import simtk.openmm.app as app
-
 import mdtraj as md
 
 import simulation.openmm as sop
@@ -97,21 +102,33 @@ if __name__ == "__main__":
             temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
         psinames.append(temp_names)
 
-    Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames)
-
     cg_savedir = "TESTING_" + cg_savedir
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
-    os.chdir(cg_savedir)
 
-    np.save("X.npy", Ucg.eigenpair_X)
-    np.save("d.npy", Ucg.eigenpair_d)
+    if not os.path.exists(cg_savedir + "/X.npy"):
+        Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames)
+        os.chdir(cg_savedir)
+        np.save("X.npy", Ucg.eigenpair_X)
+        np.save("d.npy", Ucg.eigenpair_d)
+    else:
+        os.chdir(cg_savedir)
+        #Ucg.eigenpair_X = np.load("X.npy")
+        #Ucg.eigenpair_d = np.load("d.npy")
+        X = np.load("X.npy")
+        d = np.load("d.npy")
 
     raise SystemExit
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    alphas = np.logspace(-10, -1, 400)
+    D2 = np.zeros((101,101), float)
+    D2[:100,:100] = np.load("../Ucg_eigenpair_1D/D2.npy")[:100,:100]
+
+
+    all_coeff, res_norm, deriv_norm, cv_score = iff.util.solve_D2_regularized(
+            alphas, X, d, D2, n_b=100, weight_a=None, variable_noise=False)
+
+    raise SystemExit
 
     coeff = np.linalg.lstsq(Ucg.eigenpair_X, Ucg.eigenpair_d, rcond=1e-6)[0]
 
@@ -128,6 +145,64 @@ if __name__ == "__main__":
     plt.ylabel(r"$U_{cg}$")
     plt.savefig("U_cv.pdf")
     plt.savefig("U_cv.png")
+
+    alphas = np.logspace(-9, 1, 500)
+    alpha_star, coeff, all_coeff, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
+
+    idxs = [0, 150, 300, 450, 499]
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    for i in range(len(idxs)):
+        ridge = sklin.Ridge(alpha=alphas[idxs[i]], fit_intercept=False)
+        ridge.fit(X,d)
+        coeff = ridge.coef_
+
+        D = 1./coeff[-1]
+        print D
+
+        U = np.zeros(len(cv_r0))
+        for n in range(len(coeff) - 1):
+            U += coeff[n]*Ucg.cv_U_funcs[n](cv_r0[:,0])
+        U -= U.min()
+
+        axes[0].plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
+        #axes[0].plot(cv_r0[:,0], U, label=r"$\log_{10}(\alpha)={:.2f}$".format(np.log10(alphas[idxs[i]])))
+        axes[1].plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])))
+    axes[0].set_xlabel("TIC1")
+    axes[0].set_ylabel(r"$U(\psi_1)$")
+
+    axes[1].set_xlabel("TIC1")
+    axes[1].set_ylabel(r"$D$")
+
+    axes[1].semilogy(True)
+    axes[0].legend(fancybox=False, frameon=True, edgecolor="k", framealpha=1)
+    fig.savefig("ridge_compare_solns.pdf")
+    fig.savefig("ridge_compare_solns.png")
+
+    # plot just one solution
+    plt.figure() 
+    ridge = sklin.Ridge(alpha=alphas[-1], fit_intercept=False)
+    ridge.fit(X,d)
+    coeff = ridge.coef_
+
+    U = np.zeros(len(cv_r0))
+    for n in range(len(coeff) - 1):
+        U += coeff[n]*Ucg.cv_U_funcs[n](cv_r0[:,0])
+    U -= U.min()
+
+    plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
+    plt.xlabel("TIC1")
+    plt.ylabel(r"$U(\psi_1)$")
+    plt.legend(fancybox=False, frameon=True, edgecolor="k", framealpha=1)
+    plt.savefig("ridge_example_soln.pdf")
+    plt.savefig("ridge_example_soln.png")
+
+    raise SystemExit
+
+
+
+
+
 
     raise SystemExit
 

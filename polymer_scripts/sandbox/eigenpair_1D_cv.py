@@ -56,7 +56,7 @@ def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=Tr
 
     if scan_alphas:
         alphas = np.logspace(-8, -4, 500)
-        all_soln = []
+        all_coeff = []
         res_norm = []
         reg_norm = []
         for i in range(len(alphas)):
@@ -66,11 +66,11 @@ def get_smooth_potential_mean_force(cv_r0, cv_w, pmf, alpha_star, scan_alphas=Tr
 
             x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
 
-            all_soln.append(x)
+            all_coeff.append(x)
             res_norm.append(np.linalg.norm(np.dot(G, x) - pmf))
             reg_norm.append(np.linalg.norm(np.dot(D2, x)))
 
-        plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, r"||\frac{d^2 F}{dx^2}||_2", "Smooth PMF", "pmf_smooth_", "_100")
+        plot_regularization_soln(alphas, all_coeff, res_norm, reg_norm, r"||\frac{d^2 F}{dx^2}||_2", "Smooth PMF", "pmf_smooth_", "_100")
 
     # interpolate pmf with smooth function
     emp_dF = (pmf[1:] - pmf[:-1])/(cv_r0[1] - cv_r0[0])
@@ -162,13 +162,13 @@ def plot_select_Ucg_CV(alphas, A, b, Ucg, r, emp_r, emp_pmf, xlabel, title,
 
     fig, ax1 = plt.subplots(1, 1, figsize=(10, 10))
 
-    alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, A, b, right_precond=right_precond)
+    alpha_star, coeff, all_coeff, res_norm, reg_norm = iff.util.solve_ridge(alphas, A, b, right_precond=right_precond)
 
     ax1.plot(emp_r, emp_pmf, 'k', lw=2, label="PMF")
     for i in range(len(alphas)):
         # evaluate drift
-        c_coeff = all_soln[i][:-1]
-        A = all_soln[i][-1]*np.ones(len(r), float)
+        c_coeff = all_coeff[i][:-1]
+        A = all_coeff[i][-1]*np.ones(len(r), float)
 
         U_r = np.zeros(len(r), float)
         for k in range(len(c_coeff)):
@@ -332,9 +332,9 @@ if __name__ == "__main__":
     prefix = "ridge_U_CV_"
     title = "Ridge"
     reg_method = "ridge"
-    alpha_star, coeff, all_soln, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
+    alpha_star, coeff, all_coeff, res_norm, reg_norm = iff.util.solve_ridge(alphas, X, d)
 
-    plot_regularization_soln(alphas, all_soln, res_norm, reg_norm, ylabel, title, prefix, suffix)
+    plot_regularization_soln(alphas, all_coeff, res_norm, reg_norm, ylabel, title, prefix, suffix)
 
     plot_select_Ucg_CV(select_alphas, X, d, Ucg, r, cv_r0, pmf, 
             xlabel, title, prefix, suffix, method=reg_method, Ulim=Ulim)
