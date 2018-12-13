@@ -1,13 +1,17 @@
+from __future__ import print_function
 import time
 import sys
 import numpy as np
 import scipy.linalg as scl
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
+import scipy.linalg
 
-from sklearn.cross_validation import KFold
+#from sklearn.cross_validation import KFold
+import sklearn.model_selection
 import sklearn.linear_model as sklin
 import sklearn
+print("sklearn: " + sklearn.__version__)
 
 import mdtraj as md
 
@@ -441,7 +445,7 @@ def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_
     if len(Ucg.a_funcs[1]) > 0:
         D[:,n_b:] *= weight_a
 
-    all_soln = []
+    all_coeff = []
     res_norm = []
     deriv_norm = []
     for i in range(len(alphas)):
@@ -449,49 +453,49 @@ def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_
         A_reg = np.dot(A.T, A) + alphas[i]*np.dot(D.T, D)
         b_reg = np.dot(A.T, b)
 
-        x = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
+        x = scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0]
 
-        all_soln.append(x)
+        all_coeff.append(x)
         res_norm.append(np.linalg.norm(np.dot(A, x) - b))
         deriv_norm.append(np.linalg.norm(np.dot(D, x)))
 
-    return all_soln, res_norm, deriv_norm
+    return all_coeff, res_norm, deriv_norm
 
-def solve_ridge(alphas, A, b, right_precond=None, fit_intercept=False):
-    """Linear regression with ridge estimator"""
+def solve_ridge(alphas, A, b, n_splits=10):
+    """Ridge regression with cross-validation"""
 
-    # TODO: Add cross validation
+    I = np.identity(A.shape[1])
+    kf = sklearn.model_selection.KFold(n_splits=n_splits, shuffle=True) 
 
-    all_soln = []
-    res_norm = []
-    soln_norm = []
+    coeffs = []
+    train_mse = []
+    test_mse = []
     for i in range(len(alphas)):
-        ridge = sklin.Ridge(alpha=alphas[i], fit_intercept=fit_intercept)
-        ridge.fit(A,b)
-
-        coeff = ridge.coef_
-        if not (right_precond is None):
-            all_soln.append(right_precond*coeff)
+        if i == len(alphas) - 1: 
+            print("Solving ridge: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
         else:
-            all_soln.append(coeff)
+            print("Solving ridge: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
+        sys.stdout.flush()
 
-        res_norm.append(np.linalg.norm(ridge.predict(A) - b))
-        soln_norm.append(np.linalg.norm(ridge.coef_))
+        train_mse_folds = [] 
+        test_mse_folds = [] 
+        for train_set, test_set in kf.split(A):
+            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*I
+            b_reg = np.dot(A[train_set,:].T, b[train_set])
 
-    if len(alphas) > 1:
-        ridge = sklin.RidgeCV(alphas=alphas, fit_intercept=fit_intercept, store_cv_values=True)
-        ridge.fit(A,b)
-        alpha_star = ridge.alpha_
-        coeff = ridge.coef_
-        cv_score = np.mean(ridge.cv_values_, axis=0)
-        if not (right_precond is None):
-            coeff *= right_precond
-    else:
-        alpha_star = alphas[0]
-        coeff = all_soln[0]
-        cv_score = []
+            coeff_fold = scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0]
 
-    return alpha_star, coeff, all_soln, res_norm, soln_norm, cv_score
+            y_trial = np.dot(A, coeff_fold)
+
+            train_mse_folds.append(np.mean((y_trial[train_set] - b[train_set])**2))
+            test_mse_folds.append(np.mean((y_trial[test_set] - b[test_set])**2))
+        train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(n_splits))])
+        test_mse.append([np.mean(test_mse_folds), np.std(test_mse_folds)/np.sqrt(float(n_splits))])
+
+    coeffs = np.array(coeffs)
+    train_mse = np.array(train_mse)
+    test_mse = np.array(test_mse)
+    return coeffs, train_mse, test_mse
 
 def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_folds=5):
     """Solve regularized system for """
@@ -499,11 +503,12 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
     #if not weight_a is None:
     #    D2[n_b:,n_b:] *= weight_a
 
+
     # find alpha through cross-validation
     # train and test on different subsets of data
-    kf = KFold(len(b), n_folds=n_folds)
+    kf = sklearn.model_selection.RepeatedKFold(n_splits=2, n_repeats=5)
 
-    all_soln = []
+    all_coeff = []
     res_norm = []
     deriv_norm = []
     cv_score = []
@@ -511,7 +516,7 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
         # cross-validation score is the average Mean-Squared-Error (MSE) over
         # data folds.
         cv_alpha = 0
-        for train_set, test_set in kf:
+        for train_set, test_set in kf.split(A):
             # regularize the second derivative of solution
             A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D2
             b_reg = np.dot(A[train_set,:].T, b[train_set])
@@ -528,12 +533,12 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
         b_reg = np.dot(A.T, b)
         coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-11)[0]
 
-        all_soln.append(coeff)
+        all_coeff.append(coeff)
         res_norm.append(np.linalg.norm(np.dot(A, coeff) - b))
         deriv_norm.append(np.dot(coeff.T, np.dot(D2, coeff)))
 
 
-    return np.array(all_soln), np.array(res_norm), np.array(deriv_norm), np.array(cv_score)
+    return np.array(all_coeff), np.array(res_norm), np.array(deriv_norm), np.array(cv_score)
 
 def nonlinear_solver(alphas, A, b, D2, n_b):
     """Solution that ensures positive diffusion coefficient"""
@@ -609,12 +614,12 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
         return 2*(np.einsum("il,ik", Jac, Jac) + mixed_deriv + alpha*D2)
 
     alphas = np.logspace(-14, -6, 10)
-    all_soln = []
+    all_coeff = []
     for i in range(len(alphas)):
         output = minimize(objective_reg, x0, args=(alphas[i]), tol=1e-10, options={"disp":True}, jac=obj_gradient_reg, hess=obj_hessian_reg, method="Newton-CG")
         temp_coeff = output.x
         temp_coeff[n_b:] = ramp(output.x[n_b])
-        all_soln.append(temp_coeff)
+        all_coeff.append(temp_coeff)
 
     output = minimize(objective_reg, x0, args=(alphas[i]), jac=obj_gradient_reg, hess=obj_hessian_reg, method="Newton-CG")
 
@@ -623,7 +628,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
     #output = least_squares(nonlinear_residual, x0, jac=nonlinear_Jacobian,
     #        method="trf", tr_solver="exact", tr_options={"regularize":True}, verbose=1)
 
-    #all_soln = []
+    #all_coeff = []
     #res_norm = []
     #deriv_norm = []
     #for i in range(len(alphas)):
@@ -633,7 +638,7 @@ def nonlinear_solver(alphas, A, b, D2, n_b):
 
     #    output = least_squares(model_residual, x0, jac=model_Jacobian)
 
-    #    all_soln.append(x)
+    #    all_coeff.append(x)
     #    res_norm.append(np.linalg.norm(np.dot(A, x) - b))
     #    deriv_norm.append(np.dot(x.T, np.dot(D2, x)))
 
