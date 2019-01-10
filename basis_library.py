@@ -1,3 +1,4 @@
+from __future__ import print_function
 import time
 import sys
 import numpy as np
@@ -1254,13 +1255,14 @@ class PolymerModel(FunctionLibrary):
 
         kappa = 1./np.load(ti_file)[:M]
 
-        if verbose:
-            print("calculating eigenpair matrices...")
         N_prev = 0
         N_prev_set = np.zeros(n_sets, int)
         for n in range(len(trajnames)):
             if verbose:
-                print("  traj: {}/{}".format(n + 1, len(trajnames)))
+                if n == len(trajnames) - 1:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)))
+                else:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
                 sys.stdout.flush()
             # load eigenvectors
             psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
