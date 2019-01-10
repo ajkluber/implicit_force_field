@@ -461,10 +461,47 @@ def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_
 
     return all_coeff, res_norm, deriv_norm
 
-def solve_ridge(alphas, A, b, n_splits=10):
+def traj_chunk_cross_validated_least_squares(alphas, A, b, A_sets, b_sets, D):
     """Ridge regression with cross-validation"""
 
-    I = np.identity(A.shape[1])
+    n_sets = len(A_sets)
+    coeffs = []
+    train_mse = []
+    test_mse = []
+    for i in range(len(alphas)):
+        if i == len(alphas) - 1: 
+            print("Solving: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
+        else:
+            print("Solving: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
+        sys.stdout.flush()
+        
+        # folds are precalculated matrices on trajectory chunks
+        train_mse_folds = [] 
+        test_mse_folds = [] 
+        for k in range(len(A_sets)):
+            A_train, A_test = A_sets[k]
+            b_train, b_test = b_sets[k]
+
+            A_reg = np.dot(A_train.T, A_train) + alphas[i]*D
+            b_reg = np.dot(A_train.T, b_train)
+            coeff_fold = scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0]
+
+            train_mse_folds.append(np.mean((np.dot(A_train, coeff_fold) - b_train)**2))
+            test_mse_folds.append(np.mean((np.dot(A_test, coeff_fold) - b_test)**2))
+
+        train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(n_sets))])
+        test_mse.append([np.mean(test_mse_folds), np.std(test_mse_folds)/np.sqrt(float(n_sets))])
+
+        coeffs.append(scipy.linalg.lstsq(A, b, cond=1e-10)[0])
+
+    coeffs = np.array(coeffs)
+    train_mse = np.array(train_mse)
+    test_mse = np.array(test_mse)
+    return coeffs, train_mse, test_mse
+
+def cross_validated_least_squares(alphas, A, b, D, n_splits=10):
+    """Ridge regression with cross-validation"""
+
     kf = sklearn.model_selection.KFold(n_splits=n_splits, shuffle=True) 
 
     coeffs = []
@@ -472,15 +509,15 @@ def solve_ridge(alphas, A, b, n_splits=10):
     test_mse = []
     for i in range(len(alphas)):
         if i == len(alphas) - 1: 
-            print("Solving ridge: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
+            print("Solving: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
         else:
-            print("Solving ridge: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
+            print("Solving: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
         sys.stdout.flush()
 
         train_mse_folds = [] 
         test_mse_folds = [] 
         for train_set, test_set in kf.split(A):
-            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*I
+            A_reg = np.dot(A[train_set,:].T, A[train_set,:]) + alphas[i]*D
             b_reg = np.dot(A[train_set,:].T, b[train_set])
 
             coeff_fold = scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0]
@@ -492,12 +529,22 @@ def solve_ridge(alphas, A, b, n_splits=10):
         train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(n_splits))])
         test_mse.append([np.mean(test_mse_folds), np.std(test_mse_folds)/np.sqrt(float(n_splits))])
 
+        coeffs.append(scipy.linalg.lstsq(A, b, cond=1e-10)[0])
+
     coeffs = np.array(coeffs)
     train_mse = np.array(train_mse)
     test_mse = np.array(test_mse)
     return coeffs, train_mse, test_mse
 
-def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_folds=5):
+def temp():
+    I = np.identity(X.shape[1])
+    rdg_coeffs = []
+    for i in range(len(rdg_alphas)):
+        A_reg = np.dot(X.T, X) + rdg_alphas[i]*I
+        b_reg = np.dot(X.T, d)
+        rdg_coeffs.append(scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0])
+
+def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noise=False, n_splits=20):
     """Solve regularized system for """
 
     #if not weight_a is None:
@@ -506,11 +553,9 @@ def solve_D2_regularized(alphas, A, b, D2, n_b=None, weight_a=None, variable_noi
 
     # find alpha through cross-validation
     # train and test on different subsets of data
-    kf = sklearn.model_selection.RepeatedKFold(n_splits=2, n_repeats=5)
+    kf = sklearn.model_selection.KFold(n_splits=n_splits, shuffle=True)
 
     all_coeff = []
-    res_norm = []
-    deriv_norm = []
     cv_score = []
     for i in range(len(alphas)):
         # cross-validation score is the average Mean-Squared-Error (MSE) over
