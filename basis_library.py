@@ -5,6 +5,7 @@ import numpy as np
 import sympy
 
 import scipy.interpolate
+from scipy.stats import binned_statistic as bin1d
 
 import mdtraj as md
 import simtk.unit as unit
@@ -1260,7 +1261,7 @@ class PolymerModel(FunctionLibrary):
         for n in range(len(trajnames)):
             if verbose:
                 if n == len(trajnames) - 1:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)))
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
                 else:
                     print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
                 sys.stdout.flush()
@@ -1315,7 +1316,6 @@ class PolymerModel(FunctionLibrary):
                     X[0,:,-1] = (curr_X2 + N_prev*X[0,:,-1])/(N_prev + N_chunk)
                     d[0,:] = (curr_d + N_prev*d[0,:])/(N_prev + N_chunk)
 
-                    start_idx += N_chunk
                     N_prev += N_chunk
                 else:
                     for k in range(n_sets):   
@@ -1354,6 +1354,103 @@ class PolymerModel(FunctionLibrary):
         self.eigenpair_X = X
         self.eigenpair_d = d
         self.eigenpair_D2 = D2
+
+    def _eigenpair_Lap_f(self, trajnames, topfile, psinames, psi_bin_edges, ti_file, M=1, cv_names=[], verbose=False):
+        """Calculate Laplacian of test functions 
+       
+        Parameters
+        ----------
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        psinames : list, str
+            Filenames for 
+
+        psi_bin_edges : list, np.ndarray
+            Bin edges for histograming along eigenvector
+            
+        ti_file : str
+            Filename for timescales
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        cv_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        """
+        # TODO: allow collective variable to be different than eigenvector
+
+        P = self.n_test_funcs
+        n_psi_bins = len(psi_bin_edges) - 1
+
+        # if constant diff coeff
+        if self.constant_diff:
+            avg_Lapf = np.zeros((M, P, n_psi_bins), float)
+        else:
+            raise NotImplementedError("Only constant diffusion coefficient is supported.")
+
+        if self.using_cv and not self.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(psinames) != len(trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
+        kappa = 1./np.load(ti_file)[:M]
+
+        N_prev = np.zeros((P, n_psi_bins))
+        for n in range(len(trajnames)):
+            if verbose:
+                if n == len(trajnames) - 1:
+                    print("Lap f_j: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+                else:
+                    print("Lap f_j: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+                sys.stdout.flush()
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+            else:
+                cv_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                N_chunk = chunk.n_frames
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+                if cv_traj is None:
+                    cv_chunk = self.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, self.n_dof))
+
+                # calculate test Laplacian
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
+
+                # bin along eigenvectors
+                for j in range(P):
+                    curr_Lap_fj = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="sum")[0]
+                    N_chunk_j = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="count")[0]
+
+                    N_tot_j = N_prev[j] + N_chunk_j
+                    nonzero_bins = N_tot_j > 0
+                    if np.any(nonzero_bins): 
+                        #import pdb
+                        #pdb.set_trace()
+                        avg_Lapf[0, j, nonzero_bins] = (curr_Lap_fj[nonzero_bins] + N_prev[j, nonzero_bins]*avg_Lapf[0, j, nonzero_bins])/N_tot_j[nonzero_bins]
+
+                    N_prev[j] += N_chunk_j
+                start_idx += N_chunk
+
+        self.eigenpair_Lapf_vs_psi = avg_Lapf
 
     def _eigenpair_Jacobian(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[]):
         """Calculate eigenpair matrices

@@ -492,7 +492,9 @@ def traj_chunk_cross_validated_least_squares(alphas, A, b, A_sets, b_sets, D):
         train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(n_sets))])
         test_mse.append([np.mean(test_mse_folds), np.std(test_mse_folds)/np.sqrt(float(n_sets))])
 
-        coeffs.append(scipy.linalg.lstsq(A, b, cond=1e-10)[0])
+        A_reg = np.dot(A.T, A) + alphas[i]*D
+        b_reg = np.dot(A.T, b)
+        coeffs.append(scipy.linalg.lstsq(A_reg, b_reg, cond=1e-10)[0])
 
     coeffs = np.array(coeffs)
     train_mse = np.array(train_mse)
@@ -529,7 +531,7 @@ def cross_validated_least_squares(alphas, A, b, D, n_splits=10):
         train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(n_splits))])
         test_mse.append([np.mean(test_mse_folds), np.std(test_mse_folds)/np.sqrt(float(n_splits))])
 
-        coeffs.append(scipy.linalg.lstsq(A, b, cond=1e-10)[0])
+        coeffs.append(scipy.linalg.lstsq(A, b, cond=1e-10)[0])  # WRONG
 
     coeffs = np.array(coeffs)
     train_mse = np.array(train_mse)
