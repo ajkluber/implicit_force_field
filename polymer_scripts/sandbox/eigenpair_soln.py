@@ -1,9 +1,6 @@
 from __future__ import print_function
 import os
-import sys
 import glob
-import time
-import argparse
 import numpy as np
 import matplotlib as mpl
 mpl.use("Agg")
@@ -11,12 +8,12 @@ import matplotlib.pyplot as plt
 
 import sklearn.linear_model as sklin
 
-import simtk.unit as unit
-import simtk.openmm.app as app
 import mdtraj as md
 
 import simulation.openmm as sop
+
 import implicit_force_field as iff
+import implicit_force_field.polymer_scripts.util as util
 
 def plot_train_test_mse(alphas, train_mse, test_mse, 
         xlabel=r"Regularization $\alpha$", ylabel="Mean squared error (MSE)", 
@@ -60,7 +57,7 @@ def plot_Ucg_vs_psi1(coeff, Ucg, cv_r0, prefix):
     plt.savefig("{}U_cv.pdf".format(prefix))
     plt.savefig("{}U_cv.png".format(prefix))
 
-def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix):
+def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=None):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     for n in range(len(idxs)):
@@ -86,6 +83,10 @@ def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix):
     ax2.plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])), color='k', lw=3)
     ax2.semilogy(True)
 
+    if not ylim is None:
+        #ax1.set_ylim(0, 500)
+        ax1.set_ylim(0, ylim)
+
     ax1.legend()
     ax1.set_xlabel(r"TIC1 $\psi_1$")
     ax1.set_ylabel(r"$U_{cg}(\psi_1)$")
@@ -94,7 +95,49 @@ def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix):
     fig.savefig("{}compare_Ucv.pdf".format(prefix))
     fig.savefig("{}compare_Ucv.png".format(prefix))
 
-def split_trajs_into_train_and_test_sets(trajnames, psinames, total_n_frames=None, n_sets=5):
+def plot_Xcoeff_vs_d(idxs, idx_star, coeffs, alphas, X, d, prefix):
+
+    plt.figure()
+    for i in range(len(idxs)):
+        dfit = np.dot(X, coeffs[idxs[i]])
+        plt.plot((dfit - d)**2, '.', label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
+
+    dfit = np.dot(X, coeffs[idx_star])
+    plt.plot((dfit - d)**2, 'k.', label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
+    plt.ylabel(r"$(\mathbf{X}c^* - \mathbf{d})^2$")
+    plt.legend()
+    plt.savefig("{}compare_d_residual.pdf".format(prefix))
+    plt.savefig("{}compare_d_residual.png".format(prefix))
+
+    plt.figure()
+    plt.plot(d, 'ko', label="Target $\mathbf{d}$")
+    for i in range(len(idxs)):
+        dfit = np.dot(X, coeffs[idxs[i]])
+        plt.plot(dfit, '.', label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
+
+    dfit = np.dot(X, coeffs[idx_star])
+    plt.plot(dfit, '.', label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
+    plt.ylabel(r"$\mathbf{d}$  or  $\mathbf{X}c^*$ ")
+    plt.legend()
+    plt.savefig("{}compare_d_fit_target.pdf".format(prefix))
+    plt.savefig("{}compare_d_fit_target.png".format(prefix))
+
+def get_frame_assignments(trajnames, n_cross_val_sets=5):
+    """Randomly assign trajectory frames to sets"""
+    set_assignment = []
+    traj_n_frames = []
+    for n in range(len(trajnames)):
+        length = 0
+        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+            length += chunk.n_frames
+        traj_n_frames.append(length)
+
+        set_assignment.append(np.random.randint(low=0, high=n_cross_val_sets, size=length))
+    total_n_frames = sum(traj_n_frames)
+
+    return set_assignment
+
+def split_trajs_into_train_and_test_sets(trajnames, psinames, n_cross_val_sets=5):
     """Split trajs into sets with roughly same number of frames
 
     Trajectories are assigned into sets which will be used as training and test
@@ -109,21 +152,20 @@ def split_trajs_into_train_and_test_sets(trajnames, psinames, total_n_frames=Non
     total_n_frames : int, opt.
         Total number of trajectory frames.
 
-    n_sets : int, default=5
+    n_cross_val_sets : int, default=5
         Desired number of trajectory sets.
         
     """
 
-    if total_n_frames is None:
-        traj_n_frames = []
-        for n in range(len(trajnames)):
-            length = 0
-            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-                length += chunk.n_frames
-            traj_n_frames.append(length)
-        total_n_frames = sum(traj_n_frames)
+    traj_n_frames = []
+    for n in range(len(trajnames)):
+        length = 0
+        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+            length += chunk.n_frames
+        traj_n_frames.append(length)
+    total_n_frames = sum(traj_n_frames)
 
-    n_frames_in_set = total_n_frames/n_sets
+    n_frames_in_set = total_n_frames/n_cross_val_sets
 
     traj_set = []
     psi_set = []
@@ -152,7 +194,7 @@ def split_trajs_into_train_and_test_sets(trajnames, psinames, total_n_frames=Non
             psi_set.append(temp_psi_names)
             traj_set_frames.append(temp_frame_count)
 
-    with open("traj_sets_{}.txt".format(n_sets), "w") as fout:
+    with open("traj_sets_{}.txt".format(n_cross_val_sets), "w") as fout:
         for i in range(len(traj_set)):
             info_str = str(traj_set_frames[i])
             info_str += " " + " ".join(traj_set[i]) + "\n"
@@ -168,68 +210,24 @@ if __name__ == "__main__":
     beta = 1./(kb*T)
     n_pair_gauss = 10
     M = 1   # number of eigenvectors to use
-    fixed_bonded_terms = False
+    #fixed_bonded_terms = False
+    fixed_bonded_terms = True
+
     using_cv = True
+    using_cv_r0 = False
+    n_cv_basis_funcs = 40
+    n_cv_test_funcs = 100
+    #n_cv_test_funcs = 40
+    #n_cv_basis_funcs = 100
+    #n_cv_test_funcs = 200
+
     using_D2 = False
+    n_cross_val_sets = 5
 
     #msm_savedir = "msm_dih_dists"
     msm_savedir = "msm_dists"
 
-    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
-    r0, kb, theta0, ka = bonded_params
-    app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
-
-    sigma_ply_nm = sigma_ply/unit.nanometer
-    #r0_wca_nm = sigma_ply_nm*(2**(1./6))
-    eps_ply_kj = eps_ply/unit.kilojoule_per_mole
-    kb_kj = kb/(unit.kilojoule_per_mole/(unit.nanometer**2))
-    ka_kj = (ka/(unit.kilojoule_per_mole/(unit.radian**2)))
-    theta0_rad = theta0/unit.radian
-    r0_nm = r0/unit.nanometer
-
-    gauss_r0_nm = np.linspace(0.3, 1, n_pair_gauss)
-    gauss_sigma = gauss_r0_nm[1] - gauss_r0_nm[0]
-    gauss_w_nm = gauss_sigma*np.ones(len(gauss_r0_nm))
-
-    print("creating Ucg...")
-    # coarse-grain polymer potential with free parameters
-    Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2)
-    cg_savedir = "Ucg_eigenpair"
-
-    if fixed_bonded_terms:
-        cg_savedir += "_fixed_bonds_angles"
-        Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
-        Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
-        #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
-        Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=True)
-
-    if using_cv:
-        # centers of test functions in collective variable (CV) space
-        ply_idxs = np.arange(n_beads)
-        pair_idxs = []
-        for i in range(len(ply_idxs) - 1):
-            for j in range(i + 4, len(ply_idxs)):
-                pair_idxs.append([ply_idxs[i], ply_idxs[j]])
-        pair_idxs = np.array(pair_idxs)
-
-        cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
-        cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
-        cv_r0 = cv_r0.reshape((len(cv_r0),1))
-
-        cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
-        cv_mean = np.load(msm_savedir + "/tica_mean.npy")
-
-        Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
-        Ucg.gaussian_cv_test_funcs(cv_r0, cv_w)
-        Ucg.gaussian_cv_potentials(cv_r0, cv_w)
-
-        cg_savedir += "_CV_{}_{}".format(M, len(cv_r0))
-    else:
-        cg_savedir += "_gauss_pairs_{}".format(n_pair_gauss)
-        Ucg.gaussian_pair_potentials(gauss_r0_nm, gauss_w_nm, scale_factor=10)
-        Ucg.gaussian_bond_test_funcs([r0_nm], [0.3])
-        Ucg.vonMises_angle_test_funcs([theta0_rad], [4])
-        Ucg.gaussian_pair_test_funcs(gauss_r0_nm, gauss_w_nm)
+    Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs)
 
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
@@ -244,75 +242,79 @@ if __name__ == "__main__":
             temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
         psinames.append(temp_names)
 
-    n_sets = 5
-    trajname_sets, trajname_sets_frames, psiname_sets = split_trajs_into_train_and_test_sets(trajnames, psinames, n_sets=n_sets)
-
-    cg_savedir = cg_savedir + "_crossval_{}".format(n_sets)
+    cg_savedir = cg_savedir + "_crossval_{}".format(n_cross_val_sets)
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
 
-    with open("traj_sets_{}.txt".format(n_sets), "r") as fin:
-        with open(cg_savedir + "/traj_sets_{}.txt".format(n_sets), "w") as fout:
-            fout.write(fin.read())
+    ##################################################################
+    # calculate matrix X and d 
+    ##################################################################
+    X_sets_exist = [ os.path.exists("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
+    set_assignment_exist = [ os.path.exists("{}/frame_set_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
 
-    X_chunks = np.all([ os.path.exists("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(n_sets) ])
-    d_chunks = np.all([ os.path.exists("{}/d_{}.npy".format(cg_savedir, i + 1)) for i in range(n_sets) ])
+    if not np.all(X_sets_exist) or not np.all(set_assignment_exist):
+        # Calculate matrices over randomized assigned groups of frames
+        set_assignment = get_frame_assignments(trajnames, n_cross_val_sets=n_cross_val_sets)
+        Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True)
 
-    if not os.path.exists(cg_savedir + "/X.npy"):
-        # cross-validation procedure: calculate coefficients on 
-        starttime = time.time()
-        print("Iteration:")
-        for i in range(len(trajname_sets)):
-            Ucg.setup_eigenpair(trajname_sets[i], topfile, psiname_sets[i], ti_file, M=M, cv_names=psiname_sets[i])
-            np.save("{}/X_{}.npy".format(cg_savedir, i + 1), Ucg.eigenpair_X)
-            np.save("{}/d_{}.npy".format(cg_savedir, i + 1), Ucg.eigenpair_d)
-            dt_min = (time.time() - starttime)/60.
-            starttime = time.time()
-            print("  {}/{} took {} min".format(i+1, len(trajname_sets), dt_min))
-
-        #Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames)
-        #os.chdir(cg_savedir)
-        #np.save("X.npy", Ucg.eigenpair_X)
-        #np.save("d.npy", Ucg.eigenpair_d)
+        X_sets = [ Ucg.eigenpair_X[k] for k in range(n_cross_val_sets) ]
+        d_sets = [ Ucg.eigenpair_d[k] for k in range(n_cross_val_sets) ]
+        for k in range(n_cross_val_sets):
+            np.save("{}/X_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_X[k])
+            np.save("{}/d_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_d[k])
+            np.save("{}/frame_set_{}.npy".format(cg_savedir,  k + 1), set_assignment[k])
     else:
-        #os.chdir(cg_savedir)
-        #Ucg.eigenpair_X = np.load("X.npy")
-        #Ucg.eigenpair_d = np.load("d.npy")
-        #X = np.load("X.npy")
-        #d = np.load("d.npy")
-        X_chunks = [ np.load("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(len(trajname_sets)) ]
-        d_chunks = [ np.load("{}/d_{}.npy".format(cg_savedir, i + 1)) for i in range(len(trajname_sets)) ]
+        X_sets = [ np.load("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
+        d_sets = [ np.load("{}/d_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
+        set_assignment = [ np.load("{}/frame_set_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
 
-    total_n_frames = float(sum(trajname_sets_frames)) 
-    traj_set_weights = [ trajname_sets_frames[i]/total_n_frames for i in range(len(trajname_sets)) ]
+    n_frames_in_set = []
+    for k in range(n_cross_val_sets):
+        n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(set_assignment)) ]))
+    total_n_frames = np.sum(n_frames_in_set) 
 
-    X_chunks = [ np.load("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(len(trajname_sets)) ]
-    d_chunks = [ np.load("{}/d_{}.npy".format(cg_savedir, i + 1)) for i in range(len(trajname_sets)) ]
+    X = np.sum([ (n_frames_in_set[j]/float(total_n_frames))*X_sets[j] for j in range(n_cross_val_sets) ], axis=0)
+    d = np.sum([ (n_frames_in_set[j]/float(total_n_frames))*d_sets[j] for j in range(n_cross_val_sets) ], axis=0)
 
-    X = np.sum([ traj_set_weights[j]*X_chunks[j] for j in range(n_sets) ])
-    d = np.sum([ traj_set_weights[j]*d_chunks[j] for j in range(n_sets) ])
+    np.save("{}/X.npy".format(cg_savedir), X)
+    np.save("{}/d.npy".format(cg_savedir), d)
 
-    # calculate 
-    X_sets = []
-    d_sets = []
-    for i in range(len(trajname_sets)):
-        trajname_sets_frames
-        w_sum = float(np.sum([ trajname_sets_frames[j] for j in range(n_sets) if j != i ]))
-        train_X = np.sum([ (trajname_sets_frames[j]/w_sum)*X_chunks[j] for j in range(n_sets) if j != i ], axis=0)
-        train_d = np.sum([ (trajname_sets_frames[j]/w_sum)*d_chunks[j] for j in range(n_sets) if j != i ], axis=0)
+    # create train/test matrices by weighted average of chunk matrices
+    X_train_test = []
+    d_train_test = []
+    for i in range(n_cross_val_sets):
+        frame_subtotal = total_n_frames - n_frames_in_set[i]
+        #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(n_cross_val_sets) if j != i ])
 
-        X_sets.append([ train_X, X_chunks[i]])
-        d_sets.append([ train_d, d_chunks[i]])
+        train_X = []
+        train_d = []
+        for j in range(n_cross_val_sets):
+            w_j = n_frames_in_set[j]/float(frame_subtotal)
+            if j != i:
+                train_X.append(w_j*X_sets[j])
+                train_d.append(w_j*d_sets[j])
 
-    raise SystemExit
+        train_X = np.sum(np.array(train_X), axis=0)
+        train_d = np.sum(np.array(train_d), axis=0)
 
+        X_train_test.append([ train_X, X_sets[i]])
+        d_train_test.append([ train_d, d_sets[i]])
+
+    os.chdir(cg_savedir)
+
+    print("Ridge regularization...")
     rdg_alphas = np.logspace(-10, 8, 500)
-    rdg_coeffs, rdg_train_mse, rdg_test_mse = iff.util.cross_validated_least_squares(
-            rdg_alphas, X, d, np.identity(X.shape[1]), n_splits=50)
+    rdg_coeffs, rdg_train_mse, rdg_test_mse = iff.util.traj_chunk_cross_validated_least_squares(rdg_alphas, X, d,
+            X_train_test, d_train_test, np.identity(X.shape[1]))
 
     rdg_idx_star = np.argmin(rdg_test_mse[:,0])
     rdg_alpha_star = rdg_alphas[rdg_idx_star]
     rdg_cstar = rdg_coeffs[rdg_idx_star]
+
+    # save solutions
+    np.save("rdg_cstar.npy", rdg_cstar)
+    with open("rdg_alpha_star.dat", "w") as fout:
+        fout.write(str(rdg_alpha_star))
 
     print("Plotting ridge...")
     plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_test_mse, 
@@ -320,14 +322,27 @@ if __name__ == "__main__":
             ylabel="Mean squared error (MSE)", 
             title="Ridge regression", prefix="ridge_")
 
-    d2_alphas = np.logspace(-10, 8, 500)
+    rdg_idxs = [5, 50, 200, 300]
+    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=200)
+    plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
 
+    rdg_idxs = [310, 400, 472]
+    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_2_", ylim=90)
+
+    #plot_Ucg_vs_psi1(rdg_cstar, Ucg, cv_r0, "rdg_")
+
+    raise SystemExit
+
+    # Smoothness penalty only valid when using same centers as the 1D calculation
+    d2_alphas = np.logspace(-10, 8, 500)
     D2 = np.zeros((101,101), float)
     D2[:100,:100] = np.load("../Ucg_eigenpair_1D/D2.npy")[:100,:100]
 
     print("D2 regularization...")
-    d2_coeffs, d2_train_mse, d2_test_mse = iff.util.cross_validated_least_squares(
-            d2_alphas, X, d, D2, n_splits=50)
+    #d2_coeffs, d2_train_mse, d2_test_mse = iff.util.traj_chunk_cross_validated_least_squares(d2_alphas, X, d,
+    #        X_train_test, d_train_test, D2) 
+    d2_coeffs, d2_train_mse, d2_test_mse = traj_chunk_cross_validated_least_squares(d2_alphas, X, d,
+            X_train_test, d_train_test, D2) 
 
 
     print("Plotting D2...")
@@ -340,126 +355,107 @@ if __name__ == "__main__":
     d2_alpha_star = d2_alphas[d2_idx_star]
     d2_cstar = d2_coeffs[d2_idx_star]
 
-
-    #coeff = np.linalg.lstsq(Ucg.eigenpair_X, Ucg.eigenpair_d, rcond=1e-6)[0]
-    #Ucg.eigenpair_coeff = d2_cstar
-
-    #plot_Ucg_vs_psi1(d2_cstar, Ucg, cv_r0, "D2_")
-    #plot_Ucg_vs_psi1(rdg_cstar, Ucg, cv_r0, "rdg_")
-
-    rdg_idxs = [5, 50, 200, 300]
     d2_idxs = [50, 100, 300, 480]
+    plot_Ucg_vs_alpha(d2_idxs, d2_idx_star, d2_coeffs, d2_alphas, Ucg, cv_r0_basis, "D2_")
 
-    plot_Ucg_vs_alpha(d2_idxs, d2_idx_star, d2_coeffs, d2_alphas, Ucg, cv_r0, "D2_")
-    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0, "rdg_")
+    #plot_Ucg_vs_psi1(d2_cstar, Ucg, cv_r0_basis, "D2_")
 
+    raise SystemExit
+    # Plot matrix columns
+    
+    fig, axes = plt.subplots(10, 10, figsize=(50,50))
+    for i in range(10):
+        for j in range(10):
+            idx = i*10 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k')
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/Xcols.pdf")
+    #fig.savefig(cg_savedir + "/Xcols.png")
+    fig.savefig("Xcols.pdf")
+    fig.savefig("Xcols.png")
+
+    fig, axes = plt.subplots(5, 8, figsize=(25,40))
+    for i in range(5):
+        for j in range(8):
+            idx = i*8 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k')
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/Xcols.pdf")
+    #fig.savefig(cg_savedir + "/Xcols.png")
+    fig.savefig("Xcols.pdf")
+    fig.savefig("Xcols.png")
+
+    plt.figure()
+    plt.plot(cv_r0_basis[:,0], X[:,-1], 'k')
+    plt.plot(cv_r0_basis[:,0], X[:,-1], 'k.')
+    #plt.savefig(cg_savedir + "/Xcols_D.pdf")
+    #plt.savefig(cg_savedir + "/Xcols_D.png")
+    plt.savefig("Xcols_D.pdf")
+    plt.savefig("Xcols_D.png")
+
+    A_reg = np.dot(X.T, X) + rdg_alpha_star*np.identity(X.shape[1])
+    b_reg = np.dot(X.T, d)
+    coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-10)[0] 
+    plt.figure()
+    plt.plot(np.arange(len(d)), d, 'ko', label="Target")
+    plt.plot(np.arange(len(d)), np.dot(X, coeff), 'r.', label="Soln")
+    plt.legend()
+    plt.ylabel(r"$d$")
+    plt.savefig("target_d_and_soln_d.pdf")
+    plt.savefig("target_d_and_soln_d.png")
 
     raise SystemExit
 
-    alphas = np.logspace(-9, 1, 500)
-    alpha_star, coeff, all_coeff, res_norm, reg_norm, cv_score = iff.util.solve_ridge(alphas, X, d)
+    print("Calculating Laplacian...")
+    bin_width = np.abs(cv_r0[1,0] - cv_r0[0,0])
+    psi1_bin_edges = np.array(list(cv_r0[:,0] - 0.5*bin_width) + [cv_r0[-1,0] + 0.5*bin_width])
+    Ucg._eigenpair_Lap_f(trajnames, topfile, psinames, psi1_bin_edges, ti_file, M=M, cv_names=psinames, verbose=True)
 
-    idxs = [0, 150, 300, 450, 499]
+    avgLapf = Ucg.eigenpair_Lapf_vs_psi[0]
 
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
-    for i in range(len(idxs)):
-        ridge = sklin.Ridge(alpha=alphas[idxs[i]], fit_intercept=False)
-        ridge.fit(X,d)
-        coeff = ridge.coef_
+    fig, axes = plt.subplots(10, 10, figsize=(50,50))
+    for i in range(10):
+        for j in range(10):
+            idx = i*10 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0[:,0], avgLapf[idx], 'k')
+            ax.plot(cv_r0[:,0], avgLapf[idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/avg_Lapf.pdf")
+    #fig.savefig(cg_savedir + "/avg_Lapf.png")
+    fig.savefig(cg_savedir + "/avg_Lapf.pdf")
+    fig.savefig(cg_savedir + "/avg_Lapf.png")
 
-        D = 1./coeff[-1]
-        print(str(D))
 
-        U = np.zeros(len(cv_r0))
-        for n in range(len(coeff) - 1):
-            U += coeff[n]*Ucg.cv_U_funcs[n](cv_r0[:,0])
-        U -= U.min()
 
-        axes[0].plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
-        #axes[0].plot(cv_r0[:,0], U, label=r"$\log_{10}(\alpha)={:.2f}$".format(np.log10(alphas[idxs[i]])))
-        axes[1].plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])))
-    axes[0].set_xlabel("TIC1")
-    axes[0].set_ylabel(r"$U(\psi_1)$")
+    #P_psi = bin_width*np.load(msm_savedir + "/psi1_n.npy").astype(float)
+    #P_psi /= np.sum(P_psi)
+    #d2P_psi = (1/bin_width**2)*np.diff(P_psi, n=2)
 
-    axes[1].set_xlabel("TIC1")
-    axes[1].set_ylabel(r"$D$")
-
-    axes[1].semilogy(True)
-    axes[0].legend(fancybox=False, frameon=True, edgecolor="k", framealpha=1)
-    fig.savefig("ridge_compare_solns.pdf")
-    fig.savefig("ridge_compare_solns.png")
-
-    # plot just one solution
-    plt.figure() 
-    ridge = sklin.Ridge(alpha=alphas[-1], fit_intercept=False)
-    ridge.fit(X,d)
-    coeff = ridge.coef_
-
-    U = np.zeros(len(cv_r0))
-    for n in range(len(coeff) - 1):
-        U += coeff[n]*Ucg.cv_U_funcs[n](cv_r0[:,0])
-    U -= U.min()
-
-    plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[i]]))
-    plt.xlabel("TIC1")
-    plt.ylabel(r"$U(\psi_1)$")
-    plt.legend(fancybox=False, frameon=True, edgecolor="k", framealpha=1)
-    plt.savefig("ridge_example_soln.pdf")
-    plt.savefig("ridge_example_soln.png")
+    #plt.figure()
+    #plt.plot(cv_r0[:,0], -beta*d, 'ko', label=r"$\langle\psi_1, \Delta_x f_j\rangle$")
+    #plt.plot(cv_r0[2:,0], cv_r0[2:,0]*d2P_psi, 'r.', label=r"$P''(\psi_1)$")
+    #plt.legend()
+    #plt.xlabel(r"TIC 1 $\psi_1$")
+    #plt.savefig(cg_savedir + "/derviv2_prob_psi.pdf")
+    #plt.savefig(cg_savedir + "/derviv2_prob_psi.png")
 
     raise SystemExit
 
+    temp_psi = []
+    for chunk in md.iterload(trajnames[0], top=topfile):
+        temp_psi.append(Ucg.calculate_cv(chunk.xyz.reshape(-1, 75))[:,0])
+    temp_psi = np.concatenate(temp_psi)
+    #[ x[:,0] for x in temp_psi ])
 
-
-
-
-
-    raise SystemExit
-
-    traj = md.load(traj_name, top=topname)
-
-    from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-    from sklearn.model_selection import cross_val_score
-    from sklearn.model_selection import cross_validate
-
-    import sklearn.model_selection
-
-    cv_mean = []
-    cv_std = []
-    coeffs = []
-    alphas = np.logspace(-10, 3, num=100)
-    for i in range(len(alphas)):
-        print(i)
-        rdg = Ridge(alpha=alphas[i], fit_intercept=False)
-        rdg = Ridge(alpha=1, fit_intercept=False)
-        #X_train, X_test, y_train, y_test = train_test_split(G, frav, test_size=0.5, random_state=0)
-        #model = rdg.fit(X_train, y_train)
-        #cv_score.append(model.score(X_test, y_test))
-        #coeffs.append(model.coef_)
-
-        #model = rdg.fit(G, frav)
-        #coeffs.append(model.coef_)
-
-        #scores = cross_val_score(rdg, G, frav, cv=5)
-        cv = cross_validate(rdg, G, frav, cv=5, return_estimator=True)
-
-        cv_mean.append(scores.mean())
-        cv_std.append(scores.std())
         
-
-    train_sc, test_sc = sklearn.model_selection.validation_curve(rdg, G, frav, "alpha", np.logspace(-10, 3), cv=5)
-
-    plt.figure()
-    plt.errorbar(alphas, cv_mean, yerr=cv_std)
-
-    plt.savefig("cv_score_vs_alpha.pdf")
-    plt.savefig("cv_score_vs_alpha.png")
-
-    plt.figure()
-    plt.plot(alphas, cv_score)
-    plt.xlabel(r"$\alpha$")
-    plt.ylabel(r"CV score")
-    plt.savefig("cv_score_vs_alpha.pdf")
-    plt.savefig("cv_score_vs_alpha.png")
-
