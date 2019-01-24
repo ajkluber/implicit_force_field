@@ -76,41 +76,56 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
 
     return cv_grid_ext, Ucv_ext
 
-def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, pair_idxs):
+def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs):
 
-    cv_table = omm.Continuous1DFunction(Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
 
-    cv_expr = ""
+    feature_funcs = {"dist":"distance({}, {})", "invdist":"(1/distance({}, {}))", 
+            "angle":"angle({}, {}, {})", "dih":"dihedral({}, {}, {}, {})"}
+
+    cv_expr = "Table(Q); Q = "
+    feat_idx = 0
+    for i in range(len(feat_types)):
+        feat_fun = feature_funcs[feat_types[i]]
+        for j in range(cv_coeff.shape[0]):
+            idxs = feat_idxs[i][j]
+            idxs += 1
+
+            feat_coeff = cv_coeff[feat_idx,0]
+            feat_mean = cv_mean[feat_idx]
+
+            #if feat_coeff < 0:
+            #    sign1 = "-"
+            #else:
+            #    sign1 = "+"
+
+            #if feat_mean < 0:
+            #    sign2 = "-"
+            #else:
+            #    sign2 = "+"
+
+            feat_explicit = feat_fun.format(*idxs)
+            cv_expr += "c{}*({} - b{}) ".format(feat_idx + 1, feat_explicit, feat_idx + 1)
+                
+            #if i == 0:
+            #    cv_expr += "{:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(b_i, idx1, idx2, sign2, abs(mean_b_i))
+            #elif i == cv_coeff.shape[0] - 1:
+            #    cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f});".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
+            #else:
+            #    cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
+
+            feat_idx += 1 
+
+    Ucv_force = omm.CustomCompoundBondForce(n_beads, cv_expr)
+    params = []
     for i in range(cv_coeff.shape[0]):
-        idx1, idx2 = pair_idxs[i]
-        idx1 += 1
-        idx2 += 1
-        b_i = cv_coeff[i,0]
-        mean_b_i = cv_mean[i]
-        if b_i < 0:
-            sign1 = "-"
-        else:
-            sign1 = "+"
+        Ucv_force.addPerBondParameter("c" + str(i + 1))
+        Ucv_force.addPerBondParameter("b" + str(i + 1))
 
-        if mean_b_i < 0:
-            sign2 = "-"
-        else:
-            sign2 = "+"
-            
-        if i == 0:
-            cv_expr += "{:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(b_i, idx1, idx2, sign2, abs(mean_b_i))
-        elif i == cv_coeff.shape[0] - 1:
-            cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f});".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
-        else:
-            cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
+        params.append(cv_coeff[i,0])
+        params.append(cv_mean[i])
 
-    cv_def = omm.CustomManyParticleForce(n_beads, cv_expr)
-    for i in range(n_beads):
-        cv_def.addParticle()
-
-    Ucv_force = omm.CustomCVForce("Table(Q)")
-    Ucv_force.addCollectiveVariable("Q", cv_def)
-    Ucv_force.addTabulatedFunction("Table", cv_table)
+    Ucv_force.addBond(np.arange(n_beads), params)
+    Ucv_force.addFunction(Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
 
     return Ucv_force
 
