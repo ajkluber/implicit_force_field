@@ -5,6 +5,9 @@ import time
 import argparse
 import numpy as np
 import scipy.interpolate
+import matplotlib as mpl
+mpl.use("Agg")
+import matplotlib.pyplot as plt
 
 import simtk.unit as unit
 import simtk.openmm as omm
@@ -78,54 +81,61 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
 
 def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs):
 
+    feature_funcs = {"dist":"distance(p{}, p{})", "invdist":"(1/distance(p{}, p{}))", 
+            "angle":"angle(p{}, p{}, p{})", "dih":"dihedral(p{}, p{}, p{}, p{})"}
 
-    feature_funcs = {"dist":"distance({}, {})", "invdist":"(1/distance({}, {}))", 
-            "angle":"angle({}, {}, {})", "dih":"dihedral({}, {}, {}, {})"}
-
-    cv_expr = "Table(Q); Q = "
+    #cv_expr = "Table(Q); Q = "
+    cv_expr = "25*("
     feat_idx = 0
     for i in range(len(feat_types)):
         feat_fun = feature_funcs[feat_types[i]]
         for j in range(cv_coeff.shape[0]):
             idxs = feat_idxs[i][j]
             idxs += 1
+            feat_explicit = feat_fun.format(*idxs)
 
             feat_coeff = cv_coeff[feat_idx,0]
             feat_mean = cv_mean[feat_idx]
 
-            #if feat_coeff < 0:
-            #    sign1 = "-"
-            #else:
-            #    sign1 = "+"
+            if feat_idx > 0:
+                if feat_coeff < 0:
+                    cv_expr += " - {:.5f}*(".format(abs(feat_coeff))
+                else:
+                    cv_expr += " + {:.5f}*(".format(abs(feat_coeff))
+            else:
+                if feat_coeff < 0:
+                    cv_expr += "-{:.5f}*(".format(abs(feat_coeff))
+                else:
+                    cv_expr += "{:.5f}*(".format(abs(feat_coeff))
 
-            #if feat_mean < 0:
-            #    sign2 = "-"
-            #else:
-            #    sign2 = "+"
+            cv_expr += feat_explicit
 
-            feat_explicit = feat_fun.format(*idxs)
-            cv_expr += "c{}*({} - b{}) ".format(feat_idx + 1, feat_explicit, feat_idx + 1)
-                
-            #if i == 0:
-            #    cv_expr += "{:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(b_i, idx1, idx2, sign2, abs(mean_b_i))
-            #elif i == cv_coeff.shape[0] - 1:
-            #    cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f});".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
-            #else:
-            #    cv_expr += "{} {:.5f}*(distance(p{}, p{}) {} {:.5f}) ".format(sign1, abs(b_i), idx1, idx2, sign2, abs(mean_b_i))
+            if feat_mean < 0:
+                cv_expr += " - {:.5f})".format(abs(feat_mean))
+            else:
+                cv_expr += " + {:.5f})".format(abs(feat_mean))
 
             feat_idx += 1 
 
+    cv_expr += ");"
+    #cv_expr += ";"
+
     Ucv_force = omm.CustomCompoundBondForce(n_beads, cv_expr)
-    params = []
-    for i in range(cv_coeff.shape[0]):
-        Ucv_force.addPerBondParameter("c" + str(i + 1))
-        Ucv_force.addPerBondParameter("b" + str(i + 1))
+    #Ucv_force = omm.CustomCompoundBondForce(10, cv_expr)
+    #params = []
+    #for i in range(cv_coeff.shape[0]):
+    #    Ucv_force.addPerBondParameter("c" + str(i + 1))
+    #    Ucv_force.addPerBondParameter("b" + str(i + 1))
 
-        params.append(cv_coeff[i,0])
-        params.append(cv_mean[i])
+    #    params.append(cv_coeff[i,0])
+    #    params.append(cv_mean[i])
 
-    Ucv_force.addBond(np.arange(n_beads), params)
-    Ucv_force.addFunction(Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
+    #    if i >= only:
+    #        break
+
+    Ucv_force.addBond(np.arange(n_beads))
+    #Ucv_force.addBond(np.arange(10))
+    #Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
 
     return Ucv_force
 
@@ -140,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument('--fixed_bonded_terms', action="store_true", help='Fixed boned terms.')
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
+    parser.add_argument('--collision_rate', type=float, default=0, help='Simulation collision_rate (1/ps).')
     parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
@@ -150,7 +161,10 @@ if __name__ == "__main__":
 
     #python run_cg_model.py c25 25 msm_dists 100 100 --run_idx 1 --T 300.00 --n_steps 1000
 
-    #run /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --run_idx 1 --T 300.00 --n_steps 1000
+    #run /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --nocuda --run_idx 1
+
+    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --nocuda --run_idx 1
+
 
     name = args.name
     n_beads = args.n_beads
@@ -161,7 +175,7 @@ if __name__ == "__main__":
     fixed_bonded_terms = args.fixed_bonded_terms
 
     timestep = args.timestep*unit.picosecond
-    #collision_rate = args.collision_rate/unit.picosecond
+    collision_rate = args.collision_rate
     nsteps_out = args.nsteps_out
     run_idx = args.run_idx
     T = args.T
@@ -176,14 +190,45 @@ if __name__ == "__main__":
     using_cv_r0 = False
     using_D2 = False
 
-    cwd = os.getcwd()
-
 
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms,
             using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs)
 
     cg_savedir += "_crossval_5"
+
+    cwd = os.getcwd()
+    Hdir = cwd + "/" + cg_savedir
+
+    rundir_str = lambda idx: Hdir + "/run_{}".format(idx)
+
+    # Determine if trajectories exist for this run
+    all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in sop.util.output_filenames(name, idx2)])
+
+    # if run idx is not specified create new run directory 
+    if run_idx == 0:
+        run_idx = 1
+        while all_trajfiles_exist(run_idx, 1):
+            run_idx += 1
+
+    rundir = rundir_str(run_idx)
+
+    # If trajectories exist in run directory, extend the last one.
+    traj_idx = 1
+    #while all_trajfiles_exist(run_idx, traj_idx):
+    #    traj_idx += 1
+
+    if traj_idx == 1:
+        minimize = True
+    else:
+        minimize = False
+
+    min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
+
+    ####################################################
+    # create potential
+    ####################################################
+    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
 
     # create tabulated function of collective variable 
     temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
@@ -195,14 +240,9 @@ if __name__ == "__main__":
     cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
-    pair_idxs = []
-    for i in range(n_beads - 1):
-        for j in range(i + 4, n_beads):
-            pair_idxs.append([i, j])
-    pair_idxs = np.array(pair_idxs)
 
     coeff = np.load(cg_savedir + "/rdg_cstar.npy")
-    D = 1/coeff[-1] # TODO turn into collision rate. Does mass matter?
+    D = 1/coeff[-1] 
 
     Ucv = np.zeros(len(cv_grid))
     for i in range(len(coeff) - 1):
@@ -218,7 +258,16 @@ if __name__ == "__main__":
         n_thresh = 500 
         cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh)
 
-    Ucv_force = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, pair_idxs)
+    pair_idxs = []
+    for i in range(n_beads - 1):
+        for j in range(i + 4, n_beads):
+            pair_idxs.append([i, j])
+    pair_idxs = np.array(pair_idxs)
+
+    feat_types = ["dist"]
+    feat_idxs = [pair_idxs]
+
+    Ucv_force = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
 
 
     ###################################################
@@ -228,18 +277,62 @@ if __name__ == "__main__":
         os.makedirs(rundir)
     os.chdir(rundir)
 
+    ini_pdb_file = name + "_min.pdb"
+
     starttime = time.time()
     ref_pdb = app.PDBFile(ini_pdb_file)
     topology, positions = ref_pdb.topology, ref_pdb.positions
 
     templates = sop.util.template_dict(topology, n_beads)
 
-    system = forcefield.createSystem(topology, ignoreExternalBonds=True, residueTemplates=templates)
+    ff_kwargs = {}
+    ff_kwargs["mass_ply"] = mass_ply
+    ff_kwargs["sigma_ply"] = sigma_ply
+    ff_kwargs["eps_ply"] = 0.5*unit.kilojoule_per_mole
 
-    sop.run.production(topology, positions, ensemble, temperature, timestep,
-            collision_rate, pressure, n_steps, nsteps_out, ff_files,
-            min_name, log_name, traj_name, final_state_name, cutoff, templates,
-            prev_state_name=prev_state_name,
-            nonbondedMethod=nonbondedMethod, minimize=minimize, cuda=cuda,
-            more_reporters=more_reporters, use_switch=False, r_switch=None,
-            forcefield=forcefield)
+    ff_filename = "ff_cgs.xml"
+    sop.build_ff.polymer_in_solvent(n_beads, "r12", "NONE",
+            saveas=ff_filename, **ff_kwargs)
+
+    forcefield = app.ForceField(ff_filename)
+
+    system = forcefield.createSystem(topology, ignoreExternalBonds=True, residueTemplates=templates)
+    system.addForce(Ucv_force)
+
+    if collision_rate == 0:
+        # gamma = m/D ? does temperature enter?
+        collision_rate = ((mass_ply/unit.amu)/D)/unit.picosecond
+    else:
+        collision_rate = collision_rate/unit.picosecond
+
+    ensemble = "NVT"
+    firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
+
+    raise SystemExit
+
+    print("Running production...")
+    sop.run.production(system, topology, ensemble, temperature, timestep,
+            collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
+            traj_name, final_state_name, ini_positions=positions,
+            minimize=minimize, cuda=cuda)
+
+    raise SystemExit
+
+    import numpy as np
+    import mdtraj as md
+    traj = md.load("c25_traj_1.dcd", top="c25_min.pdb")
+
+    pair_idxs = []
+    for i in range(n_beads - 1):
+        for j in range(i + 4, n_beads):
+            pair_idxs.append([i, j])
+    pair_idxs = np.array(pair_idxs)
+
+    rij = md.compute_distances(traj, pair_idxs)
+
+    bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
+
+    E_r12 = np.sum(0.5*((0.373/rij)**(12)), axis=1)
+    E_r12 = np.sum(bond_r, axis=1)
+
+    E_b = np.sum 
