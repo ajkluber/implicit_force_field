@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import shutil
 import time
@@ -13,7 +14,7 @@ import mdtraj as md
 import simulation.openmm as sop
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='.')
+    parser = argparse.ArgumentParser(description='Runs all atom simulation of polymer in solvent')
     parser.add_argument('name', type=str, help='Name.')
     parser.add_argument('n_beads', type=int, help='Number of beads in polymer.')
     parser.add_argument('ply_potential', type=str, help='Interactions for polymer.')
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     Vdir = Tdir + "/volume_equil"
     rundir_str = lambda idx: Tdir + "/run_{}".format(idx)
 
-    ### Determine if trajectories exist for this run
+    # Determine if trajectories exist for this run
     all_trajfiles_exist = lambda idx1, idx2: np.all([os.path.exists(rundir_str(idx1) + "/" + x) for x in sop.util.output_filenames(name, idx2)])
 
     # if run idx is not specified create new run directory 
@@ -248,21 +249,37 @@ if __name__ == "__main__":
 
     templates = sop.util.template_dict(topology, n_beads)
 
+    # when interested in outputing forces mapped onto cg structures
+    force_map_matrix = np.zeros((3*n_beads, 3*topology.getNumAtoms()))
+    force_map_matrix[:3*n_beads, :3*n_beads] = np.identity(3*n_beads)
+
     # reporters for forces and velocities
     more_reporters = []
     if save_forces:
-        more_reporters.append(sop.additional_reporters.ForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out))
+        #more_reporters.append(sop.additional_reporters.MappedForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out), force_map_matrix)
+        more_reporters.append(sop.additional_reporters.SubsetForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out), 3*n_beads)
     if save_velocities:
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
+    forcefield = app.ForceField(ff_files)
+    system = forcefield.createSystem(topology,
+            nonbondedMethod=nonbondedMethod, nonbondedCutoff=cutoff,
+            ignoreExternalBonds=True, residueTemplates=templates)
+
     # Run simulation
     print("Running production...")
-    sop.run.production(topology, positions, ensemble, temperature, timestep,
-            collision_rate, pressure, n_steps, nsteps_out, ff_files,
-            min_name, log_name, traj_name, final_state_name, cutoff, templates,
-            prev_state_name=prev_state_name,
-            nonbondedMethod=nonbondedMethod, minimize=minimize, cuda=cuda,
-            more_reporters=more_reporters, use_switch=True, r_switch=r_switch)
+    sop.run.production(system, topology, ensemble, temperature, timestep,
+            collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
+            traj_name, final_state_name, ini_state_name=prev_state_name,
+            use_switch=True, r_switch=r_switch, minimize=minimize,
+            pressure=pressure, cuda=cuda, more_reporters=more_reporters)
+
+    #sop.run.production(topology, positions, ensemble, temperature, timestep,
+    #        collision_rate, pressure, n_steps, nsteps_out, ff_files,
+    #        min_name, log_name, traj_name, final_state_name, cutoff, templates,
+    #        prev_state_name=prev_state_name,
+    #        nonbondedMethod=nonbondedMethod, minimize=minimize, cuda=cuda,
+    #        more_reporters=more_reporters)
 
     stoptime = time.time()
     with open("running_time.log", "w") as fout:
