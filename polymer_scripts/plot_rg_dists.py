@@ -10,6 +10,45 @@ import matplotlib as mpl
 mpl.rcParams['mathtext.fontset'] = 'cm'
 mpl.rcParams['mathtext.rm'] = 'serif'
 
+def funk():
+    name = "c25"
+    msm_savedir = "msm_dists"
+
+    #topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+    #trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd")
+    psinames = []
+    rgnames = []
+    qnames = []
+    for i in range(len(trajnames)):
+        tname = trajnames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+        temp_names = []
+        for n in range(M):
+            temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
+        psinames.append(temp_names)
+        rgnames.append("run_{}/rg_{}.npy".format(idx1, idx2))
+        qnames.append("run_{}/q_{}.npy".format(idx1, idx2))
+
+    psi_trajs = [] 
+    rg_trajs = []
+    q_trajs = []
+    for i in range(len(trajnames)):
+        psi_trajs.append(np.load(psinames[i][0]))
+        rg_trajs.append(np.load(rgnames[i]))
+        q_trajs.append(np.load(qnames[i]))
+
+    psi_lengths = [ x.shape[0] for x in psi_trajs ]
+    rg_lengths = [ x.shape[0] for x in rg_trajs ]
+    q_lengths = [ x.shape[0] for x in q_trajs ]
+    for i in range(len(trajnames)):
+        if psi_lengths[i] != rg_lengths[i]:
+            print("{} {} {}".format(trajnames[i], rg_lengths[i], psi_lengths[i]))
+
+    psi_rg_corr = np.corrcoef(np.concatenate(psi_trajs), np.concatenate(rg_trajs))
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
