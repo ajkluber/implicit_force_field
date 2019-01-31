@@ -80,19 +80,32 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
     return cv_grid_ext, Ucv_ext
 
 def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs):
-
     feature_funcs = {"dist":"distance(p{}, p{})", "invdist":"(1/distance(p{}, p{}))", 
             "angle":"angle(p{}, p{}, p{})", "dih":"dihedral(p{}, p{}, p{}, p{})"}
 
+
     #cv_expr = "Table(Q); Q = "
-    cv_expr = "25*("
+    cv_expr = ""
+    pr_cv_expr = ""
     feat_idx = 0
+    atm_to_p_idx = []
+    p_idx = -np.ones(n_beads, int)
+    curr_p_idx = 1
     for i in range(len(feat_types)):
         feat_fun = feature_funcs[feat_types[i]]
         for j in range(cv_coeff.shape[0]):
             idxs = feat_idxs[i][j]
-            idxs += 1
-            feat_explicit = feat_fun.format(*idxs)
+
+            expr_idxs = []
+            for n in range(len(idxs)): 
+                if p_idx[idxs[n]] == -1:
+                    p_idx[idxs[n]] = curr_p_idx
+                    atm_to_p_idx.append(int(idxs[n]))
+                    curr_p_idx += 1
+                expr_idxs.append(p_idx[idxs[n]])
+            #print("{} -> {}      {} -> {}".format(idxs[0], expr_idxs[0], idxs[1], expr_idxs[1]))   # DEBUGGING
+
+            feat_explicit = feat_fun.format(*expr_idxs)
 
             feat_coeff = cv_coeff[feat_idx,0]
             feat_mean = cv_mean[feat_idx]
@@ -100,44 +113,38 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
             if feat_idx > 0:
                 if feat_coeff < 0:
                     cv_expr += " - {:.5f}*(".format(abs(feat_coeff))
+                    pr_cv_expr += "\n - {:.5f}*(".format(abs(feat_coeff))
                 else:
                     cv_expr += " + {:.5f}*(".format(abs(feat_coeff))
+                    pr_cv_expr += "\n + {:.5f}*(".format(abs(feat_coeff))
             else:
                 if feat_coeff < 0:
                     cv_expr += "-{:.5f}*(".format(abs(feat_coeff))
+                    pr_cv_expr += "-{:.5f}*(".format(abs(feat_coeff))
                 else:
                     cv_expr += "{:.5f}*(".format(abs(feat_coeff))
+                    pr_cv_expr += "{:.5f}*(".format(abs(feat_coeff))
 
             cv_expr += feat_explicit
+            pr_cv_expr += feat_explicit
 
             if feat_mean < 0:
                 cv_expr += " - {:.5f})".format(abs(feat_mean))
+                pr_cv_expr += " - {:.5f})".format(abs(feat_mean))
             else:
                 cv_expr += " + {:.5f})".format(abs(feat_mean))
+                pr_cv_expr += " + {:.5f})".format(abs(feat_mean))
 
             feat_idx += 1 
 
-    cv_expr += ");"
-    #cv_expr += ";"
+    cv_expr += ";"
+    pr_cv_expr += ";"
 
     Ucv_force = omm.CustomCompoundBondForce(n_beads, cv_expr)
-    #Ucv_force = omm.CustomCompoundBondForce(10, cv_expr)
-    #params = []
-    #for i in range(cv_coeff.shape[0]):
-    #    Ucv_force.addPerBondParameter("c" + str(i + 1))
-    #    Ucv_force.addPerBondParameter("b" + str(i + 1))
-
-    #    params.append(cv_coeff[i,0])
-    #    params.append(cv_mean[i])
-
-    #    if i >= only:
-    #        break
-
-    Ucv_force.addBond(np.arange(n_beads))
-    #Ucv_force.addBond(np.arange(10))
+    Ucv_force.addBond(atm_to_p_idx)
     #Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
 
-    return Ucv_force
+    return Ucv_force, pr_cv_expr
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Runs coarse-grain model of polymer')
@@ -155,15 +162,15 @@ if __name__ == "__main__":
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
-    parser.add_argument('--nocuda', action="store_true", default=False, help='Dont specify cuda.')
+    parser.add_argument('--platform', type=str, default=None, help='Specify platform (CUDA, CPU).')
     args = parser.parse_args()
 
 
     #python run_cg_model.py c25 25 msm_dists 100 100 --run_idx 1 --T 300.00 --n_steps 1000
 
-    #run /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --nocuda --run_idx 1
+    #run /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
 
-    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --nocuda --run_idx 1
+    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
 
 
     name = args.name
@@ -182,7 +189,8 @@ if __name__ == "__main__":
     n_steps = args.n_steps
     #save_forces = args.save_forces
     #save_velocities = args.save_velocities
-    cuda = not args.nocuda
+    #cuda = not args.nocuda
+    use_platform = args.platform
     temperature = T*unit.kelvin
     beta = 1/(0.0083145*T)
 
@@ -267,7 +275,7 @@ if __name__ == "__main__":
     feat_types = ["dist"]
     feat_idxs = [pair_idxs]
 
-    Ucv_force = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
+    Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
 
 
     ###################################################
@@ -308,13 +316,11 @@ if __name__ == "__main__":
     ensemble = "NVT"
     firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
 
-    raise SystemExit
-
     print("Running production...")
     sop.run.production(system, topology, ensemble, temperature, timestep,
             collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
             traj_name, final_state_name, ini_positions=positions,
-            minimize=minimize, cuda=cuda)
+            minimize=minimize, use_platform="CPU")
 
     raise SystemExit
 
