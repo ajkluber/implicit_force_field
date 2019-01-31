@@ -1,8 +1,9 @@
+from __future__ import absolute_import
 import numpy as np
 
 import mdtraj as md
 
-import basis_library
+import implicit_force_field.basis_library as basis_library
 
 if __name__ == "__main__":
     n_beads = 25 

@@ -1,4 +1,6 @@
-import util
-import solve_coeff
-import basis_library
-import polymer_scripts
+from __future__ import absolute_import
+import implicit_force_field.util
+import implicit_force_field.basis_library
+import implicit_force_field.polymer_scripts
+
+import implicit_force_field.kramers_moyal

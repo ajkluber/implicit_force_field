@@ -1,4 +1,4 @@
-from __future__ import print_function, absolute_import
+from __future__ import print_function
 import os
 import glob
 import numpy as np
@@ -215,12 +215,11 @@ if __name__ == "__main__":
 
     using_cv = True
     using_cv_r0 = False
-    #n_cv_basis_funcs = 40
-    #n_cv_test_funcs = 100
-    #n_cv_basis_funcs = 40
+    n_cv_basis_funcs = 40
+    n_cv_test_funcs = 100
     #n_cv_test_funcs = 40
-    n_cv_basis_funcs = 100
-    n_cv_test_funcs = 200
+    #n_cv_basis_funcs = 100
+    #n_cv_test_funcs = 200
 
     using_D2 = False
     n_cross_val_sets = 5
@@ -228,9 +227,7 @@ if __name__ == "__main__":
     #msm_savedir = "msm_dih_dists"
     msm_savedir = "msm_dists"
 
-    Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
-            msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv,
-            using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs)
+    Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs)
 
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
@@ -249,8 +246,6 @@ if __name__ == "__main__":
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
 
-    #print(cg_savedir)
-    #raise SystemExit
     ##################################################################
     # calculate matrix X and d 
     ##################################################################

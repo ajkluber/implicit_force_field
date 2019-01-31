@@ -150,6 +150,8 @@ if __name__ == "__main__":
     f_str = "_".join(feature_set)
     msm_savedir = "msm_" + f_str
 
+    print("Results are saved here: " + msm_savedir)
+
     if not os.path.exists(msm_savedir):
         os.mkdir(msm_savedir)
 
@@ -211,6 +213,9 @@ if __name__ == "__main__":
 
     ymin, ymax = 0, 7000
 
+    with open(msm_savedir + "/features.txt", "w") as fout:
+        fout.write("\n".join(feat.describe()))
+
     reader = coor.source(trajnames, features=feat)
 
     # Estimate Markov state model
@@ -227,7 +232,7 @@ if __name__ == "__main__":
 
     tica = coor.tica(lag=lagtime, stride=1)
     coor.pipeline([reader, tica])
-    Y = tica.get_output(dimensions=range(keep_dims))
+    Y = tica.get_output(dimensions=np.arange(keep_dims))
     np.save(msm_savedir + "/tica_ti.npy", tica.timescales)
     np.save(msm_savedir + "/tica_eigenvects.npy", tica.eigenvectors)
     np.save(msm_savedir + "/tica_mean.npy", tica.mean)

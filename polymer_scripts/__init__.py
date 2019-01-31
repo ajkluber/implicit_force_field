@@ -1,1 +1,2 @@
-import util
+from __future__ import absolute_import
+import implicit_force_field.polymer_scripts.util
