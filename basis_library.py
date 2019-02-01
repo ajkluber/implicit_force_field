@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 import time
 import sys
 import numpy as np
@@ -68,13 +68,18 @@ class FunctionLibrary(object):
         self.cv_U_funcs = []           # functional forms, lambdified
         self.cv_dU_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
 
+        # Collective variable (CV) noise functions
+        self.cv_a_sym = []             # functional forms, symbolic
+        self.cv_a_funcs = []           # functional forms, lambdified
+        self.cv_da_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
+
         # Collective variable (CV) test functions
         self.cv_f_sym = []             # functional forms, symbolic
         self.cv_f_funcs = []           # functional forms, lambdified
         self.cv_df_funcs = []          # first derivative of each form wrt each of its arguments, lambdified
         self.cv_d2f_funcs = []         # second derivative of each form wrt each of its arguments, lambdified
 
-        # CVs are linear combination of features (chi)
+        # Collective variables are linear combination of features (chi)
         self.chi_sym = []
         self.chi_funcs = []
         self.chi_coeff = [] 
@@ -520,8 +525,8 @@ class PolymerModel(FunctionLibrary):
     # DEFINE COLLECTIVE VARIABLE
     ##########################################################
     def linear_collective_variables(self, feature_types, feature_atm_idxs, feature_coeff, feature_mean):
-        """Enumerate the collective variables in terms of feature functions
-        symbolically and take derivate of features wrt each Cartesian coord
+        """Define collective variables (cv) in terms of feature functions
+        symbolically and take derivate of features wrt each Cartesian coord.
         
         Collective variables are allowed to be linear combination of features
         which are functions of cartesian coordinates.
@@ -614,6 +619,7 @@ class PolymerModel(FunctionLibrary):
         return coord_idxs
 
     def _generate_bonded_idxs(self, n_args):
+        raise NotImplementedError
 
         coord_idxs = []
         for i in range(self.n_atoms - (n_args/self.n_dim) + 1):
@@ -766,6 +772,27 @@ class PolymerModel(FunctionLibrary):
                 temp_cv_dU_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
 
             self.cv_dU_funcs.append(temp_cv_dU_funcs)
+
+    def gaussian_cv_noise_functions(self, cv_r0, cv_w):
+        
+        for n in range(len(cv_r0)):
+            # basis function is Gaussian with center r0 and width w
+            f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
+            for i in range(1, self.n_cv_dim):
+                f_sym += (self.cv_sym[i] - cv_r0[n][i])**2
+            f_sym = sympy.exp(-self.one_half*f_sym/(cv_w[n]**2))
+            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
+
+            self.cv_a_sym.append(f_sym)
+            self.cv_a_funcs.append(f_lamb)
+
+            # first and second derivative wrt each arg
+            temp_cv_da_funcs = []
+            for i in range(len(self.cv_args)):
+                df_sym = f_sym.diff(self.cv_args[i])
+                temp_cv_da_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
+
+            self.cv_da_funcs.append(temp_cv_da_funcs)
 
     ##########################################################3
     # TEST FUNCTIONS
@@ -1205,6 +1232,170 @@ class PolymerModel(FunctionLibrary):
     ###############################################################
     # CALCULATE MATRICES FOR EIGENPAIR METHOD
     ###############################################################
+    def nonlinear_spectral_loss(self, coeff, alpha, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None):
+        """Calculate eigenpair matrices
+       
+        Parameters
+        ----------
+        coeff: np.ndarray
+            Trajectory filenames
+
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        psinames : list, str
+            Filenames for 
+            
+        ti_file : str
+            Filename for timescales
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        cv_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        """
+        # TODO: allow collective variable to be different than eigenvector
+
+        if not set_assignment is None:
+            n_sets = np.max([ np.max(x) for x in set_assignment]) + 1
+        else:
+            n_sets = 1
+
+        n_U_params = self.n_params 
+
+        U_coeff = coeff[:n_U_params]
+        a_coeff = coeff[n_U_params:]
+
+        R = self.n_params
+        P = self.n_test_funcs
+
+        training_loss = 0
+        validation_loss = 0
+
+        if self.using_cv and not self.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(psinames) != len(trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
+        kappa = 1./np.load(ti_file)[:M]
+
+        N_prev = 0
+        N_prev_set = np.zeros(n_sets, int)
+        for n in range(len(trajnames)):
+            if verbose:
+                if n == len(trajnames) - 1:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+                else:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+                sys.stdout.flush()
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+            else:
+                cv_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                N_chunk = chunk.n_frames
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+                if cv_traj is None:
+                    cv_chunk = self.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, self.n_dof))
+
+                # calculate gradient of fixed and parametric potential terms
+                grad_U1 = self.gradient_U1(xyz_traj, cv_chunk)
+
+                grad_U = np
+
+                # calculate test function values, gradient, and Laplacian
+                test_f = self.test_functions(xyz_traj, cv_chunk)
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
+
+                #
+                noise_a = self.calculate_noise_basis(xyz_traj, cv_chunk)
+                grad_a = self.gradient_noise(xyz_traj, cv_chunk)
+
+                noise_a = np.einsum("k,tk->t", a_coeff, noise)
+
+                # calculate b vector
+
+
+                if self.using_U0:
+                    grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
+
+                if self.using_D2:
+                    #TODO
+                    pass
+
+                if n_sets == 1: 
+                    # dot products with eigenvectors
+                    curr_X1 = np.einsum("tm,tdr,tdp->mpr", psi_chunk, -grad_U1, grad_f).reshape((M*P, R))
+                    curr_X2 = np.einsum("m,tm,tp->mp", kappa, psi_chunk, test_f).reshape(M*P)
+
+                    curr_d = (-1./self.beta)*np.einsum("tm,tp->mp", psi_chunk, Lap_f).reshape(M*P)
+
+                    if self.using_U0:
+                        curr_d += np.einsum("tm,td,tdp->mp", psi_chunk, grad_U0, grad_f).reshape(M*P)
+
+                    # running average to reduce numerical error
+                    X[0,:,:-1] = (curr_X1 + float(N_prev)*X[0,:,:-1])/(float(N_prev) + float(N_chunk))
+                    X[0,:,-1] = (curr_X2 + float(N_prev)*X[0,:,-1])/(float(N_prev) + float(N_chunk))
+                    d[0,:] = (curr_d + float(N_prev)*d[0,:])/(float(N_prev) + float(N_chunk))
+
+                    N_prev += N_chunk
+                else:
+                    for k in range(n_sets):   
+                        frames_in_this_set = set_assignment[n][start_idx:start_idx + N_chunk] == k
+
+                        if np.any(frames_in_this_set):
+                            N_curr_set = np.sum(frames_in_this_set)
+
+                            # average subset of frames for set k
+                            psi_subset = psi_chunk[frames_in_this_set]
+                            gU1_subset = -grad_U1[frames_in_this_set]
+                            gradf_subset = grad_f[frames_in_this_set]
+                            testf_subset = test_f[frames_in_this_set]
+                            Lap_f_subset = Lap_f[frames_in_this_set]
+
+                            # dot products with eigenvectors
+                            curr_X1 = np.einsum("tm,tdr,tdp->mpr", psi_subset, gU1_subset, gradf_subset).reshape((M*P, R))
+                            curr_X2 = np.einsum("m,tm,tp->mp", kappa, psi_subset, testf_subset).reshape(M*P)
+
+                            curr_d = (-1./self.beta)*np.einsum("tm,tp->mp", psi_subset, Lap_f_subset).reshape(M*P)
+
+                            if self.using_U0:
+                                gU0_subset = grad_U0[frames_in_this_set]
+                                curr_d += np.einsum("tm,td,tdp->mp", psi_subset, gU0_subset, gradf_subset).reshape(M*P)
+
+                            # running average to reduce numerical error
+                            X[k,:,:-1] = (curr_X1 + float(N_prev_set[k])*X[k,:,:-1])/(float(N_prev_set[k] + N_curr_set))
+                            X[k,:,-1] = (curr_X2 + float(N_prev_set[k])*X[k,:,-1])/(float(N_prev_set[k] + N_curr_set))
+                            d[k,:] = (curr_d + float(N_prev_set[k])*d[k,:])/(float(N_prev_set[k] + N_curr_set))
+
+                            N_prev_set[k] += N_curr_set
+                start_idx += N_chunk
+
+        self.cross_val_sets = n_sets
+        self.cross_val_set_n_frames = N_prev_set
+        self.eigenpair_X = X
+        self.eigenpair_d = d
+        self.eigenpair_D2 = D2
+
     def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None):
         """Calculate eigenpair matrices
        
@@ -1295,7 +1486,7 @@ class PolymerModel(FunctionLibrary):
                 grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
                 if self.using_U0:
-                    grad_U0 = self.gradient_U0(xyz_traj, psi_chunk)
+                    grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
 
                 if self.using_D2:
                     #TODO
@@ -1312,9 +1503,9 @@ class PolymerModel(FunctionLibrary):
                         curr_d += np.einsum("tm,td,tdp->mp", psi_chunk, grad_U0, grad_f).reshape(M*P)
 
                     # running average to reduce numerical error
-                    X[0,:,:-1] = (curr_X1 + N_prev*X[0,:,:-1])/(N_prev + N_chunk)
-                    X[0,:,-1] = (curr_X2 + N_prev*X[0,:,-1])/(N_prev + N_chunk)
-                    d[0,:] = (curr_d + N_prev*d[0,:])/(N_prev + N_chunk)
+                    X[0,:,:-1] = (curr_X1 + float(N_prev)*X[0,:,:-1])/(float(N_prev) + float(N_chunk))
+                    X[0,:,-1] = (curr_X2 + float(N_prev)*X[0,:,-1])/(float(N_prev) + float(N_chunk))
+                    d[0,:] = (curr_d + float(N_prev)*d[0,:])/(float(N_prev) + float(N_chunk))
 
                     N_prev += N_chunk
                 else:
@@ -1342,9 +1533,9 @@ class PolymerModel(FunctionLibrary):
                                 curr_d += np.einsum("tm,td,tdp->mp", psi_subset, gU0_subset, gradf_subset).reshape(M*P)
 
                             # running average to reduce numerical error
-                            X[k,:,:-1] = (curr_X1 + N_prev_set[k]*X[k,:,:-1])/(N_prev_set[k] + N_curr_set)
-                            X[k,:,-1] = (curr_X2 + N_prev_set[k]*X[k,:,-1])/(N_prev_set[k] + N_curr_set)
-                            d[k,:] = (curr_d + N_prev_set[k]*d[k,:])/(N_prev_set[k] + N_curr_set)
+                            X[k,:,:-1] = (curr_X1 + float(N_prev_set[k])*X[k,:,:-1])/(float(N_prev_set[k] + N_curr_set))
+                            X[k,:,-1] = (curr_X2 + float(N_prev_set[k])*X[k,:,-1])/(float(N_prev_set[k] + N_curr_set))
+                            d[k,:] = (curr_d + float(N_prev_set[k])*d[k,:])/(float(N_prev_set[k] + N_curr_set))
 
                             N_prev_set[k] += N_curr_set
                 start_idx += N_chunk
@@ -1355,42 +1546,19 @@ class PolymerModel(FunctionLibrary):
         self.eigenpair_d = d
         self.eigenpair_D2 = D2
 
-    def _eigenpair_Lap_f(self, trajnames, topfile, psinames, psi_bin_edges, ti_file, M=1, cv_names=[], verbose=False):
-        """Calculate Laplacian of test functions 
-       
-        Parameters
-        ----------
-        trajnames : list, str
-            Trajectory filenames
-
-        topfile : str
-            Filename for topology (pdb)
-
-        psinames : list, str
-            Filenames for 
-
-        psi_bin_edges : list, np.ndarray
-            Bin edges for histograming along eigenvector
-            
-        ti_file : str
-            Filename for timescales
-
-        M : int (default=1)
-            Number of timescales to keep in eigenfunction expansion.
-        
-        cv_names : list, str (opt)
-            Collective variable rilenames if pre-calculated. Will calculate
-            collective variables on the fly if not given. 
-
-        """
-        # TODO: allow collective variable to be different than eigenvector
+    def _eigenpair_generator_terms(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False):
 
         P = self.n_test_funcs
-        n_psi_bins = len(psi_bin_edges) - 1
 
         # if constant diff coeff
         if self.constant_diff:
-            avg_Lapf = np.zeros((M, P, n_psi_bins), float)
+            c_r = coeff[:-1] 
+            D_coeff = 1./coeff[-1]
+
+            psi_fj = np.zeros((M, P), float)
+            gU0_fj = np.zeros(P, float)
+            gU1_fj = np.zeros(P, float)
+            Lap_fj
         else:
             raise NotImplementedError("Only constant diffusion coefficient is supported.")
 
@@ -1400,15 +1568,14 @@ class PolymerModel(FunctionLibrary):
         if len(psinames) != len(trajnames):
             raise ValueError("Need eigenvector for every trajectory!")
 
-        kappa = 1./np.load(ti_file)[:M]
 
-        N_prev = np.zeros((P, n_psi_bins))
+        N_prev = 0
         for n in range(len(trajnames)):
             if verbose:
                 if n == len(trajnames) - 1:
-                    print("Lap f_j: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
                 else:
-                    print("Lap f_j: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
                 sys.stdout.flush()
             # load eigenvectors
             psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
@@ -1432,25 +1599,192 @@ class PolymerModel(FunctionLibrary):
                 # cartesian coordinates unraveled
                 xyz_traj = np.reshape(chunk.xyz, (N_chunk, self.n_dof))
 
-                # calculate test Laplacian
+                # calculate gradient of fixed and parametric potential terms
+                grad_U1 = self.gradient_U1(xyz_traj, cv_chunk)
+                grad_U1 = np.einsum("r,tdr->td", c_r, grad_U1)
+
+                # calculate test function values, gradient, and Laplacian
+                test_f = self.test_functions(xyz_traj, cv_chunk)
                 grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
-                # bin along eigenvectors
-                for j in range(P):
-                    curr_Lap_fj = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="sum")[0]
-                    N_chunk_j = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="count")[0]
+                if self.using_U0:
+                    grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
+                    curr_gradU0_fj = np.einsum("td,tdp->p", -D_coeff*grad_U0, grad_f)
+                    gU0_fj = (curr_gU0_fj + float(N_prev)*gU0_fj)/(float(N_prev + N_chunk))
 
-                    N_tot_j = N_prev[j] + N_chunk_j
-                    nonzero_bins = N_tot_j > 0
-                    if np.any(nonzero_bins): 
-                        #import pdb
-                        #pdb.set_trace()
-                        avg_Lapf[0, j, nonzero_bins] = (curr_Lap_fj[nonzero_bins] + N_prev[j, nonzero_bins]*avg_Lapf[0, j, nonzero_bins])/N_tot_j[nonzero_bins]
+                # calculate generator for
+                curr_psi_fj = np.einsum("tm,tp->mp", psi_chunk, test_f)
+                curr_gradU1_fj = np.einsum("td,tdp->p", -D_coeff*grad_U1, grad_f)
+                curr_Lap_fj = np.sum((D_coeff/self.beta)*Lap_f)
 
-                    N_prev[j] += N_chunk_j
+                psi_fj = (curr_psi_fj + float(N_prev)*psi_fj)/(float(N_prev + N_chunk))
+                gU1_fj = (curr_gU1_fj + float(N_prev)*gU1_fj)/(float(N_prev + N_chunk))
+                Lap_fj = (curr_Lap_fj + float(N_prev)*Lap_fj)/(float(N_prev + N_chunk))
+
                 start_idx += N_chunk
+                N_prev += N_chunk
 
-        self.eigenpair_Lapf_vs_psi = avg_Lapf
+        #self.eigenpair_L_fj = L_fj
+        self.eigenpair_gU0_fj = gU0_fj
+        self.eigenpair_gU1_fj = gU1_fj
+        self.eigenpair_Lap_fj = Lap_fj
+        self.eigenpair_psi_fj = psi_fj
+
+    def _eigenpair_Lap_f(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False):
+
+        P = self.n_test_funcs
+
+        # if constant diff coeff
+        if self.constant_diff:
+            c_r = coeff[:-1] 
+            D_coeff = 1./coeff[-1]
+            Lap_fj = np.zeros(P, float)
+        else:
+            raise NotImplementedError("Only constant diffusion coefficient is supported.")
+
+        if self.using_cv and not self.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(psinames) != len(trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
+
+        N_prev = 0
+        for n in range(len(trajnames)):
+            if verbose:
+                if n == len(trajnames) - 1:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+                else:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+                sys.stdout.flush()
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+            else:
+                cv_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                N_chunk = chunk.n_frames
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+                if cv_traj is None:
+                    cv_chunk = self.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, self.n_dof))
+
+                # calculate test function Laplacian
+                grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
+                curr_Lap_fj = np.sum((D_coeff/self.beta)*Lap_f)
+                Lap_fj = (curr_Lap_fj + float(N_prev)*Lap_fj)/(float(N_prev + N_chunk))
+
+                start_idx += N_chunk
+                N_prev += N_chunk
+
+        self.eigenpair_Lap_fj = Lap_fj
+
+    #def _eigenpair_Lap_f(self, trajnames, topfile, psinames, psi_bin_edges, ti_file, M=1, cv_names=[], verbose=False):
+    #    """Calculate Laplacian of test functions 
+    #   
+    #    Parameters
+    #    ----------
+    #    trajnames : list, str
+    #        Trajectory filenames
+
+    #    topfile : str
+    #        Filename for topology (pdb)
+
+    #    psinames : list, str
+    #        Filenames for 
+
+    #    psi_bin_edges : list, np.ndarray
+    #        Bin edges for histograming along eigenvector
+    #        
+    #    ti_file : str
+    #        Filename for timescales
+
+    #    M : int (default=1)
+    #        Number of timescales to keep in eigenfunction expansion.
+    #    
+    #    cv_names : list, str (opt)
+    #        Collective variable rilenames if pre-calculated. Will calculate
+    #        collective variables on the fly if not given. 
+
+    #    """
+    #    # TODO: allow collective variable to be different than eigenvector
+
+    #    P = self.n_test_funcs
+    #    n_psi_bins = len(psi_bin_edges) - 1
+
+    #    # if constant diff coeff
+    #    if self.constant_diff:
+    #        avg_Lapf = np.zeros((M, P, n_psi_bins), float)
+    #    else:
+    #        raise NotImplementedError("Only constant diffusion coefficient is supported.")
+
+    #    if self.using_cv and not self.cv_defined:
+    #        raise ValueError("Collective variables are not defined!")
+
+    #    if len(psinames) != len(trajnames):
+    #        raise ValueError("Need eigenvector for every trajectory!")
+
+    #    kappa = 1./np.load(ti_file)[:M]
+
+    #    N_prev = np.zeros((P, n_psi_bins))
+    #    for n in range(len(trajnames)):
+    #        if verbose:
+    #            if n == len(trajnames) - 1:
+    #                print("Lap f_j: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+    #            else:
+    #                print("Lap f_j: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+    #            sys.stdout.flush()
+    #        # load eigenvectors
+    #        psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+    #        if len(cv_names) > 0:
+    #            cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+    #        else:
+    #            cv_traj = None
+
+    #        start_idx = 0
+    #        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+    #            N_chunk = chunk.n_frames
+
+    #            psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+    #            if cv_traj is None:
+    #                cv_chunk = self.calculate_cv(chunk)
+    #            else:
+    #                cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+    #            # cartesian coordinates unraveled
+    #            xyz_traj = np.reshape(chunk.xyz, (N_chunk, self.n_dof))
+
+    #            # calculate test Laplacian
+    #            grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
+
+    #            # bin along eigenvectors
+    #            for j in range(P):
+    #                curr_Lap_fj = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="sum")[0]
+    #                N_chunk_j = bin1d(psi_chunk[:,0], Lap_f[:,j], bins=psi_bin_edges, statistic="count")[0]
+
+    #                N_tot_j = N_prev[j] + N_chunk_j
+    #                nonzero_bins = N_tot_j > 0
+    #                if np.any(nonzero_bins): 
+    #                    #import pdb
+    #                    #pdb.set_trace()
+    #                    avg_Lapf[0, j, nonzero_bins] = (curr_Lap_fj[nonzero_bins] + float(N_prev[j, nonzero_bins])*avg_Lapf[0, j, nonzero_bins])/float(N_tot_j[nonzero_bins])
+
+    #                N_prev[j] += N_chunk_j
+    #            start_idx += N_chunk
+
+    #    self.eigenpair_Lapf_vs_psi = avg_Lapf
 
     def _eigenpair_Jacobian(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[]):
         """Calculate eigenpair matrices
