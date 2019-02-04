@@ -84,8 +84,8 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
             "angle":"angle(p{}, p{}, p{})", "dih":"dihedral(p{}, p{}, p{}, p{})"}
 
 
-    #cv_expr = "Table(Q); Q = "
-    cv_expr = ""
+    cv_expr = "Table(Q); Q = "
+    #cv_expr = ""
     pr_cv_expr = ""
     feat_idx = 0
     atm_to_p_idx = []
@@ -142,7 +142,7 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
     Ucv_force = omm.CustomCompoundBondForce(n_beads, cv_expr)
     Ucv_force.addBond(atm_to_p_idx)
-    #Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
+    Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
 
     return Ucv_force, pr_cv_expr
 
