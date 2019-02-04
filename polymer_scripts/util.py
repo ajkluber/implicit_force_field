@@ -44,7 +44,7 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_
             cv_w = np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
             cv_r0 = cv_r0.reshape((len(cv_r0),1))
         else:
-            temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
+            temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")[1:-1]
             cv_r0 = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_cv_basis_funcs)
             cv_w_basis = 2*np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
             cv_r0_basis = cv_r0.reshape((-1, 1))
