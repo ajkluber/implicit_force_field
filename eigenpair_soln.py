@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import
 import os
 import glob
+import argparse
 import numpy as np
 import matplotlib as mpl
 mpl.use("Agg")
@@ -203,6 +204,30 @@ def split_trajs_into_train_and_test_sets(trajnames, psinames, n_cross_val_sets=5
     return traj_set, traj_set_frames, psi_set
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("msm_savedir", type=str)
+    parser.add_argument("--psi_dims", type=int, default=1)
+    parser.add_argument("--a_coeff", type=float, default=None)
+    parser.add_argument("--n_basis", type=int, default=40)
+    parser.add_argument("--n_test", type=int, default=100)
+    parser.add_argument("--fixed_bonds", action="store_true")
+    parser.add_argument("--recalc_matrices", action="store_true")
+    args = parser.parse_args()
+
+    msm_savedir = args.msm_savedir
+    M = args.psi_dims
+    a_coeff = args.a_coeff
+    n_cv_basis_funcs = args.n_basis
+    n_cv_test_funcs = args.n_test
+    fixed_bonded_terms = args.fixed_bonds
+    recalc_matrices = args.recalc_matrices
+
+    #python ~/code/implicit_force_field/eigenpair_soln.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
+
+    # If simulation were done with OpenMM gamma = 1 ps^-1 
+    # then noise coefficient a_coeff = 1ps/mass_ply
+    # a_coeff = 1/37 = 0.027
+
     n_beads = 25
     name = "c" + str(n_beads)
     T = 300
@@ -211,7 +236,7 @@ if __name__ == "__main__":
     n_pair_gauss = 10
     M = 1   # number of eigenvectors to use
     #fixed_bonded_terms = False
-    fixed_bonded_terms = True
+    #fixed_bonded_terms = True
 
     using_cv = True
     using_cv_r0 = False
@@ -219,14 +244,17 @@ if __name__ == "__main__":
     #n_cv_test_funcs = 100
     #n_cv_basis_funcs = 40
     #n_cv_test_funcs = 40
-    n_cv_basis_funcs = 100
-    n_cv_test_funcs = 200
+    #n_cv_basis_funcs = 100
+    #n_cv_test_funcs = 100
+    #n_cv_basis_funcs = 100
+    #n_cv_test_funcs = 200
+
 
     using_D2 = False
     n_cross_val_sets = 5
 
     #msm_savedir = "msm_dih_dists"
-    msm_savedir = "msm_dists"
+    #msm_savedir = "msm_dists"
 
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv,
@@ -246,21 +274,23 @@ if __name__ == "__main__":
         psinames.append(temp_names)
 
     cg_savedir = cg_savedir + "_crossval_{}".format(n_cross_val_sets)
+    if not a_coeff is None:
+        cg_savedir += "_fixed_a"
+
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
+    print(cg_savedir)
 
-    #print(cg_savedir)
-    #raise SystemExit
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
     X_sets_exist = [ os.path.exists("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
     set_assignment_exist = [ os.path.exists("{}/frame_set_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
 
-    if not np.all(X_sets_exist) or not np.all(set_assignment_exist):
+    if not np.all(X_sets_exist) or not np.all(set_assignment_exist) or recalc_matrices:
         # Calculate matrices over randomized assigned groups of frames
         set_assignment = get_frame_assignments(trajnames, n_cross_val_sets=n_cross_val_sets)
-        Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True)
+        Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True, a_coeff=a_coeff)
 
         X_sets = [ Ucg.eigenpair_X[k] for k in range(n_cross_val_sets) ]
         d_sets = [ Ucg.eigenpair_d[k] for k in range(n_cross_val_sets) ]
@@ -331,8 +361,8 @@ if __name__ == "__main__":
     plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=200)
     plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
 
-    rdg_idxs = [310, 400, 472]
-    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_2_", ylim=90)
+    #rdg_idxs = [310, 400, 472]
+    #plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_2_", ylim=90)
 
     #plot_Ucg_vs_psi1(rdg_cstar, Ucg, cv_r0, "rdg_")
 
