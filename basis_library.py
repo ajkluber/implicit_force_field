@@ -43,8 +43,9 @@ class FunctionLibrary(object):
         self.using_D2 = using_D2
         self.using_cv = using_cv
         self.using_U0 = False
-        self.cv_defined = False
         self.constant_diff = True
+        self.fixed_diff = False
+        self.cv_defined = False
 
         # the total potential has two terms U = [U_0, U_1]
         # U_0 is the fixed term of the potential
@@ -607,15 +608,29 @@ class PolymerModel(FunctionLibrary):
     ##########################################################
     # POTENTIAL FUNCTIONS
     ##########################################################
-    def _generate_pairwise_idxs(self, bond_cutoff=3):
-        coord_idxs = []
-        for i in range(self.n_atoms - bond_cutoff):
-            idxs1 = np.arange(3) + i*3
-            for j in range(i + bond_cutoff, self.n_atoms):
-                # assign coordinates to interaction/derivative
-                idxs2 = np.arange(3) + j*3
-                xi_idxs = np.concatenate([idxs1, idxs2])
-                coord_idxs.append(xi_idxs)
+    def _generate_pairwise_idxs(self, bond_cutoff=3, sort_by_seq_sep=False):
+        if sort_by_seq_sep:
+            idxs_by_seq_sep = [ [] for i in range(self.n_atoms - bond_cutoff) ]
+            for i in range(self.n_atoms - bond_cutoff):
+                idxs1 = np.arange(3) + i*3
+                for j in range(i + bond_cutoff, self.n_atoms):
+                    # assign coordinates to interaction/derivative
+                    idxs2 = np.arange(3) + j*3
+                    xi_idxs = np.concatenate([idxs1, idxs2])
+                    idxs_by_seq_sep[j - i - bond_cutoff].append(xi_idxs)
+
+            coord_idxs = []
+            for i in range(len(idxs_by_seq_sep)):
+                coord_idxs.append(idxs_by_seq_sep[i])
+        else:
+            coord_idxs = []
+            for i in range(self.n_atoms - bond_cutoff):
+                idxs1 = np.arange(3) + i*3
+                for j in range(i + bond_cutoff, self.n_atoms):
+                    # assign coordinates to interaction/derivative
+                    idxs2 = np.arange(3) + j*3
+                    xi_idxs = np.concatenate([idxs1, idxs2])
+                    coord_idxs.append(xi_idxs)
         return coord_idxs
 
     def _generate_bonded_idxs(self, n_args):
@@ -728,23 +743,89 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def gaussian_pair_potentials(self, r0_nm, w_nm, scale_factor=1, fixed=False, bond_cutoff=3):
-        """Assign a Gaussian well a each position"""
+    def gaussian_pair_potentials(self, r0_nm, w_nm, scale_factor=1,
+            fixed=False, bond_cutoff=3, symmetry="shared"):
+        """Assign a Gaussian well a each position
         
-        for m in range(len(r0_nm)):
-            # gaussian well at position r0_nm[m]
-            U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
-            U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+        Parameters
+        ----------
+        r0_nm : np.array 
+            Centers of Gaussians
 
-            temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+        w_nm : np.array 
+            Widths of Gaussians
 
-            temp_dU_funcs = []
-            for n in range(len(self.rij_args)):
-                # take derivative wrt argument n
-                dU_sym = U_sym.diff(self.rij_args[n])
-                temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+        scale_factor : float
+            Prefactor.
 
-            self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        fixed : bool
+            Indicates if term is held fixed or parametric.
+
+        bond_cutoff : int
+            Pairs with |i - j| < bond_cutoff are excluded from this interaction.
+
+        symmetry : str
+            shared = All pairs use the same interaction.
+            seq_sep = All pairs with the same |i - j| have same interaction.
+            unique = Each pair has its own unique interaction.
+
+            The number of free parameters grows from shared -> seq_sep -> unique.
+        """
+        
+        if symmetry == "shared":
+            for m in range(len(r0_nm)):
+                # gaussian well at position r0_nm[m]
+                U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
+                U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+                temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
+
+                temp_dU_funcs = []
+                for n in range(len(self.rij_args)):
+                    # take derivative wrt argument n
+                    dU_sym = U_sym.diff(self.rij_args[n])
+                    temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+                self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+        elif symmetry == "seq_sep":
+            coord_idxs_by_seq_sep = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff, sort_by_seq_sep=True)
+
+            for i in range(len(coord_idxs_by_seq_sep)):
+                temp_U_coord_idxs = coord_idxs_by_seq_sep[i]
+
+                for m in range(len(r0_nm)):
+                    # gaussian well at position r0_nm[m]
+                    U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
+                    U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+
+                    temp_dU_funcs = []
+                    for n in range(len(self.rij_args)):
+                        # take derivative wrt argument n
+                        dU_sym = U_sym.diff(self.rij_args[n])
+                        temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+                    self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+        elif symmetry == "unique":
+            all_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff, sort_by_seq_sep=False)
+
+            for i in range(len(all_coord_idxs)):
+                temp_U_coord_idxs = [all_coord_idxs[i]]
+
+                for m in range(len(r0_nm)):
+                    # gaussian well at position r0_nm[m]
+                    U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
+                    U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
+
+
+                    temp_dU_funcs = []
+                    for n in range(len(self.rij_args)):
+                        # take derivative wrt argument n
+                        dU_sym = U_sym.diff(self.rij_args[n])
+                        temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
+
+                    self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
 
@@ -1262,18 +1343,20 @@ class PolymerModel(FunctionLibrary):
         """
         # TODO: allow collective variable to be different than eigenvector
 
+        raise NotImplementedError
+
         if not set_assignment is None:
             n_sets = np.max([ np.max(x) for x in set_assignment]) + 1
         else:
             n_sets = 1
 
+        R = self.n_params
+        P = self.n_test_funcs
+
         n_U_params = self.n_params 
 
         U_coeff = coeff[:n_U_params]
         a_coeff = coeff[n_U_params:]
-
-        R = self.n_params
-        P = self.n_test_funcs
 
         training_loss = 0
         validation_loss = 0
@@ -1320,23 +1403,30 @@ class PolymerModel(FunctionLibrary):
                 # calculate gradient of fixed and parametric potential terms
                 grad_U1 = self.gradient_U1(xyz_traj, cv_chunk)
 
-                grad_U = np
 
                 # calculate test function values, gradient, and Laplacian
                 test_f = self.test_functions(xyz_traj, cv_chunk)
                 grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
-                #
-                noise_a = self.calculate_noise_basis(xyz_traj, cv_chunk)
-                grad_a = self.gradient_noise(xyz_traj, cv_chunk)
+                Jac = self._cv_cartesian_Jacobian(xyz_traj) # tmd
 
-                noise_a = np.einsum("k,tk->t", a_coeff, noise)
+                #
+                noise_a_k = self.calculate_noise_basis(xyz_traj, cv_chunk)
+                grad_a_k = self.gradient_noise(xyz_traj, cv_chunk)
+
+                noise_a = np.einsum("k,tk->t", a_coeff, noise_a_k)
+                grad_a = np.einsum("k,tk->t", a_coeff, grad_a_k)
 
                 # calculate b vector
+                Force = np.einsum("r,tdr->td", U_coeff, grad_U1)
+
+                drift_1 = np.einsum("t,td->t", noise_a, Force)
+                drift_2 = np.einsum("", (1./self.beta)*grad_a
 
 
                 if self.using_U0:
                     grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
+                    Force += grad_U0
 
                 if self.using_D2:
                     #TODO
@@ -1396,7 +1486,15 @@ class PolymerModel(FunctionLibrary):
         self.eigenpair_d = d
         self.eigenpair_D2 = D2
 
-    def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None):
+    def set_fixed_diffusion_coefficient(self, a_coeff):
+        """Set a fixed value for the diffusion coefficient"""
+
+        if not self.constant_diff:
+            raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_diff=True.")
+        self.fixed_diff = True
+        self.a_coeff = a_coeff
+
+    def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None, a_coeff=None):
         """Calculate eigenpair matrices
        
         Parameters
@@ -1423,6 +1521,9 @@ class PolymerModel(FunctionLibrary):
         """
         # TODO: allow collective variable to be different than eigenvector
 
+        if not a_coeff is None:
+            self.set_fixed_diffusion_coefficient(a_coeff)
+
         if not set_assignment is None:
             n_sets = np.max([ np.max(x) for x in set_assignment]) + 1
         else:
@@ -1433,9 +1534,13 @@ class PolymerModel(FunctionLibrary):
 
         # if constant diff coeff
         if self.constant_diff:
-            X = np.zeros((n_sets, P, R + 1), float)
             d = np.zeros((n_sets, P), float)
-            D2 = np.zeros((n_sets, R + 1, R + 1), float)    # TODO: high-dimensional smoothness 
+            if self.fixed_diff:
+                X = np.zeros((n_sets, P, R), float)
+                D2 = np.zeros((n_sets, R, R), float)    # TODO: high-dimensional smoothness 
+            else:
+                X = np.zeros((n_sets, P, R + 1), float)
+                D2 = np.zeros((n_sets, R + 1, R + 1), float)    # TODO: high-dimensional smoothness 
         else:
             raise NotImplementedError("Only constant diffusion coefficient is supported.")
 
@@ -1485,8 +1590,14 @@ class PolymerModel(FunctionLibrary):
                 test_f = self.test_functions(xyz_traj, cv_chunk)
                 grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
+                if self.fixed_diff:
+                    grad_U1 *= self.a_coeff
+                    Lap_f *= self.a_coeff
+
                 if self.using_U0:
                     grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
+                    if self.fixed_diff:
+                        grad_U0 *= self.a_coeff
 
                 if self.using_D2:
                     #TODO
@@ -1502,10 +1613,17 @@ class PolymerModel(FunctionLibrary):
                     if self.using_U0:
                         curr_d += np.einsum("tm,td,tdp->mp", psi_chunk, grad_U0, grad_f).reshape(M*P)
 
-                    # running average to reduce numerical error
-                    X[0,:,:-1] = (curr_X1 + float(N_prev)*X[0,:,:-1])/(float(N_prev) + float(N_chunk))
-                    X[0,:,-1] = (curr_X2 + float(N_prev)*X[0,:,-1])/(float(N_prev) + float(N_chunk))
-                    d[0,:] = (curr_d + float(N_prev)*d[0,:])/(float(N_prev) + float(N_chunk))
+                    if self.fixed_diff:
+                        # running average to reduce numerical error
+                        curr_d -= curr_X2
+
+                        X[0,:] = (curr_X1 + float(N_prev)*X[0,:,:-1])/(float(N_prev) + float(N_chunk))
+                        d[0,:] = (curr_d + float(N_prev)*d[0,:])/(float(N_prev) + float(N_chunk))
+                    else:
+                        # running average to reduce numerical error
+                        X[0,:,:-1] = (curr_X1 + float(N_prev)*X[0,:,:-1])/(float(N_prev) + float(N_chunk))
+                        X[0,:,-1] = (curr_X2 + float(N_prev)*X[0,:,-1])/(float(N_prev) + float(N_chunk))
+                        d[0,:] = (curr_d + float(N_prev)*d[0,:])/(float(N_prev) + float(N_chunk))
 
                     N_prev += N_chunk
                 else:
@@ -1532,10 +1650,17 @@ class PolymerModel(FunctionLibrary):
                                 gU0_subset = grad_U0[frames_in_this_set]
                                 curr_d += np.einsum("tm,td,tdp->mp", psi_subset, gU0_subset, gradf_subset).reshape(M*P)
 
-                            # running average to reduce numerical error
-                            X[k,:,:-1] = (curr_X1 + float(N_prev_set[k])*X[k,:,:-1])/(float(N_prev_set[k] + N_curr_set))
-                            X[k,:,-1] = (curr_X2 + float(N_prev_set[k])*X[k,:,-1])/(float(N_prev_set[k] + N_curr_set))
-                            d[k,:] = (curr_d + float(N_prev_set[k])*d[k,:])/(float(N_prev_set[k] + N_curr_set))
+                            if self.fixed_diff:
+                                # running average to reduce numerical error
+                                curr_d -= curr_X2
+
+                                X[k,:] = (curr_X1 + float(N_prev_set[k])*X[k,:])/(float(N_prev_set[k] + N_curr_set))
+                                d[k,:] = (curr_d + float(N_prev_set[k])*d[k,:])/(float(N_prev_set[k] + N_curr_set))
+                            else:
+                                # running average to reduce numerical error
+                                X[k,:,:-1] = (curr_X1 + float(N_prev_set[k])*X[k,:,:-1])/(float(N_prev_set[k] + N_curr_set))
+                                X[k,:,-1] = (curr_X2 + float(N_prev_set[k])*X[k,:,-1])/(float(N_prev_set[k] + N_curr_set))
+                                d[k,:] = (curr_d + float(N_prev_set[k])*d[k,:])/(float(N_prev_set[k] + N_curr_set))
 
                             N_prev_set[k] += N_curr_set
                 start_idx += N_chunk
@@ -1837,7 +1962,7 @@ class PolymerModel(FunctionLibrary):
                 jmin, jmax = curr_JTJ.max()
 
                 # running average to reduce numerical error
-                JTJ = (curr_JTJ + N_prev*JTJ)/(N_prev + N_curr)
+                JTJ = (curr_JTJ + float(N_prev)*JTJ)/float(N_prev + N_curr)
 
                 start_idx += N_curr
                 N_prev += N_curr
