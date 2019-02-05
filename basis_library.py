@@ -1301,6 +1301,7 @@ class PolymerModel(FunctionLibrary):
     ###############################################################
     # CALCULATE MATRICES FOR EIGENPAIR METHOD
     ###############################################################
+    """
     def nonlinear_spectral_loss(self, coeff, alpha, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None):
         """Calculate eigenpair matrices
        
@@ -1408,8 +1409,8 @@ class PolymerModel(FunctionLibrary):
                 # calculate b vector
                 Force = np.einsum("r,tdr->td", U_coeff, grad_U1)
 
-                drift_1 = np.einsum("t,td->t", noise_a, Force)
-                drift_2 = np.einsum("", (1./self.beta)*grad_a
+                #drift_1 = np.einsum("t,td->t", noise_a, Force)
+                #drift_2 = np.einsum("", (1./self.beta)*grad_a)
 
 
                 if self.using_U0:
@@ -1473,6 +1474,7 @@ class PolymerModel(FunctionLibrary):
         self.eigenpair_X = X
         self.eigenpair_d = d
         self.eigenpair_D2 = D2
+    """
 
     def set_fixed_diffusion_coefficient(self, a_coeff):
         """Set a fixed value for the diffusion coefficient"""
