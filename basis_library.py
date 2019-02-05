@@ -743,6 +743,15 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
+    def _take_symbolic_derivatives(self, U_sym, args):
+        """Take symbolic derivative of U_sym wrt each argument"""
+        temp_dU_funcs = []
+        for n in range(len(args)):
+            # take derivative wrt argument n
+            dU_sym = U_sym.diff(args[n])
+            temp_dU_funcs.append(sympy.lambdify(args, dU_sym, modules="numpy"))
+        return temp_dU_funcs
+
     def gaussian_pair_potentials(self, r0_nm, w_nm, scale_factor=1,
             fixed=False, bond_cutoff=3, symmetry="shared"):
         """Assign a Gaussian well a each position
@@ -779,13 +788,7 @@ class PolymerModel(FunctionLibrary):
                 U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
                 temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
-
-                temp_dU_funcs = []
-                for n in range(len(self.rij_args)):
-                    # take derivative wrt argument n
-                    dU_sym = U_sym.diff(self.rij_args[n])
-                    temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
-
+                temp_dU_funcs = self._take_symbolic_derivatives(U_sym, self.rij_args) 
                 self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
         elif symmetry == "seq_sep":
             coord_idxs_by_seq_sep = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff, sort_by_seq_sep=True)
@@ -798,13 +801,7 @@ class PolymerModel(FunctionLibrary):
                     U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
                     U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
-
-                    temp_dU_funcs = []
-                    for n in range(len(self.rij_args)):
-                        # take derivative wrt argument n
-                        dU_sym = U_sym.diff(self.rij_args[n])
-                        temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
-
+                    temp_dU_funcs = self._take_symbolic_derivatives(U_sym, self.rij_args) 
                     self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
         elif symmetry == "unique":
@@ -818,13 +815,7 @@ class PolymerModel(FunctionLibrary):
                     U_sym = -scale_factor*sympy.exp(-self.one_half*((self.r12_sym - r0_nm[m])/w_nm[m])**2)
                     U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
 
-
-                    temp_dU_funcs = []
-                    for n in range(len(self.rij_args)):
-                        # take derivative wrt argument n
-                        dU_sym = U_sym.diff(self.rij_args[n])
-                        temp_dU_funcs.append(sympy.lambdify(self.rij_args, dU_sym, modules="numpy"))
-
+                    temp_dU_funcs = self._take_symbolic_derivatives(U_sym, self.rij_args) 
                     self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
     def gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
@@ -847,15 +838,12 @@ class PolymerModel(FunctionLibrary):
             self.cv_U_funcs.append(f_lamb)
 
             # first and second derivative wrt each arg
-            temp_cv_dU_funcs = []
-            for i in range(len(self.cv_args)):
-                df_sym = f_sym.diff(self.cv_args[i])
-                temp_cv_dU_funcs.append(sympy.lambdify(self.cv_args, df_sym, modules="numpy"))
-
+            temp_cv_dU_funcs = self._take_symbolic_derivatives(f_sym, self.cv_args) 
             self.cv_dU_funcs.append(temp_cv_dU_funcs)
 
     def gaussian_cv_noise_functions(self, cv_r0, cv_w):
         
+        raise NotImplementedError
         for n in range(len(cv_r0)):
             # basis function is Gaussian with center r0 and width w
             f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
