@@ -1659,19 +1659,25 @@ class PolymerModel(FunctionLibrary):
         self.eigenpair_d = d
         self.eigenpair_D2 = D2
 
-    def _eigenpair_generator_terms(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False):
+    def _eigenpair_generator_test(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False, a_coeff=None):
 
         P = self.n_test_funcs
 
+        if a_coeff is None:
+            fixed_a = False
+            c_r = coeff[:-1] 
+            a_coeff = 1./coeff[-1]  #?
+        else:
+            fixed_a = True
+            c_r = coeff
+
         # if constant diff coeff
         if self.constant_diff:
-            c_r = coeff[:-1] 
-            D_coeff = 1./coeff[-1]
-
             psi_fj = np.zeros((M, P), float)
-            gU0_fj = np.zeros(P, float)
-            gU1_fj = np.zeros(P, float)
-            Lap_fj
+            psi_gU0_fj = np.zeros((M, P), float)
+            psi_gU1_fj = np.zeros((M, P), float)
+            psi_Lap_fj = np.zeros((M, P), float)
+            psi_Gen_fj = np.zeros((M, P), float)
         else:
             raise NotImplementedError("Only constant diffusion coefficient is supported.")
 
@@ -1680,7 +1686,6 @@ class PolymerModel(FunctionLibrary):
 
         if len(psinames) != len(trajnames):
             raise ValueError("Need eigenvector for every trajectory!")
-
 
         N_prev = 0
         for n in range(len(trajnames)):
@@ -1722,26 +1727,26 @@ class PolymerModel(FunctionLibrary):
 
                 if self.using_U0:
                     grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
-                    curr_gradU0_fj = np.einsum("td,tdp->p", -D_coeff*grad_U0, grad_f)
-                    gU0_fj = (curr_gU0_fj + float(N_prev)*gU0_fj)/(float(N_prev + N_chunk))
+                    curr_psi_gradU0_fj = np.einsum("tm, td,tdp->mp", psi_chunk, -a_coeff*grad_U0, grad_f)
+                    psi_gU0_fj = (curr_psi_gradU0_fj + float(N_prev)*psi_gU0_fj)/(float(N_prev + N_chunk))
 
-                # calculate generator for
+                # calculate generator terms
                 curr_psi_fj = np.einsum("tm,tp->mp", psi_chunk, test_f)
-                curr_gradU1_fj = np.einsum("td,tdp->p", -D_coeff*grad_U1, grad_f)
-                curr_Lap_fj = np.sum((D_coeff/self.beta)*Lap_f)
+                curr_psi_gradU1_fj = np.einsum("tm,td,tdp->mp", psi_chunk, -a_coeff*grad_U1, grad_f)
+                curr_psi_Lap_fj = np.einsum("tm,tp->mp", psi_chunk, (a_coeff/self.beta)*Lap_f)
 
                 psi_fj = (curr_psi_fj + float(N_prev)*psi_fj)/(float(N_prev + N_chunk))
-                gU1_fj = (curr_gU1_fj + float(N_prev)*gU1_fj)/(float(N_prev + N_chunk))
-                Lap_fj = (curr_Lap_fj + float(N_prev)*Lap_fj)/(float(N_prev + N_chunk))
+                psi_gU1_fj = (curr_psi_gradU1_fj + float(N_prev)*psi_gU1_fj)/(float(N_prev + N_chunk))
+                psi_Lap_fj = (curr_psi_Lap_fj + float(N_prev)*psi_Lap_fj)/(float(N_prev + N_chunk))
 
                 start_idx += N_chunk
                 N_prev += N_chunk
 
-        #self.eigenpair_L_fj = L_fj
-        self.eigenpair_gU0_fj = gU0_fj
-        self.eigenpair_gU1_fj = gU1_fj
-        self.eigenpair_Lap_fj = Lap_fj
-        self.eigenpair_psi_fj = psi_fj
+        self._psi_fj = psi_fj
+        self._psi_gU0_fj = psi_gU0_fj
+        self._psi_gU1_fj = psi_gU1_fj
+        self._psi_Lap_fj = psi_Lap_fj
+        self._psi_Gen_fj = psi_gU0_fj + psi_gU1_fj + psi_Lap_fj 
 
     def _eigenpair_Lap_f(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False):
 
