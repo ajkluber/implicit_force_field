@@ -4,6 +4,8 @@ import glob
 import argparse
 import numpy as np
 import matplotlib as mpl
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -58,43 +60,70 @@ def plot_Ucg_vs_psi1(coeff, Ucg, cv_r0, prefix):
     plt.savefig("{}U_cv.pdf".format(prefix))
     plt.savefig("{}U_cv.png".format(prefix))
 
-def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=None):
+def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=None, fixed_a=False):
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    for n in range(len(idxs)):
+    if fixed_a:
+        plt.figure()
+        for n in range(len(idxs)):
+            coeff = coeffs[idxs[n]]
+            U = np.zeros(len(cv_r0))
+            for i in range(len(coeff)):
+                U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+            U -= U.min()
 
-        coeff = coeffs[idxs[n]]
+            plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
 
+        coeff = coeffs[idx_star]
+        U = np.zeros(len(cv_r0))
+        for i in range(len(coeff)):
+            U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+        U -= U.min()
+        plt.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
+
+        if not ylim is None:
+            plt.ylim(0, ylim)
+
+        plt.legend()
+        plt.xlabel(r"TIC1 $\psi_1$")
+        plt.ylabel(r"$U_{cg}(\psi_1)$")
+        plt.savefig("{}compare_Ucv.pdf".format(prefix))
+        plt.savefig("{}compare_Ucv.png".format(prefix))
+    else:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        for n in range(len(idxs)):
+
+            coeff = coeffs[idxs[n]]
+
+            U = np.zeros(len(cv_r0))
+            for i in range(len(coeff) - 1):
+                U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+            U -= U.min()
+
+            D = 1./coeff[-1]
+            ax1.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
+            ax2.plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])))
+
+        coeff = coeffs[idx_star]
         U = np.zeros(len(cv_r0))
         for i in range(len(coeff) - 1):
             U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
         U -= U.min()
-
         D = 1./coeff[-1]
-        ax1.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
-        ax2.plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])))
+        ax1.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
+        ax2.plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])), color='k', lw=3)
+        ax2.semilogy(True)
 
-    coeff = coeffs[idx_star]
-    U = np.zeros(len(cv_r0))
-    for i in range(len(coeff) - 1):
-        U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
-    U -= U.min()
-    D = 1./coeff[-1]
-    ax1.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-    ax2.plot(cv_r0[:,0], D*np.ones(len(cv_r0[:,0])), color='k', lw=3)
-    ax2.semilogy(True)
+        if not ylim is None:
+            #ax1.set_ylim(0, 500)
+            ax1.set_ylim(0, ylim)
 
-    if not ylim is None:
-        #ax1.set_ylim(0, 500)
-        ax1.set_ylim(0, ylim)
-
-    ax1.legend()
-    ax1.set_xlabel(r"TIC1 $\psi_1$")
-    ax1.set_ylabel(r"$U_{cg}(\psi_1)$")
-    ax2.set_xlabel(r"TIC1 $\psi_1$")
-    ax2.set_ylabel(r"$D$")
-    fig.savefig("{}compare_Ucv.pdf".format(prefix))
-    fig.savefig("{}compare_Ucv.png".format(prefix))
+        ax1.legend()
+        ax1.set_xlabel(r"TIC1 $\psi_1$")
+        ax1.set_ylabel(r"$U_{cg}(\psi_1)$")
+        ax2.set_xlabel(r"TIC1 $\psi_1$")
+        ax2.set_ylabel(r"$D$")
+        fig.savefig("{}compare_Ucv.pdf".format(prefix))
+        fig.savefig("{}compare_Ucv.png".format(prefix))
 
 def plot_Xcoeff_vs_d(idxs, idx_star, coeffs, alphas, X, d, prefix):
 
@@ -249,6 +278,10 @@ if __name__ == "__main__":
     #n_cv_basis_funcs = 100
     #n_cv_test_funcs = 200
 
+    if a_coeff is None:
+        fixed_a = False
+    else:
+        fixed_a = True
 
     using_D2 = False
     n_cross_val_sets = 5
@@ -262,7 +295,7 @@ if __name__ == "__main__":
 
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
-    ti_file = msm_savedir + "/tica_ti.npy"
+    ti_file = msm_savedir + "/tica_ti_ps.npy"
     psinames = []
     for i in range(len(trajnames)):
         tname = trajnames[i]
@@ -358,7 +391,7 @@ if __name__ == "__main__":
             title="Ridge regression", prefix="ridge_")
 
     rdg_idxs = [5, 50, 200, 300]
-    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=200)
+    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=150, fixed_a=fixed_a)
     plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
 
     #rdg_idxs = [310, 400, 472]
