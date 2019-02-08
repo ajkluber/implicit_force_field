@@ -1,4 +1,5 @@
 from __future__ import print_function, absolute_import
+import os
 import sys
 import numpy as np
 
@@ -18,10 +19,10 @@ class LinearLoss(object):
         self.recalc = recalc
 
         if not n_cv_sets is None:
-            if self._matrix_files_exist() and not recalc:
+            if self.matrix_files_exist() and not recalc:
                 self.load_matrices()
 
-    def assign_crossval_sets(self, trajnames, n_cv_sets=5, method="shuffled"):
+    def assign_crossval_sets(self, topfile, trajnames, n_cv_sets=5, method="shuffled"):
         """Assign trajectories or frames in training and validation sets
 
         Parameters
@@ -39,6 +40,9 @@ class LinearLoss(object):
 
         if not method in ["shuffled", "continuous"]:
             raise ValueError("method must be be 'shuffled' or 'continuos'. Entered: " + method)
+
+        self.topfile = topfile
+        self.trajnames = trajnames
 
         # use whatever num of sets was defined first
         if self.n_cv_sets is None:
@@ -131,7 +135,7 @@ class LinearLoss(object):
         M : int (default=1)
             Number of timescales to keep in eigenfunction expansion.
         
-        cv_names : list, str (opt)
+        coll_var_names : list, str (opt)
             Collective variable rilenames if pre-calculated. Will calculate
             collective variables on the fly if not given. 
 
@@ -143,14 +147,14 @@ class LinearLoss(object):
             self.n_cv_sets = 1
         else:
             if not self.cv_sets_are_assigned:
-                self.assign_crossval_sets(self, trajnames, n_cv_sets=5):
+                self.assign_crossval_sets(trajnames)
                 raise ValueError("Need to assign training and test sets before calculation")
 
         R = Ucg.n_params
         P = Ucg.n_test_funcs
 
         # if constant diff coeff
-        if Ucg.constant_diff:
+        if Ucg.constant_a_coeff:
             d = np.zeros((self.n_cv_sets, P), float)
             if Ucg.fixed_a_coeff:
                 X = np.zeros((self.n_cv_sets, P, R), float)
@@ -181,14 +185,14 @@ class LinearLoss(object):
             # load eigenvectors
             psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
 
-            if len(cv_names) > 0:
+            if len(coll_var_names) > 0:
                 # load collective variable if given
-                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in coll_var_names[n] ]).T
             else:
                 cv_traj = None
 
             # calculate matrix for trajectory
-            matrix_elements_for_traj(trajnames[n], topfile, N_prev, 
+            #matrix_elements_for_traj(trajnames[n], topfile, N_prev, )
 
             start_idx = 0
             for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
@@ -298,20 +302,23 @@ class LinearLoss(object):
             self.d = self.d_sets[0]
 
         self.matrices_estimated = True
-        self.save_matrices()
+        self._save_matrices()
         self._training_and_validation_matrices()
 
-    def save_matrices(self):
-        
+    def _save_matrices(self): 
         for k in range(self.n_cv_sets):
-            np.save("{}/X_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_X[k])
-            np.save("{}/d_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_d[k])
-            np.save("{}/frame_set_{}.npy".format(cg_savedir,  k + 1), set_assignment[k])    
+            np.save("{}/X_{}.npy".format(self.savedir, k + 1), self.X_sets[k])
+            np.save("{}/d_{}.npy".format(self.savedir, k + 1), self.d_sets[k])
+            np.save("{}/frame_set_{}.npy".format(self.savedir,  k + 1), self.cv_set_assignment[k])    
 
-    def _matrix_files_exist(self):
-        X_files_exist = np.all([ os.path.exists("{}/X_{}.npy".format(self.savedir, i + 1))) for i in range(self.n_cv_sets) ])
-        d_files_exist = np.all([ os.path.exists("{}/d_{}.npy".format(self.savedir, i + 1))) for i in range(self.n_cv_sets) ])
-        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}.npy".format(self.savedir, i + 1))) for i in range(self.n_cv_sets) ])
+        np.save("{}/X.npy".format(self.savedir), self.X)
+        np.save("{}/d.npy".format(self.savedir), self.d)
+
+
+    def matrix_files_exist(self):
+        X_files_exist = np.all([ os.path.exists("{}/X_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
+        d_files_exist = np.all([ os.path.exists("{}/d_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
+        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
         files_exist = X_files_exist and d_files_exist and set_files_exist
 
         return files_exist

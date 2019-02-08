@@ -294,6 +294,7 @@ if __name__ == "__main__":
     #msm_savedir = "msm_dih_dists"
     #msm_savedir = "msm_dists"
 
+    # create potential energy function
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv,
             using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs, 
@@ -325,66 +326,20 @@ if __name__ == "__main__":
     ##################################################################
     s_loss = spl.LinearLoss(cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    if not s_loss._matrix_files_exist() or recalc_matrices:
-        # Calculate matrices over randomized assigned groups of frames
-        #set_assignment = assign_crossval_sets(trajnames, n_cross_val_sets=n_cross_val_sets)
-        #Ucg.set_fixed_diffusion_coefficient(a_coeff)
-        #Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True, a_coeff=a_coeff)
+    if not s_loss.matrix_files_exist() or recalc_matrices:
+        s_loss.assign_crossval_sets(topfile, trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
+        s_loss.calc_matrices(Ucg, topfile, trajnames, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True)
 
-        s_loss.assign_crossval_sets(trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
-        s_loss.calc_matrices(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, verbose=True)
-
-        #for k in range(n_cross_val_sets):
-        #    np.save("{}/X_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_X[k])
-        #    np.save("{}/d_{}.npy".format(cg_savedir, k + 1), Ucg.eigenpair_d[k])
-        #    np.save("{}/frame_set_{}.npy".format(cg_savedir,  k + 1), set_assignment[k])
-
-        #X_sets = [ np.load("{}/X_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
-        #d_sets = [ np.load("{}/d_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
-        #set_assignment = [ np.load("{}/frame_set_{}.npy".format(cg_savedir, i + 1)) for i in range(n_cross_val_sets) ]
-
-    #n_frames_in_set = []
-    #for k in range(n_cross_val_sets):
-    #    n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(set_assignment)) ]))
-    #total_n_frames = np.sum(n_frames_in_set) 
-
-    #X = np.sum([ (n_frames_in_set[j]/float(total_n_frames))*X_sets[j] for j in range(n_cross_val_sets) ], axis=0)
-    #d = np.sum([ (n_frames_in_set[j]/float(total_n_frames))*d_sets[j] for j in range(n_cross_val_sets) ], axis=0)
-
-    #np.save("{}/X.npy".format(cg_savedir), X)
-    #np.save("{}/d.npy".format(cg_savedir), d)
-
-    # create train/test matrices by weighted average of chunk matrices
-    #X_train_test = []
-    #d_train_test = []
-    #for i in range(n_cross_val_sets):
-    #    frame_subtotal = total_n_frames - n_frames_in_set[i]
-    #    #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(n_cross_val_sets) if j != i ])
-
-    #    train_X = []
-    #    train_d = []
-    #    for j in range(n_cross_val_sets):
-    #        w_j = n_frames_in_set[j]/float(frame_subtotal)
-    #        if j != i:
-    #            train_X.append(w_j*X_sets[j])
-    #            train_d.append(w_j*d_sets[j])
-
-    #    train_X = np.sum(np.array(train_X), axis=0)
-    #    train_d = np.sum(np.array(train_d), axis=0)
-
-    #    X_train_test.append([ train_X, X_sets[i]])
-    #    d_train_test.append([ train_d, d_sets[i]])
-
-    raise SystemExit
     os.chdir(cg_savedir)
 
-    print("Ridge regularization...")
+    #print("solve ridge regularization...")
 
     rdg_alphas = np.logspace(-10, 8, 500)
     s_loss.solve(rdg_alphas)
     #rdg_coeffs, rdg_train_mse, rdg_test_mse = iff.util.traj_chunk_cross_validated_least_squares(rdg_alphas, X, d,
     #        X_train_test, d_train_test, np.identity(X.shape[1]))
 
+    raise SystemExit
     rdg_idx_star = np.argmin(rdg_test_mse[:,0])
     rdg_alpha_star = rdg_alphas[rdg_idx_star]
     rdg_cstar = rdg_coeffs[rdg_idx_star]
