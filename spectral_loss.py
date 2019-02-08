@@ -3,14 +3,30 @@ import os
 import sys
 import numpy as np
 
+from scipy.optimize import least_squares
+from scipy.optimize import minimize
+import scipy.linalg
+
 import mdtraj as md
 
 class LinearLoss(object):
 
-    def __init__(self, savedir, n_cv_sets=None, cv_method=None, recalc=False):
-        """Creates matrices for minimizing the linear spectral loss equations"""
+    def __init__(self, savedir, n_cv_sets=5, recalc=False):
+        """Creates matrices for minimizing the linear spectral loss equations
+        
+        Parameters
+        ----------
+        savedir : str
+            Where matrices should be saved.
+            
+        n_cv_sets : opt.
+            Number of k-fold cross validation sets to use.
+            
+        recalc : bool
+            Recalculated 
 
-        self.cv_method = cv_method
+        """
+
         self.n_cv_sets = n_cv_sets
         self.cv_sets_are_assigned = False
 
@@ -18,102 +34,43 @@ class LinearLoss(object):
         self.savedir = savedir
         self.recalc = recalc
 
-        if not n_cv_sets is None:
-            if self.matrix_files_exist() and not recalc:
-                self.load_matrices()
+        if self.matrix_files_exist() and not recalc:
+            self.load_matrices()
 
-    def assign_crossval_sets(self, topfile, trajnames, n_cv_sets=5, method="shuffled"):
-        """Assign trajectories or frames in training and validation sets
+    def assign_crossval_sets(self, topfile, trajnames):
+        """Randomly assign frames to training and validation sets
 
         Parameters
         ----------
+        topfile : str
+            Topology filename.
+
         trajnames : list, str
             List of trajectory filenames.
 
-        n_cv_sets : int, default=5
-            Desired number of trajectory sets.
-
-        method : str
-            shuffled = Randomly assign trajectory frames to sets. (default)
-            continous = Assign continous trajs to sets.
         """
-
-        if not method in ["shuffled", "continuous"]:
-            raise ValueError("method must be be 'shuffled' or 'continuos'. Entered: " + method)
 
         self.topfile = topfile
         self.trajnames = trajnames
 
-        # use whatever num of sets was defined first
-        if self.n_cv_sets is None:
-            self.n_cv_sets = n_cv_sets
-        else:
-            n_cv_sets = self.n_cv_sets
+        set_assignment = []
+        traj_n_frames = []
+        for n in range(len(trajnames)):
+            length = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                length += chunk.n_frames
+            traj_n_frames.append(length)
 
-        if method == "shuffled":
-            set_assignment = []
-            traj_n_frames = []
-            for n in range(len(trajnames)):
-                length = 0
-                for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-                    length += chunk.n_frames
-                traj_n_frames.append(length)
+            set_assignment.append(np.random.randint(low=0, high=self.n_cv_sets, size=length))
+        self.total_n_frames = sum(traj_n_frames)
 
-                set_assignment.append(np.random.randint(low=0, high=n_cv_sets, size=length))
-            self.total_n_frames = sum(traj_n_frames)
+        self.n_frames_in_set = []
+        for k in range(self.n_cv_sets):
+            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(set_assignment)) ]))
+        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
 
-            self.n_frames_in_set = []
-            for k in range(self.n_cv_sets):
-                self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(set_assignment)) ]))
-            self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
-
-            self.cv_method = method
-            self.cv_frame_assignment = set_assignment
-            self.cv_sets_are_assigned = True
-        elif method == "continuous":
-            raise NotImplementedError
-           # traj_n_frames = []
-           # for n in range(len(trajnames)):
-           #     length = 0
-           #     for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-           #         length += chunk.n_frames
-           #     traj_n_frames.append(length)
-           # total_n_frames = sum(traj_n_frames)
-
-           # n_frames_in_set = total_n_frames/n_cv_sets
-
-           # traj_set = []
-           # psi_set = []
-           # traj_set_frames = []
-           # temp_traj_names = []
-           # temp_psi_names = []
-           # temp_frame_count = 0
-           # for n in range(len(traj_n_frames)):
-           #     if temp_frame_count >= n_frames_in_set:
-           #         # finish a set when it has desired number of frames
-           #         traj_set.append(temp_traj_names)
-           #         psi_set.append(temp_psi_names)
-           #         traj_set_frames.append(temp_frame_count)
-
-           #         # start over
-           #         temp_traj_names = [trajnames[n]]
-           #         #temp_psi_names = [psinames[n]]
-           #         temp_frame_count = traj_n_frames[n]
-           #     else:
-           #         temp_traj_names.append(trajnames[n])
-           #         #temp_psi_names.append(psinames[n])
-           #         temp_frame_count += traj_n_frames[n]
-
-           #     if n == len(traj_n_frames) - 1:
-           #         traj_set.append(temp_traj_names)
-           #         psi_set.append(temp_psi_names)
-           #         traj_set_frames.append(temp_frame_count)
-
-           # with open("traj_sets_{}.txt".format(n_cv_sets), "w") as fout:
-           #     for i in range(len(traj_set)):
-           #         info_str = str(traj_set_frames[i])
-           #         info_str += " " + " ".join(traj_set[i]) + "\n"
-           #         fout.write(info_str)
+        self.cv_set_assignment = set_assignment
+        self.cv_sets_are_assigned = True
 
     def calc_matrices(self, Ucg, topfile, trajnames, psinames, ti_file, M=1, coll_var_names=None, verbose=True):
         """Calculate eigenpair matrices
@@ -143,12 +100,11 @@ class LinearLoss(object):
 
         # TODO: get info from Ucg
 
-        if self.cv_method is None:
+        if self.n_cv_sets is None:
             self.n_cv_sets = 1
         else:
-            if not self.cv_sets_are_assigned:
-                self.assign_crossval_sets(trajnames)
-                raise ValueError("Need to assign training and test sets before calculation")
+            if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
+                self.assign_crossval_sets(topfile, trajnames)
 
         R = Ucg.n_params
         P = Ucg.n_test_funcs
@@ -314,7 +270,6 @@ class LinearLoss(object):
         np.save("{}/X.npy".format(self.savedir), self.X)
         np.save("{}/d.npy".format(self.savedir), self.d)
 
-
     def matrix_files_exist(self):
         X_files_exist = np.all([ os.path.exists("{}/X_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
         d_files_exist = np.all([ os.path.exists("{}/d_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
@@ -325,7 +280,7 @@ class LinearLoss(object):
 
     def load_matrices(self):
         
-        if n_cv_sets is None:
+        if self.n_cv_sets is None:
             raise ValueErro("Need to define number of cross val sets in order to load them")
 
         print("Loaded saved matrices...")
@@ -347,6 +302,7 @@ class LinearLoss(object):
             self.d = self.d_sets[0]
 
         self.matrices_estimated = True
+        self.cv_sets_are_assigned = True
         self._training_and_validation_matrices()
 
     def _training_and_validation_matrices(self):
@@ -409,7 +365,7 @@ class LinearLoss(object):
             # folds are precalculated matrices on trajectory chunks
             train_mse_folds = [] 
             valid_mse_folds = [] 
-            for k in range(len(self.n_cv_sets)):
+            for k in range(self.n_cv_sets):
                 X_train, X_val = self.X_train_val[k]
                 d_train, d_val = self.d_train_val[k]
 
@@ -432,6 +388,7 @@ class LinearLoss(object):
         self.train_mse = np.array(train_mse)
         self.valid_mse = np.array(valid_mse)
 
+    # TODO: nonlinear loss function
 
 #class NonlinearLoss(object):
 #    def __init__(self):
