@@ -43,8 +43,8 @@ class FunctionLibrary(object):
         self.using_D2 = using_D2
         self.using_cv = using_cv
         self.using_U0 = False
-        self.constant_diff = True
-        self.fixed_diff = False
+        self.constant_a_coeff = True
+        self.fixed_a_coeff = False
         self.cv_defined = False
 
         # the total potential has two terms U = [U_0, U_1]
@@ -512,7 +512,7 @@ class OneDimensionalModel(FunctionLibrary):
 
 class PolymerModel(FunctionLibrary):
 
-    def __init__(self, n_atoms, beta, using_cv=False, using_D2=False, a_coeff=None):
+    def __init__(self, n_atoms, beta, using_cv=False, using_D2=False, constant_a_coeff=True, a_coeff=None):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -520,16 +520,16 @@ class PolymerModel(FunctionLibrary):
         participating coordinate.
 
         """
-        if a_coeff is None:
-            self.fixed_diff = False
-            self.a_coeff = a_coeff
-        else:
-            if not self.constant_diff:
-                raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_diff=True.")
-            self.fixed_diff = True
-            self.a_coeff = a_coeff
-
         FunctionLibrary.__init__(self, n_atoms, beta, using_cv=using_cv, using_D2=using_D2)
+
+        if a_coeff is None:
+            self.fixed_a_coeff = False
+            self.a_coeff = None
+        else:
+            if not constant_a_coeff:
+                raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_a_coeff=True.")
+            self.fixed_a_coeff = True
+            self.a_coeff = a_coeff
 
     ##########################################################
     # DEFINE COLLECTIVE VARIABLE
@@ -1311,13 +1311,13 @@ class PolymerModel(FunctionLibrary):
     # CALCULATE MATRICES FOR EIGENPAIR METHOD
     ###############################################################
 
-    def set_fixed_diffusion_coefficient(self, a_coeff):
-        """Set a fixed value for the diffusion coefficient"""
+    #def set_fixed_diffusion_coefficient(self, a_coeff):
+    #    """Set a fixed value for the diffusion coefficient"""
 
-        if not self.constant_diff:
-            raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_diff=True.")
-        self.fixed_a_coeff = True
-        self.a_coeff = a_coeff
+    #    if not self.constant_a_coeff:
+    #        raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_a_coeff=True.")
+    #    self.fixed_a_coeff = True
+    #    self.a_coeff = a_coeff
 
     def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None, a_coeff=None):
         """Calculate eigenpair matrices
@@ -1346,8 +1346,8 @@ class PolymerModel(FunctionLibrary):
         """
         # TODO: allow collective variable to be different than eigenvector
 
-        if not a_coeff is None:
-            self.set_fixed_diffusion_coefficient(a_coeff)
+        #if not a_coeff is None:
+        #    self.set_fixed_diffusion_coefficient(a_coeff)
 
         if not set_assignment is None:
             n_sets = np.max([ np.max(x) for x in set_assignment]) + 1
@@ -1358,7 +1358,7 @@ class PolymerModel(FunctionLibrary):
         P = self.n_test_funcs
 
         # if constant diff coeff
-        if self.constant_diff:
+        if self.constant_a_coeff:
             d = np.zeros((n_sets, P), float)
             if self.fixed_a_coeff:
                 X = np.zeros((n_sets, P, R), float)
@@ -1509,7 +1509,7 @@ class PolymerModel(FunctionLibrary):
             c_r = coeff
 
         # if constant diff coeff
-        if self.constant_diff:
+        if self.constant_a_coeff:
             psi_fj = np.zeros((M, P), float)
             psi_gU0_fj = np.zeros((M, P), float)
             psi_gU1_fj = np.zeros((M, P), float)
@@ -1590,7 +1590,7 @@ class PolymerModel(FunctionLibrary):
         P = self.n_test_funcs
 
         # if constant diff coeff
-        if self.constant_diff:
+        if self.constant_a_coeff:
             c_r = coeff[:-1] 
             D_coeff = 1./coeff[-1]
             Lap_fj = np.zeros(P, float)
@@ -1678,7 +1678,7 @@ class PolymerModel(FunctionLibrary):
     #    n_psi_bins = len(psi_bin_edges) - 1
 
     #    # if constant diff coeff
-    #    if self.constant_diff:
+    #    if self.constant_a_coeff:
     #        avg_Lapf = np.zeros((M, P, n_psi_bins), float)
     #    else:
     #        raise NotImplementedError("Only constant diffusion coefficient is supported.")
