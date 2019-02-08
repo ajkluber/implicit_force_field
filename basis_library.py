@@ -1316,7 +1316,7 @@ class PolymerModel(FunctionLibrary):
 
         if not self.constant_diff:
             raise ValueError("To set a fixed diffusion coefficient, the model must be created with constant_diff=True.")
-        self.fixed_diff = True
+        self.fixed_a_coeff = True
         self.a_coeff = a_coeff
 
     def setup_eigenpair(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[], verbose=False, set_assignment=None, a_coeff=None):
@@ -1360,7 +1360,7 @@ class PolymerModel(FunctionLibrary):
         # if constant diff coeff
         if self.constant_diff:
             d = np.zeros((n_sets, P), float)
-            if self.fixed_diff:
+            if self.fixed_a_coeff:
                 X = np.zeros((n_sets, P, R), float)
                 D2 = np.zeros((n_sets, R, R), float)    # TODO: high-dimensional smoothness 
             else:
@@ -1415,13 +1415,13 @@ class PolymerModel(FunctionLibrary):
                 test_f = self.test_functions(xyz_traj, cv_chunk)
                 grad_f, Lap_f = self.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
 
-                if self.fixed_diff:
+                if self.fixed_a_coeff:
                     grad_U1 *= self.a_coeff
                     Lap_f *= self.a_coeff
 
                 if self.using_U0:
                     grad_U0 = self.gradient_U0(xyz_traj, cv_chunk)
-                    if self.fixed_diff:
+                    if self.fixed_a_coeff:
                         grad_U0 *= self.a_coeff
 
                 if self.using_D2:
@@ -1438,7 +1438,7 @@ class PolymerModel(FunctionLibrary):
                     if self.using_U0:
                         curr_d += np.einsum("tm,td,tdp->mp", psi_chunk, grad_U0, grad_f).reshape(M*P)
 
-                    if self.fixed_diff:
+                    if self.fixed_a_coeff:
                         # running average to reduce numerical error
                         curr_d -= curr_X2
 
@@ -1475,7 +1475,7 @@ class PolymerModel(FunctionLibrary):
                                 gU0_subset = grad_U0[frames_in_this_set]
                                 curr_d += np.einsum("tm,td,tdp->mp", psi_subset, gU0_subset, gradf_subset).reshape(M*P)
 
-                            if self.fixed_diff:
+                            if self.fixed_a_coeff:
                                 # running average to reduce numerical error
                                 curr_d -= curr_X2
 
