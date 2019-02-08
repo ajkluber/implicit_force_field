@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     if not all_files_exist or recalc:
         print("applying generator to f_j...")
-        Ucg._eigenpair_generator_test(coeff, trajnames, topfile, psinames,
+        Ucg._generator_scalar_products(coeff, trajnames, topfile, psinames,
                 M=1, cv_names=psinames, verbose=True, a_coeff=a_coeff)
 
         np.save(cg_savedir + "/psi_fj.npy", Ucg._psi_fj)
@@ -112,15 +112,26 @@ if __name__ == "__main__":
     print("plotting...")
     scale = 10000
     plt.figure()
-    plt.plot(cv_r0_test[:,0], scale*psi_Gen_fj[0,:], 'r', label=r"$\langle \psi_1, \mathcal{L} f_j \rangle$")
-    plt.plot(cv_r0_test[:,0], -kappa*scale*psi_fj[0,:], 'k', label=r"$-\kappa_1\langle \psi_1, f_j \rangle$")
+    plt.plot(cv_r0_test[:,0], scale*psi_Gen_fj[0,:], 'r', label=r"$\langle \psi_1| \mathcal{L} f_j \rangle$")
+    plt.plot(cv_r0_test[:,0], -kappa*scale*psi_fj[0,:], 'k', label=r"$-\kappa_1\langle \psi_1| f_j \rangle$")
 
     plt.xlabel("$f_j$ center along $\psi_1$")
     plt.ylabel("x" + str(scale))
     plt.ylim(-12, 7.5)
     plt.legend(fontsize=14)
-    plt.savefig(cg_savedir + "/compare_Lap_fj_psi_fj.pdf")
-    plt.savefig(cg_savedir + "/compare_Lap_fj_psi_fj.png")
+    plt.savefig(cg_savedir + "/compare_Gen_fj_psi_fj.pdf")
+    plt.savefig(cg_savedir + "/compare_Gen_fj_psi_fj.png")
+
+    plt.figure()
+    plt.plot(scale*psi_Gen_fj[0,:], -kappa*scale*psi_fj[0,:], 'ro')
+
+    plt.xlabel(r"$\langle \psi_1| \mathcal{L} f_j \rangle$")
+    plt.ylabel(r"$-\kappa_1\langle \psi_1| f_j \rangle$")
+
+    #plt.ylim(-12, 7.5)
+    #plt.legend(fontsize=14)
+    plt.savefig(cg_savedir + "/scatter_Gen_fj_psi_fj.pdf")
+    plt.savefig(cg_savedir + "/scatter_Gen_fj_psi_fj.png")
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(5,15))
     ax1.plot(cv_r0_test[:,0], psi_gU0_fj[0,:])
@@ -128,9 +139,9 @@ if __name__ == "__main__":
     ax3.plot(cv_r0_test[:,0], psi_Lap_fj[0,:])
 
     ax3.set_xlabel("$f_j$ center along $\psi_1$")
-    ax1.set_ylabel(r"$\langle \psi_1, -a\nabla U_0 \cdot\nabla f_j \rangle$")
-    ax2.set_ylabel(r"$\langle \psi_1, -a\nabla U_1 \cdot\nabla f_j \rangle$")
-    ax3.set_ylabel(r"$\langle \psi_1, \Delta f_j \rangle$")
+    ax1.set_ylabel(r"$\langle \psi_1| -a\nabla U_0 \cdot\nabla f_j \rangle$")
+    ax2.set_ylabel(r"$\langle \psi_1| -a\nabla U_1 \cdot\nabla f_j \rangle$")
+    ax3.set_ylabel(r"$\langle \psi_1| \Delta f_j \rangle$")
 
     fig.savefig(cg_savedir + "/compare_psi_gradU_fj.pdf")
     fig.savefig(cg_savedir + "/compare_psi_gradU_fj.png")

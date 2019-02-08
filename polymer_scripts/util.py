@@ -7,7 +7,7 @@ import simtk.openmm.app as app
 import simulation.openmm as sop
 import implicit_force_field as iff
 
-def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs):
+def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs, a_coeff=None):
 
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
@@ -27,7 +27,7 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_
 
     print("creating Ucg...")
     # coarse-grain polymer potential with free parameters
-    Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2)
+    Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2, a_coeff=a_coeff)
     cg_savedir = "Ucg_eigenpair"
 
     if fixed_bonded_terms:

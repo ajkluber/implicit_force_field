@@ -17,12 +17,17 @@ import simulation.openmm as sop
 
 import implicit_force_field as iff
 import implicit_force_field.polymer_scripts.util as util
+import implicit_force_field.spectral_loss as spl
 
 def plot_train_test_mse(alphas, train_mse, test_mse, 
         xlabel=r"Regularization $\alpha$", ylabel="Mean squared error (MSE)", 
         title="", prefix=""):
     """Plot mean squared error for training and test data"""
 
+    #sum_mse = train_mse + test_mse
+    #alpha_star = alphas[np.argmin(sum_mse[:,0])]
+
+    (test_mse < 1.10*test_mse.min())
     alpha_star = alphas[np.argmin(test_mse[:,0])]
 
     plt.figure()
@@ -152,7 +157,7 @@ def plot_Xcoeff_vs_d(idxs, idx_star, coeffs, alphas, X, d, prefix):
     plt.savefig("{}compare_d_fit_target.pdf".format(prefix))
     plt.savefig("{}compare_d_fit_target.png".format(prefix))
 
-def get_frame_assignments(trajnames, n_cross_val_sets=5):
+def assign_crossval_sets(trajnames, n_cross_val_sets=5):
     """Randomly assign trajectory frames to sets"""
     set_assignment = []
     traj_n_frames = []
@@ -322,8 +327,16 @@ if __name__ == "__main__":
 
     if not np.all(X_sets_exist) or not np.all(set_assignment_exist) or recalc_matrices:
         # Calculate matrices over randomized assigned groups of frames
-        set_assignment = get_frame_assignments(trajnames, n_cross_val_sets=n_cross_val_sets)
+        set_assignment = assign_crossval_sets(trajnames, n_cross_val_sets=n_cross_val_sets)
         Ucg.setup_eigenpair(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True, a_coeff=a_coeff)
+
+        Ucg.set_fixed_diffusion_coefficient(a_coeff)
+
+        spectral_loss = spl.LinearLoss()
+        spectral_loss.assign_crossval_sets(trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
+        spectral_loss.calc_matrices(trajnames, topfile, psinames, ti_file, M=M, cv_names=psinames, set_assignment=set_assignment, verbose=True, a_coeff=a_coeff)
+        
+
 
         X_sets = [ Ucg.eigenpair_X[k] for k in range(n_cross_val_sets) ]
         d_sets = [ Ucg.eigenpair_d[k] for k in range(n_cross_val_sets) ]
