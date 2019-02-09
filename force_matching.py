@@ -6,6 +6,12 @@ import mdtraj as md
 import implicit_force_field.basis_library as basis_library
 
 if __name__ == "__main__":
+
+    # should be refactored as:
+    #  1. create model
+    #  2. create force matching loss function
+    #  3. calculate force matching solution
+
     n_beads = 25 
     n_dim = 3*n_beads
     n_folds = 10
