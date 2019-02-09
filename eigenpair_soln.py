@@ -324,7 +324,7 @@ if __name__ == "__main__":
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
-    s_loss = spl.LinearLoss(cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    s_loss = spl.LinearLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
         s_loss.assign_crossval_sets(topfile, trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
@@ -332,12 +332,9 @@ if __name__ == "__main__":
 
     os.chdir(cg_savedir)
 
-    #print("solve ridge regularization...")
-
+    print("Ridge regularization...")
     rdg_alphas = np.logspace(-10, 8, 500)
     s_loss.solve(rdg_alphas)
-    #rdg_coeffs, rdg_train_mse, rdg_test_mse = iff.util.traj_chunk_cross_validated_least_squares(rdg_alphas, X, d,
-    #        X_train_test, d_train_test, np.identity(X.shape[1]))
 
     raise SystemExit
     rdg_idx_star = np.argmin(rdg_test_mse[:,0])

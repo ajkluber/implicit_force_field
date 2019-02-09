@@ -1313,6 +1313,7 @@ class PolymerModel(FunctionLibrary):
 
     def _generator_scalar_products(self, coeff, trajnames, topfile, psinames, M=1, cv_names=[], verbose=False, a_coeff=None):
 
+        # DEPRECATED
         P = self.n_test_funcs
 
         if a_coeff is None:

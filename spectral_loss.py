@@ -12,7 +12,7 @@ import mdtraj as md
 # TODO: nonlinear loss function
 
 class CrossValidatedLoss(object):
-    def __init__(self, savedir, n_cv_sets=5):
+    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5):
         """Creates matrices for minimizing the linear spectral loss equations
         
         Parameters
@@ -25,11 +25,14 @@ class CrossValidatedLoss(object):
             
         """
 
+        self.topfile = topfile
+        self.trajnames = trajnames
+
         self.savedir = savedir
         self.n_cv_sets = n_cv_sets
         self.cv_sets_are_assigned = False
 
-    def assign_crossval_sets(self, topfile, trajnames):
+    def assign_crossval_sets(self):
         """Randomly assign frames to training and validation sets
 
         Parameters
@@ -42,14 +45,11 @@ class CrossValidatedLoss(object):
 
         """
 
-        self.topfile = topfile
-        self.trajnames = trajnames
-
         set_assignment = []
         traj_n_frames = []
-        for n in range(len(trajnames)):
+        for n in range(len(self.trajnames)):
             length = 0
-            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=1000):
                 length += chunk.n_frames
             traj_n_frames.append(length)
 
@@ -66,7 +66,7 @@ class CrossValidatedLoss(object):
 
 class LinearLoss(CrossValidatedLoss):
 
-    def __init__(self, savedir, n_cv_sets=5, recalc=False):
+    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
         """Creates matrices for minimizing the linear spectral loss equations
         
         Parameters
@@ -89,7 +89,7 @@ class LinearLoss(CrossValidatedLoss):
         if self.matrix_files_exist() and not recalc:
             self._load_matrices()
 
-    def calc_matrices(self, Ucg, topfile, trajnames, psinames, ti_file, M=1, coll_var_names=None, verbose=True):
+    def calc_matrices(self, Ucg, psinames, ti_file, M=1, coll_var_names=None, verbose=True):
         """Calculate eigenpair matrices
        
         Parameters
@@ -121,7 +121,7 @@ class LinearLoss(CrossValidatedLoss):
             self.n_cv_sets = 1
         else:
             if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
-                self.assign_crossval_sets(topfile, trajnames)
+                self.assign_crossval_sets()
 
         R = Ucg.n_params
         P = Ucg.n_test_funcs
@@ -141,18 +141,18 @@ class LinearLoss(CrossValidatedLoss):
         if Ucg.using_cv and not Ucg.cv_defined:
             raise ValueError("Collective variables are not defined!")
 
-        if len(psinames) != len(trajnames):
+        if len(psinames) != len(self.trajnames):
             raise ValueError("Need eigenvector for every trajectory!")
 
         kappa = 1./np.load(ti_file)[:M]
 
         N_prev = np.zeros(self.n_cv_sets, float)
-        for n in range(len(trajnames)):
+        for n in range(len(self.trajnames)):
             if verbose:
-                if n == len(trajnames) - 1:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(trajnames)))
+                if n == len(self.trajnames) - 1:
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
                 else:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(trajnames)), end="\r")
+                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
                 sys.stdout.flush()
 
             # load eigenvectors
@@ -165,10 +165,8 @@ class LinearLoss(CrossValidatedLoss):
                 cv_traj = None
 
             # calculate matrix for trajectory
-            #matrix_elements_for_traj(trajnames[n], topfile, N_prev, )
-
             start_idx = 0
-            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+            for chunk in md.iterload(self.trajnames[n], top=topfile, chunk=1000):
                 N_chunk = chunk.n_frames
 
                 psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
@@ -404,4 +402,94 @@ class LinearLoss(CrossValidatedLoss):
         self.coeffs = np.array(coeffs)
         self.train_mse = np.array(train_mse)
         self.valid_mse = np.array(valid_mse)
+        
+        self.alpha_star_idx = np.argmin(valid_mse)
+        self.coeff_star = coeffs[self.alpha_star_idx]
 
+
+    def scalar_product_Gen_fj(self, Ucg, coeff, psinames, M=1, cv_names=[]):
+
+        #TODO
+
+        if Ucg.fixed_a_coeff:
+            c_r = coeff
+        else:
+            c_r = coeff[:-1] 
+            a_coeff = 1./coeff[-1]  #?
+
+        P = Ucg.n_test_funcs
+        if Ucg.constant_a_coeff:
+            psi_fj = np.zeros((M, P), float)
+            psi_gU0_fj = np.zeros((M, P), float)
+            psi_gU1_fj = np.zeros((M, P), float)
+            psi_Lap_fj = np.zeros((M, P), float)
+            psi_Gen_fj = np.zeros((M, P), float)
+        else:
+            raise NotImplementedError("Only constant diffusion coefficient is supported.")
+
+        if Ucg.using_cv and not Ucg.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(psinames) != len(self.trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
+        N_prev = 0
+        for n in range(len(self.trajnames)):
+            if n == len(self.trajnames) - 1:
+                print("scalar product traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
+            else:
+                print("scalar product traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
+            sys.stdout.flush()
+
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+            else:
+                cv_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=1000):
+                N_chunk = chunk.n_frames
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+                if cv_traj is None:
+                    cv_chunk = Ucg.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, Ucg.n_dof))
+
+                # calculate gradient of fixed and parametric potential terms
+                grad_U1 = Ucg.gradient_U1(xyz_traj, cv_chunk)
+                grad_U1 = np.einsum("r,tdr->td", c_r, grad_U1)
+
+                # calculate test function values, gradient, and Laplacian
+                test_f = Ucg.test_functions(xyz_traj, cv_chunk)
+                grad_f, Lap_f = Ucg.test_funcs_gradient_and_laplacian(xyz_traj, cv_chunk)
+
+                if Ucg.using_U0:
+                    grad_U0 = Ucg.gradient_U0(xyz_traj, cv_chunk)
+                    curr_psi_gradU0_fj = np.einsum("tm, td,tdp->mp", psi_chunk, -a_coeff*grad_U0, grad_f)
+                    psi_gU0_fj = (curr_psi_gradU0_fj + float(N_prev)*psi_gU0_fj)/(float(N_prev + N_chunk))
+
+                # calculate generator terms
+                curr_psi_fj = np.einsum("tm,tp->mp", psi_chunk, test_f)
+                curr_psi_gradU1_fj = np.einsum("tm,td,tdp->mp", psi_chunk, -a_coeff*grad_U1, grad_f)
+                curr_psi_Lap_fj = np.einsum("tm,tp->mp", psi_chunk, (a_coeff/Ucg.beta)*Lap_f)
+
+                psi_fj = (curr_psi_fj + float(N_prev)*psi_fj)/(float(N_prev + N_chunk))
+                psi_gU1_fj = (curr_psi_gradU1_fj + float(N_prev)*psi_gU1_fj)/(float(N_prev + N_chunk))
+                psi_Lap_fj = (curr_psi_Lap_fj + float(N_prev)*psi_Lap_fj)/(float(N_prev + N_chunk))
+
+                start_idx += N_chunk
+                N_prev += N_chunk
+
+        self.psi_fj = psi_fj
+        self.psi_gU0_fj = psi_gU0_fj
+        self.psi_gU1_fj = psi_gU1_fj
+        self.psi_Lap_fj = psi_Lap_fj
+        self.psi_Gen_fj = psi_gU0_fj + psi_gU1_fj + psi_Lap_fj 

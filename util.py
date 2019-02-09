@@ -167,6 +167,8 @@ def solve_deriv_regularized(alphas, A, b, Ucg, r, weight_a=1, order=1, variable_
 def traj_chunk_cross_validated_least_squares(alphas, A, b, A_sets, b_sets, D):
     """Ridge regression with cross-validation"""
 
+    ## DEPRECATED
+
     n_sets = len(A_sets)
     coeffs = []
     train_mse = []
