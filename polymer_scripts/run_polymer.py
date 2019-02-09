@@ -42,6 +42,8 @@ if __name__ == "__main__":
     #python run_polymer.py c25 25 LJ LJ --eps_ply 1 --eps_slv 1 --run_idx 1 --T 300.00 --n_steps 1000
     #python run_polymer.py c25 25 LJ6 SPC --eps_ply 0.59 --run_idx 1 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 100 --p0 1 --starting_pdb c25_with_spc.pdb --pressure 1
 
+    #python run_polymer.py c25 25 LJ6 SPC --eps_ply 0.59 --run_idx 16 --T 300.00 --n_steps 1000 --cutoff 1 --vdwcutoff 0.9 --rswitch 0.9 --nsteps_out 100 --p0 1 --starting_pdb c25_with_spc.pdb --pressure 1
+
     name = args.name
     n_beads = args.n_beads
     ply_potential = args.ply_potential
