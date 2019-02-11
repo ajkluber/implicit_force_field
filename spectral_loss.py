@@ -64,7 +64,7 @@ class CrossValidatedLoss(object):
         self.cv_set_assignment = set_assignment
         self.cv_sets_are_assigned = True
 
-class LinearLoss(CrossValidatedLoss):
+class LinearSpectralLoss(CrossValidatedLoss):
 
     def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
         """Creates matrices for minimizing the linear spectral loss equations
