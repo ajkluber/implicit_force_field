@@ -1,5 +1,6 @@
 from __future__ import print_function, absolute_import
 import os
+import sys
 import shutil
 import time
 import argparse
@@ -72,6 +73,13 @@ if __name__ == "__main__":
     assert slv_potential in ["LJ", "CS", "SPC", "no"]
 
     cwd = os.getcwd()
+
+    print("Available platforms")
+    for i in range(omm.Platform.getNumPlatforms()):
+        print(omm.Platform.getPlatform(i).getName())
+
+    print(omm.Platform.getPluginLoadFailures())
+    #raise SystemExit
 
     refT = 300.
     ensemble = "NVT"
@@ -188,7 +196,7 @@ if __name__ == "__main__":
             print("Loading reference pressure")
         pressure = np.load(Pdir + "/pressure_in_atm_vs_step.npy")[-1]*unit.atmosphere
     else:
-        print("Using pressure" + str(p_mag) + " atm")
+        print("Using pressure " + str(p_mag) + " atm")
         peq_state_name = ini_pdb_file
         pressure = p_mag*unit.atmosphere
     os.chdir(cwd)
@@ -235,6 +243,9 @@ if __name__ == "__main__":
         os.makedirs(rundir)
     os.chdir(rundir)
 
+    with open("cmd.txt", "w") as fout:
+        fout.write(" ".join(sys.argv))
+
     if traj_idx == 1:
         #shutil.copy(Vdir + "/" + name + "_min.pdb", name + "_min.pdb")
         shutil.copy(ini_pdb_file, name + "_min.pdb")
@@ -243,6 +254,7 @@ if __name__ == "__main__":
     sop.build_ff.polymer_in_solvent(n_beads, ply_potential, slv_potential,
             saveas=ff_filename, **ff_kwargs)
 
+    firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
     starttime = time.time()
@@ -258,15 +270,16 @@ if __name__ == "__main__":
     # reporters for forces and velocities
     more_reporters = []
     if save_forces:
-        #more_reporters.append(sop.additional_reporters.MappedForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out), force_map_matrix)
-        more_reporters.append(sop.additional_reporters.SubsetForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out), 3*n_beads)
+        #more_reporters.append(sop.additional_reporters.MappedForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out, force_map_matrix))
+        more_reporters.append(sop.additional_reporters.SubsetForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out, 3*n_beads))
     if save_velocities:
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
-    forcefield = app.ForceField(ff_files)
+    forcefield = app.ForceField(*ff_files)
     system = forcefield.createSystem(topology,
             nonbondedMethod=nonbondedMethod, nonbondedCutoff=cutoff,
             ignoreExternalBonds=True, residueTemplates=templates)
+
 
     # Run simulation
     print("Running production...")
