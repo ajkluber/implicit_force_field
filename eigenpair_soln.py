@@ -9,8 +9,6 @@ mpl.rcParams['mathtext.rm'] = 'serif'
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 
-import sklearn.linear_model as sklin
-
 import mdtraj as md
 
 import simulation.openmm as sop
@@ -298,7 +296,7 @@ if __name__ == "__main__":
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms, using_cv,
             using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs, 
-            a_coeff=a_coeff)
+            a_coeff=a_coeff, cg_savedir="Ucg_eigenpair")
 
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
@@ -324,7 +322,7 @@ if __name__ == "__main__":
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
-    s_loss = spl.LinearLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    s_loss = spl.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
         s_loss.assign_crossval_sets(topfile, trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
