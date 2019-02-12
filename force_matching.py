@@ -81,18 +81,18 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
                 self.assign_crossval_sets()
 
-        R = Ucg.n_params
+        n_params = Ucg.n_params
         P = Ucg.n_test_funcs
 
         # if constant diff coeff
         if Ucg.constant_a_coeff:
             d = np.zeros((self.n_cv_sets, P), float)
             if Ucg.fixed_a_coeff:
-                X = np.zeros((self.n_cv_sets, P, R), float)
-                D2 = np.zeros((self.n_cv_sets, R, R), float)    # TODO: high-dimensional smoothness 
+                X = np.zeros((self.n_cv_sets, P, n_params), float)
+                D2 = np.zeros((self.n_cv_sets, n_params, n_params), float)    # TODO: high-dimensional smoothness 
             else:
-                X = np.zeros((self.n_cv_sets, P, R + 1), float)
-                D2 = np.zeros((self.n_cv_sets, R + 1, R + 1), float)    # TODO: high-dimensional smoothness 
+                X = np.zeros((self.n_cv_sets, P, n_params + 1), float)
+                D2 = np.zeros((self.n_cv_sets, n_params + 1, n_params + 1), float)    # TODO: high-dimensional smoothness 
         else:
             raise NotImplementedError("Only constant diffusion coefficient is supported.")
 
@@ -132,7 +132,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                 N_chunk = chunk.n_frames
                 n_rows = N_chunk*Ucg.n_dof
 
-                f_target_chunk = force_traj[start_idx:start_idx + N_chunk,:]
+                f_target_chunk = force_traj[start_idx:start_idx + N_chunk,:Ucg.n_dof]
 
                 if cv_traj is None:
                     cv_chunk = Ucg.calculate_cv(chunk)
@@ -151,26 +151,26 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                     f_target_chunk -= U0_force
 
                 if self.n_cv_sets == 1: 
-                    f_cg = np.reshape(U1_force, (n_rows, R))
-                    f_target = np.reshape(f_target_chunk, (n_rows, R))
+                    f_cg = np.reshape(U1_force, (n_rows, n_params))
+                    f_target = np.reshape(f_target_chunk, (n_rows))
 
                     if iteration_idx == 0:
                         Q, R = scl.qr(f_cg, mode="economic")
 
-                        A = np.zeros((R + max_rows, R), float)
-                        b = np.zeros(R + max_rows, float)
+                        A = np.zeros((n_params + max_rows, n_params), float)
+                        b = np.zeros(n_params + max_rows, float)
 
-                        A[:R,:] = R[:R,:].copy()
-                        b[:R] = np.dot(Q.T, f_target)
+                        A[:n_params,:] = R[:n_params,:].copy()
+                        b[:n_params] = np.dot(Q.T, f_target)
                     else:
                         # augment matrix system with next chunk of data
-                        A[R:R + n_rows,:] = f_cg 
-                        b[R:R + n_rows] = f_target
+                        A[n_params:n_params + n_rows,:] = f_cg 
+                        b[n_params:n_params + n_rows] = f_target
 
                         Q_next, R_next = scl.qr(A, mode="economic")
 
-                        A[:R,:] = R_next
-                        b[:R] = np.dot(Q_next.T, b)
+                        A[:n_params,:] = R_next
+                        b[:n_params] = np.dot(Q_next.T, b)
                     N_prev[0] += float(N_chunk)
                 else:
                     for k in range(self.n_cv_sets):   
@@ -178,30 +178,33 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                         n_frames_set = np.sum(frames_in_this_set)
                         n_rows_set = n_frames_set*Ucg.n_dof
 
+                        #import pdb
+                        #pdb.set_trace()
+
                         if n_frames_set > 0:
-                            f_cg_subset = np.reshape(U1_force[frames_in_this_set], (n_frames_set*Ucg.n_dof, R))  
-                            f_target_subset = np.reshape(f_target_chunk[frames_in_this_set], (n_frames_set*Ucg.n_dof, R))  
+                            f_cg_subset = np.reshape(U1_force[frames_in_this_set], (n_rows_set, n_params))  
+                            f_target_subset = np.reshape(f_target_chunk[frames_in_this_set], (n_rows_set))  
 
-                            if not Q_set.has_key(str(k)):
-                                Q, R = scl.qr(f_cg, mode="economic")
+                            if not str(k) in A_set:
+                                Q, R = scl.qr(f_cg_subset, mode="economic")
 
-                                A = np.zeros((R + max_rows, R), float)
-                                b = np.zeros(R + max_rows, float)
+                                A = np.zeros((n_params + max_rows, n_params), float)
+                                b = np.zeros(n_params + max_rows, float)
 
-                                A[:R,:] = R[:R,:].copy()
-                                b[:R] = np.dot(Q.T, f_target)
+                                A[:n_params,:] = R[:n_params,:].copy()
+                                b[:n_params] = np.dot(Q.T, f_target_subset)
 
                                 A_set[str(k)] = (A, b)
                             else:
                                 # augment matrix system with next chunk of data
                                 (A, b) = A_set[str(k)]
-                                A[R:R + n_rows_set,:] = f_cg 
-                                b[R:R + n_rows_set] = f_target
+                                A[n_params:n_params + n_rows_set,:] = f_cg_subset
+                                b[n_params:n_params + n_rows_set] = f_target_subset
 
                                 Q_next, R_next = scl.qr(A, mode="economic")
 
-                                A[:R,:] = R_next
-                                b[:R] = np.dot(Q_next.T, b)
+                                A[:n_params,:] = R_next
+                                b[:n_params] = np.dot(Q_next.T, b)
 
                             N_prev[k] += float(n_frames_set)
                 start_idx += N_chunk
@@ -370,10 +373,6 @@ if __name__ == "__main__":
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100
 
-    n_beads = 25 
-
-    forcefile = "c25_forces_1.dat"
-
     n_beads = 25
     n_dim = 3*n_beads
     name = "c" + str(n_beads)
@@ -403,6 +402,10 @@ if __name__ == "__main__":
         min_since_mod = np.abs(current_time - os.path.getmtime(temp_forcenames[i]))/60.
         if min_since_mod > 10:
             forcenames.append(temp_forcenames[i])
+            #try:
+            #    np.loadtxt(temp_forcenames[i])
+            #except:
+            #    print("can't load: " + temp_forcenames[i]) 
         else:
             print("skipping: " + temp_forcenames[i])
 
@@ -424,7 +427,16 @@ if __name__ == "__main__":
 
         temp_names = []
         for n in range(M):
-            temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
+            psi_name = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1)
+            if not os.path.exists(psi_name):
+                psi_temp = []
+                for chunk in md.iterload(trajnames[i], top=topfile):
+                    xyz_traj = np.reshape(chunk.xyz, (-1, 75))
+                    psi_chunk = Ucg.calculate_cv(xyz_traj)
+                    psi_temp.append(psi_chunk[:,n])
+                psi_temp = np.concatenate(psi_temp)
+                np.save(psi_name, psi_temp)
+            temp_names.append(psi_name)
         psinames.append(temp_names)
 
     cg_savedir = cg_savedir + "_crossval_{}".format(n_cross_val_sets)
