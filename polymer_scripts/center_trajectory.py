@@ -9,18 +9,25 @@ import mdtraj as md
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
-    parser.add_argument('subdir', type=str, help='Subdirectory.')
+    parser.add_argument('--subdir', type=str, default=".", help='Subdirectory.')
+    parser.add_argument('--rundirs', nargs="+", type=int, default=None, help='Subdirectory.')
     parser.add_argument('--nowait', action="store_true", help='Ignore if traj was recently written.')
     parser.add_argument('--recenter', action="store_true", help='Force calculation.')
     args = parser.parse_args()
 
     name = args.name
     subdir = args.subdir
+    rundirs = args.rundirs
     nowait = args.nowait
     recenter = args.recenter
+
+    if not rundirs is None:
+        pass  
     
     if len(glob.glob(subdir + "/*/*/*/{}_traj_*.dcd".format(name))) > 0:
         trajpaths = glob.glob(subdir + "/*/*/run_*/{}_traj_*.dcd".format(name))
+    elif len(glob.glob(subdir + "/run_*/{}_traj_*.dcd".format(name))) > 0:
+        trajpaths = glob.glob(subdir + "/run_*/{}_traj_*.dcd".format(name))
     else:
         trajpaths = glob.glob(subdir + "/*/run_*/{}_traj_*.dcd".format(name))
 
