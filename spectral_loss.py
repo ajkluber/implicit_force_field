@@ -81,7 +81,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
             Recalculated 
 
         """
-        CrossValidatedLoss.__init__(self, savedir, n_cv_sets=n_cv_sets)
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
 
         self.matrices_estimated = False
         self.recalc = recalc
