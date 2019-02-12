@@ -1,5 +1,7 @@
 from __future__ import print_function, absolute_import
 import os
+import time
+import sys
 import glob
 import argparse
 import numpy as np
@@ -37,7 +39,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             Recalculated 
 
         """
-        CrossValidatedLoss.__init__(self, savedir, n_cv_sets=n_cv_sets)
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
 
         self.matrices_estimated = False
         self.recalc = recalc
@@ -116,7 +118,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                 sys.stdout.flush()
 
             # load force from simulation 
-            force_traj = np.load(forcenames[n])
+            force_traj = np.loadtxt(forcenames[n])
 
             if len(coll_var_names) > 0:
                 # load collective variable if given
@@ -365,7 +367,8 @@ if __name__ == "__main__":
     fixed_bonded_terms = args.fixed_bonds
     recalc_matrices = args.recalc_matrices
 
-    #python ~/code/implicit_force_field/force_matching_soln.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
+    #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
+    #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100
 
     n_beads = 25 
 
@@ -392,8 +395,18 @@ if __name__ == "__main__":
             cg_savedir="Ucg_FM")
 
     # only get trajectories that have saved forces
+    temp_forcenames = glob.glob("run_*/" + name + "_forces_*.dat") 
+
+    forcenames = []
+    current_time = time.time()
+    for i in range(len(temp_forcenames)):
+        min_since_mod = np.abs(current_time - os.path.getmtime(temp_forcenames[i]))/60.
+        if min_since_mod > 10:
+            forcenames.append(temp_forcenames[i])
+        else:
+            print("skipping: " + temp_forcenames[i])
+
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
-    forcenames = glob.glob("run_*/" + name + "_forces_*.dat") 
     rundirs = []
     psinames = []
     trajnames = []
@@ -403,8 +416,9 @@ if __name__ == "__main__":
         idx2 = (os.path.basename(fname)).split(".dat")[0].split("_")[-1]
 
         traj_name = "run_{}/{}_traj_cent_{}.dcd".format(idx1, name, idx2)
-        #if not os.path.exists(traj_name):
-        #    raise ValueError("Trajectory does not exist: " + traj_name)
+        if not os.path.exists(traj_name):
+            #raise ValueError("Trajectory does not exist: " + traj_name)
+            print("Trajectory does not exist: " + traj_name)
 
         trajnames.append(traj_name)
 
@@ -419,14 +433,12 @@ if __name__ == "__main__":
         os.mkdir(cg_savedir)
     print(cg_savedir)
 
-    raise SystemExit
-
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
-    s_loss = spl.LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    s_loss = LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
-        s_loss.assign_crossval_sets(topfile, trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
-        s_loss.calc_matrices(Ucg, topfile, trajnames, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True)
+        s_loss.assign_crossval_sets()
+        s_loss.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
 
