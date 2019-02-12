@@ -155,21 +155,6 @@ def plot_Xcoeff_vs_d(idxs, idx_star, coeffs, alphas, X, d, prefix):
     plt.savefig("{}compare_d_fit_target.pdf".format(prefix))
     plt.savefig("{}compare_d_fit_target.png".format(prefix))
 
-def assign_crossval_sets(trajnames, n_cross_val_sets=5):
-    """Randomly assign trajectory frames to sets"""
-    set_assignment = []
-    traj_n_frames = []
-    for n in range(len(trajnames)):
-        length = 0
-        for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
-            length += chunk.n_frames
-        traj_n_frames.append(length)
-
-        set_assignment.append(np.random.randint(low=0, high=n_cross_val_sets, size=length))
-    total_n_frames = sum(traj_n_frames)
-
-    return set_assignment
-
 def split_trajs_into_train_and_test_sets(trajnames, psinames, n_cross_val_sets=5):
     """Split trajs into sets with roughly same number of frames
 
@@ -325,7 +310,7 @@ if __name__ == "__main__":
     s_loss = spl.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
-        s_loss.assign_crossval_sets(topfile, trajnames, n_cv_sets=n_cross_val_sets, method="shuffled")
+        s_loss.assign_crossval_sets()
         s_loss.calc_matrices(Ucg, topfile, trajnames, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True)
 
     os.chdir(cg_savedir)
