@@ -102,8 +102,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         if len(forcenames) != len(self.trajnames):
             raise ValueError("Need eigenvector for every trajectory!")
 
-        A_set = {}
-        b_set = {}
+        A_b_set = {}
 
         chunksize = 1000
         max_rows = chunksize*Ucg.n_dof
@@ -185,7 +184,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                             f_cg_subset = np.reshape(U1_force[frames_in_this_set], (n_rows_set, n_params))  
                             f_target_subset = np.reshape(f_target_chunk[frames_in_this_set], (n_rows_set))  
 
-                            if not str(k) in A_set:
+                            if not str(k) in A_b_set:
                                 Q, R = scl.qr(f_cg_subset, mode="economic")
 
                                 A = np.zeros((n_params + max_rows, n_params), float)
@@ -194,10 +193,10 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                                 A[:n_params,:] = R[:n_params,:].copy()
                                 b[:n_params] = np.dot(Q.T, f_target_subset)
 
-                                A_set[str(k)] = (A, b)
+                                A_b_set[str(k)] = (A, b)
                             else:
                                 # augment matrix system with next chunk of data
-                                (A, b) = A_set[str(k)]
+                                (A, b) = A_b_set[str(k)]
                                 A[n_params:n_params + n_rows_set,:] = f_cg_subset
                                 b[n_params:n_params + n_rows_set] = f_target_subset
 
@@ -210,8 +209,8 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                 start_idx += N_chunk
 
         if self.n_cv_sets > 1:
-            self.X_sets = [ A_set[str(k)] for k in range(self.n_cv_sets) ]
-            self.d_sets = [ b_set[str(k)] for k in range(self.n_cv_sets) ]
+            self.X_sets = [ A_b_set[str(k)][0] for k in range(self.n_cv_sets) ]
+            self.d_sets = [ A_b_set[str(k)][1] for k in range(self.n_cv_sets) ]
             self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
             self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
         else:
