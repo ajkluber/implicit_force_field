@@ -271,7 +271,7 @@ if __name__ == "__main__":
     more_reporters = []
     if save_forces:
         #more_reporters.append(sop.additional_reporters.MappedForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out, force_map_matrix))
-        more_reporters.append(sop.additional_reporters.SubsetForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out, 3*n_beads))
+        more_reporters.append(sop.additional_reporters.SubsetForceReporter(name + "_forces_{}.dat".format(traj_idx), nsteps_out, n_beads))
     if save_velocities:
         more_reporters.append(sop.additional_reporters.VelocityReporter(name + "_vels_{}.dat".format(traj_idx), nsteps_out))
 
