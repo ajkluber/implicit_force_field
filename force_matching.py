@@ -18,339 +18,51 @@ import simulation.openmm as sop
 
 import implicit_force_field as iff
 import implicit_force_field.polymer_scripts.util as util
-import implicit_force_field.spectral_loss as spl
-
-from implicit_force_field.spectral_loss import CrossValidatedLoss
-
-class LinearForceMatchingLoss(CrossValidatedLoss):
-
-    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
-        """Creates matrices for minimizing the linear spectral loss equations
-        
-        Parameters
-        ----------
-        savedir : str
-            Where matrices should be saved.
-            
-        n_cv_sets : opt.
-            Number of k-fold cross validation sets to use.
-            
-        recalc : bool
-            Recalculated 
-
-        """
-        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
-
-        self.matrices_estimated = False
-        self.recalc = recalc
-
-        if self.matrix_files_exist() and not recalc:
-            self._load_matrices()
-
-    def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True):
-        """Calculate eigenpair matrices
-       
-        Parameters
-        ----------
-        trajnames : list, str
-            Trajectory filenames
-
-        topfile : str
-            Filename for topology (pdb)
-
-        forcenames : list, str
-            Filenames for 
-            
-        ti_file : str
-            Filename for timescales
-
-        M : int (default=1)
-            Number of timescales to keep in eigenfunction expansion.
-        
-        coll_var_names : list, str (opt)
-            Collective variable rilenames if pre-calculated. Will calculate
-            collective variables on the fly if not given. 
-
-        """
-
-        self.Ucg = Ucg
-
-        if self.n_cv_sets is None:
-            self.n_cv_sets = 1
-        else:
-            if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
-                self.assign_crossval_sets()
-
-        n_params = Ucg.n_params
-        P = Ucg.n_test_funcs
-
-        # if constant diff coeff
-        if Ucg.constant_a_coeff:
-            d = np.zeros((self.n_cv_sets, P), float)
-            if Ucg.fixed_a_coeff:
-                X = np.zeros((self.n_cv_sets, P, n_params), float)
-                D2 = np.zeros((self.n_cv_sets, n_params, n_params), float)    # TODO: high-dimensional smoothness 
-            else:
-                X = np.zeros((self.n_cv_sets, P, n_params + 1), float)
-                D2 = np.zeros((self.n_cv_sets, n_params + 1, n_params + 1), float)    # TODO: high-dimensional smoothness 
-        else:
-            raise NotImplementedError("Only constant diffusion coefficient is supported.")
-
-        if Ucg.using_cv and not Ucg.cv_defined:
-            raise ValueError("Collective variables are not defined!")
-
-        if len(forcenames) != len(self.trajnames):
-            raise ValueError("Need eigenvector for every trajectory!")
-
-        A_b_set = {}
-
-        chunksize = 1000
-        max_rows = chunksize*Ucg.n_dof
-
-        N_prev = np.zeros(self.n_cv_sets, float)
-        for n in range(len(self.trajnames)):
-            if verbose:
-                if n == len(self.trajnames) - 1:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
-                else:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
-                sys.stdout.flush()
-
-            # load force from simulation 
-            force_traj = np.loadtxt(forcenames[n])
-
-            if len(coll_var_names) > 0:
-                # load collective variable if given
-                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in coll_var_names[n] ]).T
-            else:
-                cv_traj = None
-
-            # calculate matrix for trajectory
-            start_idx = 0
-            for chunk in md.iterload(self.trajnames[n], top=topfile, chunk=chunksize):
-                N_chunk = chunk.n_frames
-                n_rows = N_chunk*Ucg.n_dof
-
-                f_target_chunk = force_traj[start_idx:start_idx + N_chunk,:Ucg.n_dof]
-
-                if cv_traj is None:
-                    cv_chunk = Ucg.calculate_cv(chunk)
-                else:
-                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
-
-                # cartesian coordinates unraveled
-                xyz_traj = np.reshape(chunk.xyz, (N_chunk, Ucg.n_dof))
-
-                # calculate gradient of fixed and parametric potential terms
-                U1_force = -Ucg.gradient_U1(xyz_traj, cv_chunk)
-
-                if Ucg.using_U0:
-                    # subtract fixed force from right hand side
-                    U0_force = -Ucg.gradient_U0(xyz_traj, cv_chunk)
-                    f_target_chunk -= U0_force
-
-                if self.n_cv_sets == 1: 
-                    f_cg = np.reshape(U1_force, (n_rows, n_params))
-                    f_target = np.reshape(f_target_chunk, (n_rows))
-
-                    if iteration_idx == 0:
-                        Q, R = scl.qr(f_cg, mode="economic")
-
-                        A = np.zeros((n_params + max_rows, n_params), float)
-                        b = np.zeros(n_params + max_rows, float)
-
-                        A[:n_params,:] = R[:n_params,:].copy()
-                        b[:n_params] = np.dot(Q.T, f_target)
-                    else:
-                        # augment matrix system with next chunk of data
-                        A[n_params:n_params + n_rows,:] = f_cg 
-                        b[n_params:n_params + n_rows] = f_target
-
-                        Q_next, R_next = scl.qr(A, mode="economic")
-
-                        A[:n_params,:] = R_next
-                        b[:n_params] = np.dot(Q_next.T, b)
-                    N_prev[0] += float(N_chunk)
-                else:
-                    for k in range(self.n_cv_sets):   
-                        frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
-                        n_frames_set = np.sum(frames_in_this_set)
-                        n_rows_set = n_frames_set*Ucg.n_dof
-
-                        #import pdb
-                        #pdb.set_trace()
-
-                        if n_frames_set > 0:
-                            f_cg_subset = np.reshape(U1_force[frames_in_this_set], (n_rows_set, n_params))  
-                            f_target_subset = np.reshape(f_target_chunk[frames_in_this_set], (n_rows_set))  
-
-                            if not str(k) in A_b_set:
-                                Q, R = scl.qr(f_cg_subset, mode="economic")
-
-                                A = np.zeros((n_params + max_rows, n_params), float)
-                                b = np.zeros(n_params + max_rows, float)
-
-                                A[:n_params,:] = R[:n_params,:].copy()
-                                b[:n_params] = np.dot(Q.T, f_target_subset)
-
-                                A_b_set[str(k)] = (A, b)
-                            else:
-                                # augment matrix system with next chunk of data
-                                (A, b) = A_b_set[str(k)]
-                                A[n_params:n_params + n_rows_set,:] = f_cg_subset
-                                b[n_params:n_params + n_rows_set] = f_target_subset
-
-                                Q_next, R_next = scl.qr(A, mode="economic")
-
-                                A[:n_params,:] = R_next
-                                b[:n_params] = np.dot(Q_next.T, b)
-
-                            N_prev[k] += float(n_frames_set)
-                start_idx += N_chunk
-
-        if self.n_cv_sets > 1:
-            self.X_sets = [ A_b_set[str(k)][0] for k in range(self.n_cv_sets) ]
-            self.d_sets = [ A_b_set[str(k)][1] for k in range(self.n_cv_sets) ]
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-        else:
-            self.X = A
-            self.d = b
-
-        self.matrices_estimated = True
-        self._save_matrices()
-        self._training_and_validation_matrices()
-
-    def matrix_files_exist(self):
-        X_files_exist = np.all([ os.path.exists("{}/X_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        d_files_exist = np.all([ os.path.exists("{}/d_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        set_files_exist = np.all([ os.path.exists("{}/frame_set_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        files_exist = X_files_exist and d_files_exist and set_files_exist
-
-        return files_exist
-
-    def _save_matrices(self): 
-        for k in range(self.n_cv_sets):
-            np.save("{}/X_FM_{}.npy".format(self.savedir, k + 1), self.X_sets[k])
-            np.save("{}/d_FM_{}.npy".format(self.savedir, k + 1), self.d_sets[k])
-            np.save("{}/frame_set_FM_{}.npy".format(self.savedir,  k + 1), self.cv_set_assignment[k])    
-
-        np.save("{}/X_FM.npy".format(self.savedir), self.X)
-        np.save("{}/d_FM.npy".format(self.savedir), self.d)
-
-    def _load_matrices(self):
-        
-        if self.n_cv_sets is None:
-            raise ValueErro("Need to define number of cross val sets in order to load them")
-
-        print("Loaded saved matrices...")
-        self.X_sets = [ np.load("{}/X_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-        self.d_sets = [ np.load("{}/d_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-        set_assignment = [ np.load("{}/frame_set_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-
-        self.n_frames_in_set = []
-        for k in range(self.n_cv_sets):
-            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(self.n_cv_sets) ]))
-        self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
-        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
-
-        if self.n_cv_sets > 1:
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-        else:
-            self.X = self.X_sets[0]
-            self.d = self.d_sets[0]
-
-        self.matrices_estimated = True
-        self.cv_sets_are_assigned = True
-        self._training_and_validation_matrices()
-
-    def _training_and_validation_matrices(self):
-        """Create training and validation matrices"""
-
-        self.X_train_val = []
-        self.d_train_val = []
-        for i in range(self.n_cv_sets):
-            frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
-            #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
-
-            train_X = []
-            train_d = []
-            for j in range(self.n_cv_sets):
-                w_j = self.n_frames_in_set[j]/float(frame_subtotal)
-                if j != i:
-                    train_X.append(w_j*self.X_sets[j])
-                    train_d.append(w_j*self.d_sets[j])
-
-            train_X = np.sum(np.array(train_X), axis=0)
-            train_d = np.sum(np.array(train_d), axis=0)
-
-            self.X_train_val.append([ train_X, self.X_sets[i]])
-            self.d_train_val.append([ train_d, self.d_sets[i]])
-
-    def solve(self, alphas, method="ridge"):
-        """Ridge regression with cross-validation
-        
-        Parameters
-        ----------
-        alphas : np.array
-            Regularization parameter values.
-
-        method : str
-            Regularization method to use.
-            
-        """
-
-        if not self.matrices_estimated:
-            raise ValueError("Need to calculate or eigenpair matrices")
-
-        if not hasattr(self, "X_train_val"):
-            self._training_and_validation_matrices()
-
-        if method == "ridge":
-            D = np.identity(self.X.shape[1])
-        else:
-            raise ValueError("Only method=ridge supported")
-
-        coeffs = [] 
-        train_mse = []
-        valid_mse = []
-        for i in range(len(alphas)):
-            if i == len(alphas) - 1: 
-                print("Solving: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
-            else:
-                print("Solving: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
-            sys.stdout.flush()
-            
-            # folds are precalculated matrices on trajectory chunks
-            train_mse_folds = [] 
-            valid_mse_folds = [] 
-            for k in range(self.n_cv_sets):
-                X_train, X_val = self.X_train_val[k]
-                d_train, d_val = self.d_train_val[k]
-
-                X_reg = np.dot(X_train.T, X_train) + alphas[i]*D
-                d_reg = np.dot(X_train.T, d_train)
-                coeff_fold = scipy.linalg.lstsq(X_reg, d_reg, cond=1e-10)[0]
-        
-                train_mse_folds.append(np.mean((np.dot(X_train, coeff_fold) - d_train)**2))
-                valid_mse_folds.append(np.mean((np.dot(X_val, coeff_fold) - d_val)**2))
-        
-            train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(self.n_cv_sets))])
-            valid_mse.append([np.mean(valid_mse_folds), np.std(valid_mse_folds)/np.sqrt(float(self.n_cv_sets))])
-
-            X_reg = np.dot(self.X.T, self.X) + alphas[i]*D
-            d_reg = np.dot(self.X.T, self.d)
-            coeffs.append(scipy.linalg.lstsq(X_reg, d_reg, cond=1e-10)[0])
-
-        self.alphas = alphas
-        self.coeffs = np.array(coeffs)
-        self.train_mse = np.array(train_mse)
-        self.valid_mse = np.array(valid_mse)
-        
-        self.alpha_star_idx = np.argmin(valid_mse)
-        self.coeff_star = coeffs[self.alpha_star_idx]
-
+import implicit_force_field.loss_functions as loss
+
+def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=None, fixed_a=False):
+
+    plt.figure()
+    for n in range(len(idxs)):
+        coeff = coeffs[idxs[n]]
+        U = np.zeros(len(cv_r0))
+        for i in range(len(coeff)):
+            U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+        U -= U.min()
+
+        plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
+
+    coeff = coeffs[idx_star]
+    U = np.zeros(len(cv_r0))
+    for i in range(len(coeff)):
+        U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+    U -= U.min()
+    plt.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
+
+    if not ylim is None:
+        plt.ylim(0, ylim)
+
+    plt.legend()
+    plt.xlabel(r"TIC1 $\psi_1$")
+    plt.ylabel(r"$U_{cg}(\psi_1)$")
+    plt.savefig("{}compare_Ucv.pdf".format(prefix))
+    plt.savefig("{}compare_Ucv.png".format(prefix))
+
+def plot_Ucg_vs_time():
+    coeff = np.load(cg_savedir + "/rdg_cstar.npy")
+    U_all = []
+    for i in range(len(trajnames)):
+        tname = trajnames[i]
+        idx1 = (os.path.dirname(tname)).split("_")[-1]
+        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+
+        U_temp = []
+        for chunk in md.iterload(tname, top=topfile):
+            xyz_traj = np.reshape(chunk.xyz, (-1, 75))
+            cv_traj = Ucg.calculate_cv(xyz_traj)
+            U_chunk = np.einsum("k,tk->t", coeff, Ucg.potential_U1(xyz_traj, cv_traj))
+            U_temp.append(U_chunk)
+        U_temp = np.concatenate(U_temp)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -447,9 +159,26 @@ if __name__ == "__main__":
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
-    s_loss = LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    fm_loss = LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    if not s_loss.matrix_files_exist() or recalc_matrices:
-        s_loss.assign_crossval_sets()
-        s_loss.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
+    if not fm_loss.matrix_files_exist() or recalc_matrices:
+        fm_loss.assign_crossval_sets()
+        fm_loss.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
+
+    rdg_alphas = np.logspace(-10, 8, 500)
+    fm_loss.solve(rdg_alphas)
+
+    os.chdir(cg_savedir)
+
+    np.save("rdg_cstar.npy", fm_loss.coeff_star)
+    #np.save("rdg_cstar.npy", fm_loss.coeff_star)
+
+    rdg_idxs = [5, 50, 200, 300]
+    plot_Ucg_vs_alpha(rdg_idxs, fm_loss.alpha_star_idx, fm_loss.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_")
+    #plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, fm_loss.X, fm_loss.d, "rdg_")
+
+    iff.util.plot_train_test_mse(rdg_alphas, fm_loss.train_mse, fm_loss.valid_mse, 
+            xlabel=r"Regularization $\alpha$", 
+            ylabel="Mean squared error (MSE)", 
+            title="Ridge regression", prefix="ridge_")
 
