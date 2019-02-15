@@ -1038,6 +1038,53 @@ class PolymerModel(FunctionLibrary):
     ##################################################
     # EVALUATE GRADIENT OF POTENTIAL
     ##################################################
+    def U_cv_potential(self, coeff, cv_vals):
+
+        U = np.zeros(len(cv_vals))
+        for i in range(len(coeff)):
+            U += coeff[i]*Ucg.cv_U_funcs[i](cv_vals)
+        U -= U.min()
+        return U
+
+
+    def potential_U0(self, xyz_traj, cv_traj, sumterms=True):
+        """Fixed potential energy term
+        
+        Parameters
+        ----------
+        xyz_traj : 
+
+        cv_traj : np.ndarray
+            Collective variable trajectory.
+        
+        Returns
+        -------
+        U0 : np.ndarray
+            Potential 
+        """
+
+        if sumterms:
+            U0 = np.zeros(xyz_traj.shape[0], float)
+            for i in range(len(self.U_funcs[0])): 
+                coord_idxs = self.U_coord_idxs[0][i]
+                U_func = self.U_funcs[0][i]
+                
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned this potential
+                    U0 += U_func(*xyz_traj[:,coord_idxs[n]].T)
+        else:
+            U0 = []
+            for i in range(len(self.U_funcs[0])): 
+                coord_idxs = self.U_coord_idxs[0][i]
+                U_func = self.U_funcs[0][i]
+
+                Uterm = np.zeros(xyz_traj.shape[0], float)
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned this potential
+                    Uterm += U_func(*xyz_traj[:,coord_idxs[n]].T)
+                U0.append(Uterm)
+        return U0
+
     def gradient_U0(self, xyz_traj, cv_traj):
         """Gradient of fixed potential terms
         
@@ -1074,13 +1121,39 @@ class PolymerModel(FunctionLibrary):
                     grad_U0[:, dxi] += deriv
         return grad_U0
 
+    def potential_U1(self, xyz_traj, cv_traj):
+        """Potential energy associated with each parameter
+        
+        Parameters
+        ----------
+        xyz_traj : 
+            Cartesian coordinate trajectory.
+
+        cv_traj : np.ndarray
+            Collective variable trajectory.
+        
+        Returns
+        -------
+        U1 : np.ndarray
+            Potential energy for each parameter
+        """
+
+        if self.using_cv:
+            U1 = np.zeros((xyz_traj.shape[0], self.n_params), float)
+            for i in range(self.n_params): 
+                # derivative wrt argument j
+                U_func = self.cv_U_funcs[i]
+                U1[:,i] = U_func(*cv_traj.T)
+        else:
+            raise NotImplementedError
+        return U1
+
     def gradient_U1(self, xyz_traj, cv_traj):
         """Gradient of potential form associated with each parameter
         
         Parameters
         ----------
-        traj : mdtraj.Trajectory
-            Molecular dynamics trajectory.
+        xyz_traj : 
 
         cv_traj : np.ndarray
             Collective variable trajectory.
