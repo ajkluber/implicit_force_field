@@ -15,39 +15,8 @@ import simulation.openmm as sop
 
 import implicit_force_field as iff
 import implicit_force_field.polymer_scripts.util as util
-import implicit_force_field.spectral_loss as spl
+import implicit_force_field.loss_functions as spl
 
-def plot_train_test_mse(alphas, train_mse, test_mse, 
-        xlabel=r"Regularization $\alpha$", ylabel="Mean squared error (MSE)", 
-        title="", prefix=""):
-    """Plot mean squared error for training and test data"""
-
-    #sum_mse = train_mse + test_mse
-    #alpha_star = alphas[np.argmin(sum_mse[:,0])]
-
-    (test_mse < 1.10*test_mse.min())
-    alpha_star = alphas[np.argmin(test_mse[:,0])]
-
-    plt.figure()
-    ln1 = plt.plot(alphas, train_mse[:,0], label="Training set")[0]
-    ln2 = plt.plot(alphas, test_mse[:,0], label="Test set")[0]
-    plt.fill_between(alphas, train_mse[:,0] + train_mse[:,1],
-            y2=train_mse[:,0] - train_mse[:,1],
-            facecolor=ln1.get_color(), alpha=0.5)
-
-    plt.fill_between(alphas, test_mse[:,0] + test_mse[:,1],
-            y2=test_mse[:,0] - test_mse[:,1],
-            facecolor=ln2.get_color(), alpha=0.5)
-
-    plt.axvline(alpha_star, color='k', ls='--', label=r"$\alpha^* = {:.2e}$".format(alpha_star))
-    plt.semilogx(True)
-    plt.semilogy(True)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.legend()
-    plt.savefig(prefix + "train_test_mse.pdf")
-    plt.savefig(prefix + "train_test_mse.png")
 
 def plot_Ucg_vs_psi1(coeff, Ucg, cv_r0, prefix):
 
@@ -330,7 +299,7 @@ if __name__ == "__main__":
         fout.write(str(rdg_alpha_star))
 
     print("Plotting ridge...")
-    plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_test_mse, 
+    iff.util.plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_test_mse, 
             xlabel=r"Regularization $\alpha$", 
             ylabel="Mean squared error (MSE)", 
             title="Ridge regression", prefix="ridge_")
@@ -359,10 +328,10 @@ if __name__ == "__main__":
 
 
     print("Plotting D2...")
-    plot_train_test_mse(d2_alphas, d2_train_mse, d2_test_mse, 
-            xlabel=r"Regularization $\alpha$", 
-            ylabel="Mean squared error (MSE)", 
-            title="Second deriv penalty", prefix="D2_")
+    iff.util.plot_train_test_mse(d2_alphas, d2_train_mse, d2_test_mse, 
+                xlabel=r"Regularization $\alpha$", 
+                ylabel="Mean squared error (MSE)", 
+                title="Second deriv penalty", prefix="D2_")
 
     d2_idx_star = np.argmin(d2_test_mse[:,0])
     d2_alpha_star = d2_alphas[d2_idx_star]
