@@ -7,6 +7,8 @@ import numpy as np
 import scipy.interpolate
 import matplotlib as mpl
 mpl.use("Agg")
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
 import matplotlib.pyplot as plt
 
 import simtk.unit as unit
@@ -19,7 +21,7 @@ import simulation.openmm as sop
 
 import implicit_force_field.polymer_scripts.util as util
 
-def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh):
+def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, savedir):
 
     n = np.load(msm_savedir + "/psi1_n.npy").astype(float)
     Pn = n/np.sum(n)
@@ -74,8 +76,8 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
     plt.xlabel("TIC1")
     plt.ylabel(r"$U(\psi_1)$ potential")
     plt.legend()
-    plt.savefig("plots/Ucv_ext.pdf")
-    plt.savefig("plots/Ucv_ext.png")
+    plt.savefig(savedir + "/Ucv_ext.pdf")
+    plt.savefig(savedir + "/Ucv_ext.png")
 
     return cv_grid_ext, Ucv_ext
 
@@ -85,7 +87,7 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
 
     cv_expr = "Table(Q); Q = "
-    #cv_expr = ""
+    #cv_expr = "-100*("
     pr_cv_expr = ""
     feat_idx = 0
     atm_to_p_idx = []
@@ -137,6 +139,7 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
             feat_idx += 1 
 
+    #cv_expr += ")"
     cv_expr += ";"
     pr_cv_expr += ";"
 
@@ -154,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument('n_cv_basis_funcs', type=int, help='Number of basis functions.')
     parser.add_argument('n_cv_test_funcs', type=int, help='Number of test functions.')
     parser.add_argument('--n_eigenvectors', type=int, default=1, help='Number of eigenfunctions used.')
+    parser.add_argument('--force_matching', action="store_true", help='Solution is from force matching.')
     parser.add_argument('--fixed_bonded_terms', action="store_true", help='Fixed boned terms.')
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
@@ -163,6 +167,7 @@ if __name__ == "__main__":
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--platform', type=str, default=None, help='Specify platform (CUDA, CPU).')
+    parser.add_argument('--dry_run', action="store_true", help='Dry run. No simulation.')
     args = parser.parse_args()
 
 
@@ -172,6 +177,8 @@ if __name__ == "__main__":
 
     #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
 
+    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 40 100 --fixed_bonded_terms --force_matching --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
+
 
     name = args.name
     n_beads = args.n_beads
@@ -179,6 +186,7 @@ if __name__ == "__main__":
     n_cv_basis_funcs = args.n_cv_basis_funcs
     n_cv_test_funcs = args.n_cv_test_funcs
     M = args.n_eigenvectors
+    from_fm = args.force_matching
     fixed_bonded_terms = args.fixed_bonded_terms
 
     timestep = args.timestep*unit.picosecond
@@ -191,6 +199,7 @@ if __name__ == "__main__":
     #save_velocities = args.save_velocities
     #cuda = not args.nocuda
     use_platform = args.platform
+    dry_run = args.dry_run
     temperature = T*unit.kelvin
     beta = 1/(0.0083145*T)
 
@@ -198,10 +207,15 @@ if __name__ == "__main__":
     using_cv_r0 = False
     using_D2 = False
 
+    if from_fm:
+        dir_stem = "Ucg_FM"
+    else:
+        dir_stem = "Ucg_eigenpair"
 
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms,
-            using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs)
+            using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs,
+            cg_savedir=dir_stem)
 
     cg_savedir += "_crossval_5"
 
@@ -250,12 +264,20 @@ if __name__ == "__main__":
 
 
     coeff = np.load(cg_savedir + "/rdg_cstar.npy")
-    D = 1/coeff[-1] 
 
-    Ucv = np.zeros(len(cv_grid))
-    for i in range(len(coeff) - 1):
-        Ucv += coeff[i]*Ucg.cv_U_funcs[i](cv_grid)
-    Ucv -= Ucv.min()
+    if not from_fm and not Ucg.fixed_a_coeff:
+        D = 1/coeff[-1] 
+
+        Ucv = np.zeros(len(cv_grid))
+        for i in range(len(coeff) - 1):
+            Ucv += coeff[i]*Ucg.cv_U_funcs[i](cv_grid)
+        Ucv -= Ucv.min()
+    else:
+        Ucv = np.zeros(len(cv_grid))
+        for i in range(len(coeff)):
+            Ucv += coeff[i]*Ucg.cv_U_funcs[i](cv_grid)
+        Ucv -= Ucv.min()
+
     dUcv = np.diff(Ucv)/dcv
 
     if os.path.exists(cg_savedir + "/Ucv_table.npy"):
@@ -264,7 +286,7 @@ if __name__ == "__main__":
         Ucv_ext = data[:,1]
     else:
         n_thresh = 500 
-        cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh)
+        cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir)
 
     pair_idxs = []
     for i in range(n_beads - 1):
@@ -277,7 +299,6 @@ if __name__ == "__main__":
 
     Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
 
-
     ###################################################
     # Run production 
     ###################################################
@@ -285,7 +306,9 @@ if __name__ == "__main__":
         os.makedirs(rundir)
     os.chdir(rundir)
 
-    ini_pdb_file = name + "_min.pdb"
+    ini_pdb_file = name + "_noslv_min.pdb"
+    if not os.path.exists(ini_pdb_file):
+        shutil.copy("../../" + ini_pdb_file, ini_pdb_file)
 
     starttime = time.time()
     ref_pdb = app.PDBFile(ini_pdb_file)
@@ -316,29 +339,48 @@ if __name__ == "__main__":
     ensemble = "NVT"
     firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
 
-    print("Running production...")
-    sop.run.production(system, topology, ensemble, temperature, timestep,
-            collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
-            traj_name, final_state_name, ini_positions=positions,
-            minimize=minimize, use_platform="CPU")
+    save_E_groups = [0, 1, 2, 3, 4]
 
-    raise SystemExit
+    if not dry_run:
+        print("Running production...")
+        sop.run.production(system, topology, ensemble, temperature, timestep,
+                collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
+                traj_name, final_state_name, ini_positions=positions,
+                minimize=minimize, use_platform="CPU", save_E_groups=save_E_groups)
 
-    import numpy as np
-    import mdtraj as md
-    traj = md.load("c25_traj_1.dcd", top="c25_min.pdb")
+        stoptime = time.time()
+        with open("running_time.log", "w") as fout:
+            fout.write("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
+        print("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
+
+    #Esim = np.loadtxt("c25_1.log", usecols=(1,), delimiter=",")
+    #Eterms = np.loadtxt("E_terms.dat")
+    Eterms = np.load("E_terms.npy")
+    Eex = Eterms[:,1]
+    Eb = Eterms[:,2]
+    Ea = Eterms[:,3]
+    Ecv = Eterms[:,4]
+
+    traj = md.load("c25_traj_1.dcd", top="c25_noslv_min.pdb")
+    bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
+    angle_theta = md.compute_angles(traj, np.array([[i , i + 1, i + 2] for i in range(23) ]))
 
     pair_idxs = []
     for i in range(n_beads - 1):
         for j in range(i + 4, n_beads):
             pair_idxs.append([i, j])
     pair_idxs = np.array(pair_idxs)
-
     rij = md.compute_distances(traj, pair_idxs)
 
-    bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
+    Uex_md = np.sum(0.5*((0.373/rij)**(12)), axis=1)
+    Ub_md = np.sum(0.5*334720.0*((bond_r - 0.153)**2), axis=1)
+    Ua_md = np.sum(0.5*462.0*((angle_theta - 1.938)**2), axis=1)
 
-    E_r12 = np.sum(0.5*((0.373/rij)**(12)), axis=1)
-    E_r12 = np.sum(bond_r, axis=1)
 
-    E_b = np.sum 
+    xyz_traj = np.reshape(traj.xyz, (-1, 75))
+    cv_traj = Ucg.calculate_cv(xyz_traj)
+
+    U0 = Ucg.potential_U0(xyz_traj, cv_traj, sumterms=False)
+    U1 = np.einsum("k,tk->t", coeff, Ucg.potential_U1(xyz_traj, cv_traj))
+
+
