@@ -2,6 +2,7 @@ from __future__ import print_function, absolute_import
 import os
 import sys
 import numpy as np
+import scipy.linalg as scl
 
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
@@ -560,12 +561,8 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         # if constant diff coeff
         if Ucg.constant_a_coeff:
             d = np.zeros((self.n_cv_sets, P), float)
-            if Ucg.fixed_a_coeff:
-                X = np.zeros((self.n_cv_sets, P, n_params), float)
-                D2 = np.zeros((self.n_cv_sets, n_params, n_params), float)    # TODO: high-dimensional smoothness 
-            else:
-                X = np.zeros((self.n_cv_sets, P, n_params + 1), float)
-                D2 = np.zeros((self.n_cv_sets, n_params + 1, n_params + 1), float)    # TODO: high-dimensional smoothness 
+            X = np.zeros((self.n_cv_sets, P, n_params), float)
+            D2 = np.zeros((self.n_cv_sets, n_params, n_params), float)    # TODO: high-dimensional smoothness 
         else:
             raise NotImplementedError("Only constant diffusion coefficient is supported.")
 
@@ -573,7 +570,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             raise ValueError("Collective variables are not defined!")
 
         if len(forcenames) != len(self.trajnames):
-            raise ValueError("Need eigenvector for every trajectory!")
+            raise ValueError("Need forces for every trajectory!")
 
         A_b_set = {}
 
@@ -584,9 +581,9 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         for n in range(len(self.trajnames)):
             if verbose:
                 if n == len(self.trajnames) - 1:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
+                    print("force matching traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
                 else:
-                    print("eigenpair matrix from traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
+                    print("force matching traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
                 sys.stdout.flush()
 
             # load force from simulation 
@@ -600,7 +597,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
             # calculate matrix for trajectory
             start_idx = 0
-            for chunk in md.iterload(self.trajnames[n], top=topfile, chunk=chunksize):
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=chunksize):
                 N_chunk = chunk.n_frames
                 n_rows = N_chunk*Ucg.n_dof
 
