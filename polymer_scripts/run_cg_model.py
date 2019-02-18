@@ -87,7 +87,6 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
 
     cv_expr = "Table(Q); Q = "
-    #cv_expr = "-100*("
     pr_cv_expr = ""
     feat_idx = 0
     atm_to_p_idx = []
@@ -139,7 +138,6 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
             feat_idx += 1 
 
-    #cv_expr += ")"
     cv_expr += ";"
     pr_cv_expr += ";"
 
@@ -156,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument('msm_savedir', type=str, help='MSM save directory.')
     parser.add_argument('n_cv_basis_funcs', type=int, help='Number of basis functions.')
     parser.add_argument('n_cv_test_funcs', type=int, help='Number of test functions.')
+    parser.add_argument('--bond_cutoff', type=int, default=3, help='Exclude pairs connected by less than this number of bonds.')
     parser.add_argument('--n_eigenvectors', type=int, default=1, help='Number of eigenfunctions used.')
     parser.add_argument('--force_matching', action="store_true", help='Solution is from force matching.')
     parser.add_argument('--fixed_bonded_terms', action="store_true", help='Fixed boned terms.')
@@ -177,7 +176,7 @@ if __name__ == "__main__":
 
     #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
 
-    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 40 100 --fixed_bonded_terms --force_matching --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
+    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 40 100 --fixed_bonded_terms --bond_cutoff 3 --force_matching --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
 
 
     name = args.name
@@ -185,6 +184,7 @@ if __name__ == "__main__":
     msm_savedir = args.msm_savedir
     n_cv_basis_funcs = args.n_cv_basis_funcs
     n_cv_test_funcs = args.n_cv_test_funcs
+    bond_cutoff = args.bond_cutoff
     M = args.n_eigenvectors
     from_fm = args.force_matching
     fixed_bonded_terms = args.fixed_bonded_terms
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fixed_bonded_terms,
             using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs,
-            cg_savedir=dir_stem)
+            bond_cutoff, cg_savedir=dir_stem)
 
     cg_savedir += "_crossval_5"
 
@@ -323,7 +323,8 @@ if __name__ == "__main__":
 
     ff_filename = "ff_cgs.xml"
     sop.build_ff.polymer_in_solvent(n_beads, "r12", "NONE",
-            saveas=ff_filename, **ff_kwargs)
+            saveas=ff_filename, bond_cutoff=bond_cutoff - 1,
+            **ff_kwargs)
 
     forcefield = app.ForceField(ff_filename)
 
@@ -359,7 +360,7 @@ if __name__ == "__main__":
     Eex = Eterms[:,1]
     Eb = Eterms[:,2]
     Ea = Eterms[:,3]
-    Ecv = Eterms[:,4]
+    Ecv = Eterms[:,5]
 
     traj = md.load("c25_traj_1.dcd", top="c25_noslv_min.pdb")
     bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
@@ -372,15 +373,45 @@ if __name__ == "__main__":
     pair_idxs = np.array(pair_idxs)
     rij = md.compute_distances(traj, pair_idxs)
 
-    Uex_md = np.sum(0.5*((0.373/rij)**(12)), axis=1)
+    Uex_md = np.sum(0.5*((0.373/rij)**12), axis=1)
     Ub_md = np.sum(0.5*334720.0*((bond_r - 0.153)**2), axis=1)
     Ua_md = np.sum(0.5*462.0*((angle_theta - 1.938)**2), axis=1)
-
 
     xyz_traj = np.reshape(traj.xyz, (-1, 75))
     cv_traj = Ucg.calculate_cv(xyz_traj)
 
     U0 = Ucg.potential_U0(xyz_traj, cv_traj, sumterms=False)
+    Ub, Ua, Uex = U0
     U1 = np.einsum("k,tk->t", coeff, Ucg.potential_U1(xyz_traj, cv_traj))
 
+    simE = [Eb, Ea, Eex, Ecv]
+    calcE = [Ub, Ua, Uex, U1]
+    labels = ["Bond", "Angle", "Excl.", "CV"]
 
+    #((ax1, ax2), (ax3, ax4))
+    fig, axes = plt.subplots(2, 2, figsize=(12,12))
+    idx = 0 
+    for i in range(2):
+        for j in range(2):
+            ax = axes[i,j]
+            x = simE[idx]
+            y = calcE[idx]
+    
+            minx = min([ x.min(), y.min() ])
+            maxx = max([ x.max(), y.max() ])
+            ax.plot([minx, maxx], [minx, maxx], 'k')
+            ax.plot(x, y, 'b.')
+            ax.set_xlim(minx, maxx)
+            ax.set_ylim(minx, maxx)
+            ax.set_title(labels[idx])
+
+            if idx in [0, 2]:
+                ax.set_ylabel("Calculated")
+
+            if idx in [2, 3]:
+                ax.set_xlabel("Simulation")
+
+            idx += 1
+
+    fig.savefig("compare_Eterms.pdf")
+    fig.savefig("compare_Eterms.png")
