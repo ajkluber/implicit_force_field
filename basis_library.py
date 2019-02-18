@@ -512,7 +512,8 @@ class OneDimensionalModel(FunctionLibrary):
 
 class PolymerModel(FunctionLibrary):
 
-    def __init__(self, n_atoms, beta, using_cv=False, using_D2=False, constant_a_coeff=True, a_coeff=None):
+    def __init__(self, n_atoms, beta, bond_cutoff=4, using_cv=False,
+            using_D2=False, constant_a_coeff=True, a_coeff=None):
         """Potential energy terms for polymer
         
         Assigns potential forms to sets of participating coordinates. Includes
@@ -521,6 +522,7 @@ class PolymerModel(FunctionLibrary):
 
         """
         FunctionLibrary.__init__(self, n_atoms, beta, using_cv=using_cv, using_D2=using_D2)
+        self.bond_cutoff = bond_cutoff
 
         if a_coeff is None:
             self.fixed_a_coeff = False
