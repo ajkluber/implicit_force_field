@@ -1052,13 +1052,21 @@ class PolymerModel(FunctionLibrary):
     ##################################################
     # EVALUATE GRADIENT OF POTENTIAL
     ##################################################
-    def U_cv_potential(self, coeff, cv_vals):
+    def Ucv_values(self, coeff, cv_vals):
+        """Return the """
+        if not self.using_cv:
+            raise ValueError("")
 
-        U = np.zeros(len(cv_vals))
-        for i in range(len(coeff)):
-            U += coeff[i]*Ucg.cv_U_funcs[i](cv_vals)
-        U -= U.min()
-        return U
+        Ucv = np.zeros(len(cv_vals))
+        if self.fixed_a_coeff: 
+            for i in range(len(coeff) - 1):
+                Ucv += coeff[self.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_vals)
+            Ucv -= U.min()
+        else:
+            for i in range(len(coeff)):
+                Ucv += coeff[self.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_vals)
+            Ucv -= U.min()
+        return Ucv
 
 
     def potential_U0(self, xyz_traj, cv_traj, sumterms=True):
