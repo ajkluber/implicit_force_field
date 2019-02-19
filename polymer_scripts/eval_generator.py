@@ -169,3 +169,132 @@ if __name__ == "__main__":
     plt.ylabel(r"$\langle \frac{D}{\beta}\Delta f_j \rangle$")
     fig.savefig(cg_savedir + "/compare_Lap_fj.pdf")
     fig.savefig(cg_savedir + "/compare_Lap_fj.png")
+
+    raise SystemExit
+
+    # Smoothness penalty only valid when using same centers as the 1D calculation
+    d2_alphas = np.logspace(-10, 8, 500)
+    D2 = np.zeros((101,101), float)
+    D2[:100,:100] = np.load("../Ucg_eigenpair_1D/D2.npy")[:100,:100]
+
+    print("D2 regularization...")
+    #d2_coeffs, d2_train_mse, d2_test_mse = iff.util.traj_chunk_cross_validated_least_squares(d2_alphas, X, d,
+    #        X_train_test, d_train_test, D2) 
+    d2_coeffs, d2_train_mse, d2_test_mse = traj_chunk_cross_validated_least_squares(d2_alphas, X, d,
+            X_train_test, d_train_test, D2) 
+
+
+    print("Plotting D2...")
+    iff.util.plot_train_test_mse(d2_alphas, d2_train_mse, d2_test_mse, 
+                xlabel=r"Regularization $\alpha$", 
+                ylabel="Mean squared error (MSE)", 
+                title="Second deriv penalty", prefix="D2_")
+
+    d2_idx_star = np.argmin(d2_test_mse[:,0])
+    d2_alpha_star = d2_alphas[d2_idx_star]
+    d2_cstar = d2_coeffs[d2_idx_star]
+
+    d2_idxs = [50, 100, 300, 480]
+    plot_Ucg_vs_alpha(d2_idxs, d2_idx_star, d2_coeffs, d2_alphas, Ucg, cv_r0_basis, "D2_")
+
+    #plot_Ucg_vs_psi1(d2_cstar, Ucg, cv_r0_basis, "D2_")
+
+    raise SystemExit
+    # Plot matrix columns
+    
+    fig, axes = plt.subplots(10, 10, figsize=(50,50))
+    for i in range(10):
+        for j in range(10):
+            idx = i*10 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k')
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/Xcols.pdf")
+    #fig.savefig(cg_savedir + "/Xcols.png")
+    fig.savefig("Xcols.pdf")
+    fig.savefig("Xcols.png")
+
+    fig, axes = plt.subplots(5, 8, figsize=(25,40))
+    for i in range(5):
+        for j in range(8):
+            idx = i*8 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k')
+            ax.plot(cv_r0_basis[:,0], X[:,idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/Xcols.pdf")
+    #fig.savefig(cg_savedir + "/Xcols.png")
+    fig.savefig("Xcols.pdf")
+    fig.savefig("Xcols.png")
+
+    plt.figure()
+    plt.plot(cv_r0_basis[:,0], X[:,-1], 'k')
+    plt.plot(cv_r0_basis[:,0], X[:,-1], 'k.')
+    #plt.savefig(cg_savedir + "/Xcols_D.pdf")
+    #plt.savefig(cg_savedir + "/Xcols_D.png")
+    plt.savefig("Xcols_D.pdf")
+    plt.savefig("Xcols_D.png")
+
+    A_reg = np.dot(X.T, X) + rdg_alpha_star*np.identity(X.shape[1])
+    b_reg = np.dot(X.T, d)
+    coeff = np.linalg.lstsq(A_reg, b_reg, rcond=1e-10)[0] 
+    plt.figure()
+    plt.plot(np.arange(len(d)), d, 'ko', label="Target")
+    plt.plot(np.arange(len(d)), np.dot(X, coeff), 'r.', label="Soln")
+    plt.legend()
+    plt.ylabel(r"$d$")
+    plt.savefig("target_d_and_soln_d.pdf")
+    plt.savefig("target_d_and_soln_d.png")
+
+    raise SystemExit
+
+    print("Calculating Laplacian...")
+    bin_width = np.abs(cv_r0[1,0] - cv_r0[0,0])
+    psi1_bin_edges = np.array(list(cv_r0[:,0] - 0.5*bin_width) + [cv_r0[-1,0] + 0.5*bin_width])
+    Ucg._eigenpair_Lap_f(trajnames, topfile, psinames, psi1_bin_edges, ti_file, M=M, cv_names=psinames, verbose=True)
+
+    avgLapf = Ucg.eigenpair_Lapf_vs_psi[0]
+
+    fig, axes = plt.subplots(10, 10, figsize=(50,50))
+    for i in range(10):
+        for j in range(10):
+            idx = i*10 + j
+            ax = axes[i,j]
+            ax.plot(cv_r0[:,0], avgLapf[idx], 'k')
+            ax.plot(cv_r0[:,0], avgLapf[idx], 'k.')
+            ax.set_xticks([])
+            ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    #fig.savefig(cg_savedir + "/avg_Lapf.pdf")
+    #fig.savefig(cg_savedir + "/avg_Lapf.png")
+    fig.savefig(cg_savedir + "/avg_Lapf.pdf")
+    fig.savefig(cg_savedir + "/avg_Lapf.png")
+
+
+
+    #P_psi = bin_width*np.load(msm_savedir + "/psi1_n.npy").astype(float)
+    #P_psi /= np.sum(P_psi)
+    #d2P_psi = (1/bin_width**2)*np.diff(P_psi, n=2)
+
+    #plt.figure()
+    #plt.plot(cv_r0[:,0], -beta*d, 'ko', label=r"$\langle\psi_1, \Delta_x f_j\rangle$")
+    #plt.plot(cv_r0[2:,0], cv_r0[2:,0]*d2P_psi, 'r.', label=r"$P''(\psi_1)$")
+    #plt.legend()
+    #plt.xlabel(r"TIC 1 $\psi_1$")
+    #plt.savefig(cg_savedir + "/derviv2_prob_psi.pdf")
+    #plt.savefig(cg_savedir + "/derviv2_prob_psi.png")
+
+    raise SystemExit
+
+    temp_psi = []
+    for chunk in md.iterload(trajnames[0], top=topfile):
+        temp_psi.append(Ucg.calculate_cv(chunk.xyz.reshape(-1, 75))[:,0])
+    temp_psi = np.concatenate(temp_psi)
+    #[ x[:,0] for x in temp_psi ])
+
+        
