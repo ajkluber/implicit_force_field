@@ -99,6 +99,18 @@ class FunctionLibrary(object):
             return len(self.U_funcs[1])
 
     @property
+    def n_cv_params(self):
+        return len(self.cv_U_funcs)
+
+    @property
+    def n_cart_params(self):
+        return len(self.U_funcs[1])
+
+    @property
+    def n_tot_params(self):
+        return self.n_cv_params + self.n_cart_params
+
+    @property
     def n_test_funcs(self):
         if self.using_cv:
             return len(self.cv_f_funcs)
@@ -1166,24 +1178,11 @@ class PolymerModel(FunctionLibrary):
             Gradient with respect to Cartesian coordinates
         """
 
-        if self.using_cv:
-            # if potentials depend on collective variables
-            # the gradient requires chain rule 
-            Jac = self._cv_cartesian_Jacobian(xyz_traj)
+        grad_x_U1 = np.zeros((xyz_traj.shape[0], self.n_dof, self.n_tot_params), float)
 
-            grad_cv_U1 = np.zeros((xyz_traj.shape[0], self.n_cv_dim, self.n_params), float)
-            for i in range(self.n_params): 
-                for j in range(len(self.cv_dU_funcs[i])):
-                    # derivative wrt argument j
-                    d_func = self.cv_dU_funcs[i][j]
-                    grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
-
-            grad_x_U1 = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
-        else:
+        if self.n_cart_params > 0:
             # gradient with respect to Cartesian coordinates, directly. 
-            grad_x_U1 = np.zeros((xyz_traj.shape[0], self.n_dof, self.n_params), float)
-
-            for i in range(self.n_params): 
+            for i in range(self.n_cart_params): 
                 # parameter i corresponds to functional form i
                 # coords assigned to functional form i
                 coord_idxs = self.U_coord_idxs[1][i]    # I_r
@@ -1202,6 +1201,21 @@ class PolymerModel(FunctionLibrary):
                         # force on each coordinate is separated by associated
                         # parameter
                         grad_x_U1[:, dxi, i] += deriv
+
+        if self.n_cv_params > 0:
+            # if potentials depend on collective variables
+            # the gradient requires chain rule 
+            Jac = self._cv_cartesian_Jacobian(xyz_traj)
+
+            grad_cv_U1 = np.zeros((xyz_traj.shape[0], self.n_cv_dim, self.n_cv_params), float)
+            for i in range(self.n_cv_params): 
+                for j in range(len(self.cv_dU_funcs[i])):
+                    # derivative wrt argument j
+                    d_func = self.cv_dU_funcs[i][j]
+                    grad_cv_U1[:,j,i] = d_func(*cv_traj.T)
+
+            grad_x_U1[:, :, self.n_cart_params:] = np.einsum("tnd,tnr->tdr", Jac, grad_cv_U1)
+
         return grad_x_U1
 
     #########################################################

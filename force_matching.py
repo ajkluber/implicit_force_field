@@ -91,6 +91,13 @@ if __name__ == "__main__":
 
     print(" ".join(sys.argv))
 
+    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
+        print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
+        using_cv = True
+    else:
+        if using_cv:
+            raise ValueError("Please specify n_test and n_basis")
+
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --bond_cutoff 4
 
@@ -110,14 +117,12 @@ if __name__ == "__main__":
             n_cv_test_funcs=n_cv_test_funcs)
 
     print(cg_savedir)
-    raise SystemExit
 
     #print("building basis function database...")
     Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
             using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
             bond_cutoff)
-
 
     # only get trajectories that have saved forces
     temp_forcenames = glob.glob("run_*/" + name + "_forces_*.dat") 
@@ -172,10 +177,8 @@ if __name__ == "__main__":
     #        length += chunk.n_frames
     #    traj_frames.append(length)
 
-
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
-    print(cg_savedir)
 
     ##################################################################
     # calculate matrix X and d 

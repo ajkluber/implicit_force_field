@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import
 import os
 import glob
+import sys
 import argparse
 import numpy as np
 import matplotlib as mpl
@@ -195,8 +196,8 @@ if __name__ == "__main__":
     parser.add_argument("--psi_dims", type=int, default=1)
     parser.add_argument("--a_coeff", type=float, default=None)
     parser.add_argument("--using_cv", action="store_true")
-    parser.add_argument("--n_basis", type=int, default=40)
-    parser.add_argument("--n_test", type=int, default=100)
+    parser.add_argument("--n_basis", type=int, default=-1)
+    parser.add_argument("--n_test", type=int, default=-1)
     parser.add_argument("--n_pair_gauss", type=int, default=10)
     parser.add_argument("--bond_cutoff", type=int, default=3)
     parser.add_argument("--fix_back", action="store_true")
@@ -216,6 +217,15 @@ if __name__ == "__main__":
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
     using_U0 = fix_back or fix_exvol
+
+    print(" ".join(sys.argv))
+
+    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
+        print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
+        using_cv = True
+    else:
+        if using_cv:
+            raise ValueError("Please specify n_test and n_basis")
 
     #python ~/code/implicit_force_field/eigenpair_soln.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fix_back
 
@@ -245,7 +255,6 @@ if __name__ == "__main__":
             n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff)
 
     print(cg_savedir)
-    #raise SystemExit
 
     # create potential energy function
     Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
@@ -276,7 +285,7 @@ if __name__ == "__main__":
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
         s_loss.assign_crossval_sets()
-        s_loss.calc_matrices(Ucg, topfile, trajnames, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True)
+        s_loss.calc_matrices(Ucg, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True)
 
     os.chdir(cg_savedir)
 
