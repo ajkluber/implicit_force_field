@@ -40,16 +40,16 @@ def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=N
         for n in range(len(idxs)):
             coeff = coeffs[idxs[n]]
             U = np.zeros(len(cv_r0))
-            for i in range(len(coeff)):
-                U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+            for i in range(Ucg.n_cv_params):
+                U += coeff[Ucg.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
             U -= U.min()
 
             plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
 
         coeff = coeffs[idx_star]
         U = np.zeros(len(cv_r0))
-        for i in range(len(coeff)):
-            U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+        for i in range(Ucg.n_cv_params):
+            U += coeff[Ucg.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
         U -= U.min()
         plt.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
 
@@ -293,25 +293,29 @@ if __name__ == "__main__":
     rdg_alphas = np.logspace(-10, 8, 500)
     s_loss.solve(rdg_alphas)
 
-    raise SystemExit
-    rdg_idx_star = np.argmin(rdg_test_mse[:,0])
-    rdg_alpha_star = rdg_alphas[rdg_idx_star]
-    rdg_cstar = rdg_coeffs[rdg_idx_star]
+    #raise SystemExit
+    #rdg_idx_star = np.argmin(rdg_test_mse[:,0])
+    #rdg_alpha_star = rdg_alphas[rdg_idx_star]
+    #rdg_cstar = rdg_coeffs[rdg_idx_star]
+
+    np.save("rdg_cstar.npy", s_loss.coeff_star)
 
     # save solutions
-    np.save("rdg_cstar.npy", rdg_cstar)
-    with open("rdg_alpha_star.dat", "w") as fout:
-        fout.write(str(rdg_alpha_star))
+    #np.save("rdg_cstar.npy", rdg_cstar)
+    #with open("rdg_alpha_star.dat", "w") as fout:
+    #    fout.write(str(rdg_alpha_star))
 
     print("Plotting ridge...")
-    iff.util.plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_test_mse, 
+    iff.util.plot_train_test_mse(rdg_alphas, s_loss.train_mse, s_loss.valid_mse, 
             xlabel=r"Regularization $\alpha$", 
             ylabel="Mean squared error (MSE)", 
             title="Ridge regression", prefix="ridge_")
 
     rdg_idxs = [5, 50, 200, 300]
-    plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=150, fixed_a=fixed_a)
-    plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
+    plot_Ucg_vs_alpha(rdg_idxs, s_loss.alpha_star_idx, s_loss.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_")
+
+    #plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=150, fixed_a=fixed_a)
+    #plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
 
     #rdg_idxs = [310, 400, 472]
     #plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_2_", ylim=90)
