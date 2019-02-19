@@ -124,7 +124,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
             if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
                 self.assign_crossval_sets()
 
-        R = Ucg.n_params
+        R = Ucg.n_tot_params
         P = Ucg.n_test_funcs
 
         # if constant diff coeff
@@ -613,7 +613,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
                 self.assign_crossval_sets()
 
-        n_params = Ucg.n_params
+        n_params = Ucg.n_tot_params
         P = Ucg.n_test_funcs
 
         # if constant diff coeff
