@@ -149,15 +149,17 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Runs coarse-grain model of polymer')
-    parser.add_argument('name', type=str, help='Name.')
-    parser.add_argument('n_beads', type=int, help='Number of beads in polymer.')
     parser.add_argument('msm_savedir', type=str, help='MSM save directory.')
-    parser.add_argument('n_cv_basis_funcs', type=int, help='Number of basis functions.')
-    parser.add_argument('n_cv_test_funcs', type=int, help='Number of test functions.')
-    parser.add_argument('--bond_cutoff', type=int, default=3, help='Exclude pairs connected by less than this number of bonds.')
-    parser.add_argument('--n_eigenvectors', type=int, default=1, help='Number of eigenfunctions used.')
+    parser.add_argument("--psi_dims", type=int, default=1)
+    parser.add_argument("--using_cv", action="store_true")
+    parser.add_argument("--n_basis", type=int, default=-1)
+    parser.add_argument("--n_test", type=int, default=-1)
+    parser.add_argument("--n_pair_gauss", type=int, default=10)
+    parser.add_argument("--bond_cutoff", type=int, default=3)
+    parser.add_argument("--fix_back", action="store_true")
+    parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument('--force_matching', action="store_true", help='Solution is from force matching.')
-    parser.add_argument('--fixed_bonded_terms', action="store_true", help='Fixed boned terms.')
+
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
     parser.add_argument('--collision_rate', type=float, default=0, help='Simulation collision_rate (1/ps).')
@@ -166,28 +168,36 @@ if __name__ == "__main__":
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--platform', type=str, default=None, help='Specify platform (CUDA, CPU).')
+    parser.add_argument('--coeff_file', type=str, default="rdg_cstar.npy", help='Specify file with coefficients.')
     parser.add_argument('--dry_run', action="store_true", help='Dry run. No simulation.')
     args = parser.parse_args()
-
-
-    #python run_cg_model.py c25 25 msm_dists 100 100 --run_idx 1 --T 300.00 --n_steps 1000
-
-    #run /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
-
-    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 100 200 --fixed_bonded_terms --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
-
-    #python /home/ajk8/code/implicit_force_field/polymer_scripts/run_cg_model c25 25 msm_dists 40 100 --fixed_bonded_terms --bond_cutoff 3 --force_matching --T 300.00 --n_steps 1000 --collision_rate 1 --platform CPU --run_idx 1
-
-
-    name = args.name
-    n_beads = args.n_beads
+    
+    n_beads = 25
+    name = "c" + str(n_beads)
+    #name = args.name
+    #n_beads = args.n_beads
     msm_savedir = args.msm_savedir
-    n_cv_basis_funcs = args.n_cv_basis_funcs
-    n_cv_test_funcs = args.n_cv_test_funcs
+    M = args.psi_dims
+    using_cv = args.using_cv
+    n_cv_basis_funcs = args.n_basis
+    n_cv_test_funcs = args.n_test
+    n_pair_gauss = args.n_pair_gauss
     bond_cutoff = args.bond_cutoff
-    M = args.n_eigenvectors
+    fix_back = args.fix_back
+    fix_exvol = args.fix_exvol
+
     from_fm = args.force_matching
     fixed_bonded_terms = args.fixed_bonded_terms
+    using_U0 = fix_back or fix_exvol
+
+    print(" ".join(sys.argv))
+
+    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
+        print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
+        using_cv = True
+    else:
+        if using_cv:
+            raise ValueError("Please specify n_test and n_basis")
 
     timestep = args.timestep*unit.picosecond
     collision_rate = args.collision_rate
@@ -203,21 +213,29 @@ if __name__ == "__main__":
     temperature = T*unit.kelvin
     beta = 1/(0.0083145*T)
 
-    using_cv = True
-    using_cv_r0 = False
     using_D2 = False
+    n_cross_val_sets = 5
 
     if from_fm:
-        dir_stem = "Ucg_FM"
+        cg_method = "force matching"
     else:
-        dir_stem = "Ucg_eigenpair"
+        cg_method = "eigenpair"
 
-    Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
-            msm_savedir, n_beads, M, beta, fixed_bonded_terms,
-            using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs,
-            bond_cutoff, cg_savedir=dir_stem)
+    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
+            bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
+            n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff)
 
-    cg_savedir += "_crossval_5"
+    print(cg_savedir)
+
+    Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
+            msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
+            using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
+            bond_cutoff, a_coeff=a_coeff)
+
+    #Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
+    #        msm_savedir, n_beads, M, beta, fixed_bonded_terms,
+    #        using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs,
+    #        bond_cutoff, cg_savedir=dir_stem)
 
     cwd = os.getcwd()
     Hdir = cwd + "/" + cg_savedir
@@ -263,20 +281,12 @@ if __name__ == "__main__":
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
 
-    coeff = np.load(cg_savedir + "/rdg_cstar.npy")
+    #coeff = np.load(cg_savedir + "/rdg_cstar.npy")
+    #coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
+    coeff = np.load(cg_savedir + "/" + args.coeff_file)
 
-    if not from_fm and not Ucg.fixed_a_coeff:
-        D = 1/coeff[-1] 
-
-        Ucv = np.zeros(len(cv_grid))
-        for i in range(len(coeff) - 1):
-            Ucv += coeff[i]*Ucg.cv_U_funcs[i](cv_grid)
-        Ucv -= Ucv.min()
-    else:
-        Ucv = np.zeros(len(cv_grid))
-        for i in range(len(coeff)):
-            Ucv += coeff[i]*Ucg.cv_U_funcs[i](cv_grid)
-        Ucv -= Ucv.min()
+    # set domain of potential
+    Ucv = Ucg.Ucv_values(coeff, cv_grid)
 
     dUcv = np.diff(Ucv)/dcv
 
