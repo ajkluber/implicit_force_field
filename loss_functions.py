@@ -495,6 +495,64 @@ class LinearSpectralLoss(CrossValidatedLoss):
         self.psi_Lap_fj = psi_Lap_fj
         self.psi_Gen_fj = psi_gU0_fj + psi_gU1_fj + psi_Lap_fj 
 
+    def _eigenpair_Jacobian(self, trajnames, topfile, psinames, ti_file, M=1, cv_names=[]):
+        """Calculate eigenpair matrices
+       
+        Parameters
+        ----------
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        psinames : list, str
+            Filenames for 
+            
+        ti_file : str
+            Filename for timescales
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        cv_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        """
+        # TODO: allow collective variable to be different than eigenvector
+
+        JTJ = np.zeros((self.n_cv_dim, self.n_cv_dim), float)
+
+        if self.using_cv and not self.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        print("calculating eigenpair Jacobian...")
+        N_prev = 0
+        for n in range(len(trajnames)):
+            print("  traj: " + str(n+1))
+            sys.stdout.flush()
+
+            start_idx = 0
+            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+                N_curr = chunk.n_frames
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_curr, self.n_dof))
+
+                Jac = self._cv_cartesian_Jacobian(xyz_traj)
+                curr_JTJ = np.einsum("tmd,tnd->tmn", Jac, Jac)
+                
+                jmin, jmax = curr_JTJ.max()
+
+                # running average to reduce numerical error
+                JTJ = (curr_JTJ + float(N_prev)*JTJ)/float(N_prev + N_curr)
+
+                start_idx += N_curr
+                N_prev += N_curr
+
+        self.eigenpair_JTJ = JTJ
+
 
 class LinearForceMatchingLoss(CrossValidatedLoss):
 
