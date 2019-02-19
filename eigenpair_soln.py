@@ -33,6 +33,7 @@ def plot_Ucg_vs_psi1(coeff, Ucg, cv_r0, prefix):
     plt.savefig("{}U_cv.pdf".format(prefix))
     plt.savefig("{}U_cv.png".format(prefix))
 
+
 def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=None, fixed_a=False):
 
     if fixed_a:
@@ -289,38 +290,43 @@ if __name__ == "__main__":
 
     os.chdir(cg_savedir)
 
-    print("Ridge regularization...")
-    rdg_alphas = np.logspace(-10, 8, 500)
-    s_loss.solve(rdg_alphas)
+    if not os.path.exists("rdg_valid_mse.npy"):
+        print("Ridge regularization...")
+        rdg_alphas = np.logspace(-10, 8, 500)
+        s_loss.solve(rdg_alphas)
 
-    #raise SystemExit
-    #rdg_idx_star = np.argmin(rdg_test_mse[:,0])
-    #rdg_alpha_star = rdg_alphas[rdg_idx_star]
-    #rdg_cstar = rdg_coeffs[rdg_idx_star]
+        np.save("rdg_cstar.npy", s_loss.coeff_star)
+        np.save("rdg_coeffs.npy", s_loss.coeffs)
+        np.save("rdg_train_mse.npy", s_loss.train_mse)
+        np.save("rdg_valid_mse.npy", s_loss.valid_mse)
 
-    np.save("rdg_cstar.npy", s_loss.coeff_star)
+        print("Plotting ridge...")
+        iff.util.plot_train_test_mse(rdg_alphas, s_loss.train_mse, s_loss.valid_mse, 
+                xlabel=r"Regularization $\alpha$", 
+                ylabel="Mean squared error (MSE)", 
+                title="Ridge regression", prefix="ridge_")
 
-    # save solutions
-    #np.save("rdg_cstar.npy", rdg_cstar)
-    #with open("rdg_alpha_star.dat", "w") as fout:
-    #    fout.write(str(rdg_alpha_star))
+        rdg_idxs = [5, 50, 200, 300]
+        plot_Ucg_vs_alpha(rdg_idxs, s_loss.alpha_star_idx, s_loss.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", fixed_a=fixed_a)
 
-    print("Plotting ridge...")
-    iff.util.plot_train_test_mse(rdg_alphas, s_loss.train_mse, s_loss.valid_mse, 
-            xlabel=r"Regularization $\alpha$", 
-            ylabel="Mean squared error (MSE)", 
-            title="Ridge regression", prefix="ridge_")
 
-    rdg_idxs = [5, 50, 200, 300]
-    plot_Ucg_vs_alpha(rdg_idxs, s_loss.alpha_star_idx, s_loss.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_")
+    if not os.path.exists("rdg_fixed_sigma_cstar.npy"):
+        f_mult_12, alphas, all_coeffs, tr_mse, vl_mse = iff.util.scan_with_fixed_sigma(s_loss, Ucg, cv_r0_basis)
+        sigma_idx, alpha_idx = np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0]
+        new_coeffs = np.concatenate([ np.array([f_mult_12[sigma_idx]]), all_coeffs[sigma_idx, alpha_idx]])
+        np.save("rdg_fixed_sigma_cstar.npy", new_coeffs)
+    else:
+        new_coeffs = np.load("rdg_fixed_sigma_cstar.npy")
+    
+    os.chdir("..")
+    s_loss.scalar_product_Gen_fj(Ucg, new_coeffs, psinames, cv_names=psinames)
+    os.chdir(cg_savedir)
 
-    #plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", ylim=150, fixed_a=fixed_a)
-    #plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, X, d, "rdg_")
-
-    #rdg_idxs = [310, 400, 472]
-    #plot_Ucg_vs_alpha(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_2_", ylim=90)
-
-    #plot_Ucg_vs_psi1(rdg_cstar, Ucg, cv_r0, "rdg_")
+    np.save("psi_fj.npy", s_loss.psi_fj)
+    np.save("psi_gU0_fj.npy", s_loss.psi_gU0_fj)
+    np.save("psi_gU1_fj.npy", s_loss.psi_gU1_fj)
+    np.save("psi_Lap_fj.npy", s_loss.psi_Lap_fj)
+    np.save("psi_Gen_fj.npy", s_loss.psi_Gen_fj)
 
     raise SystemExit
 
