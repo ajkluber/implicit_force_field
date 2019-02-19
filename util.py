@@ -80,7 +80,14 @@ def scan_with_fixed_sigma(loss, Ucg, cv_r0_basis):
     vl_mse = np.array(all_valid_mse)
 
     sigma_idx, alpha_idx = np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0]
+    
     new_sigma = 0.373*(f_mult_12**(1./12))
+
+    np.save("alpha_sigma_coeffs.npy", all_coeffs)
+    np.save("alpha_sigma_train_mse.npy", tr_mse)
+    np.save("alpha_sigma_valid_mse.npy", vl_mse)
+    np.save("scaled_sigma_vals.npy", new_sigma)
+    np.save("best_sigma_alpha_idx.npy", np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0])
 
     at_best_sigma = vl_mse[sigma_idx, :, 0]
     at_best_alpha = vl_mse[:, alpha_idx, 0]
@@ -95,10 +102,12 @@ def scan_with_fixed_sigma(loss, Ucg, cv_r0_basis):
     plt.savefig("cross_val_vs_sigma_fixed_alpha.png")
 
     plt.figure()
-    plt.plot(alphas, at_best_sigma)
+    plt.plot(alphas, at_best_sigma, 'k')
     plt.axvline(alphas[alpha_idx], ls="--", color="k")
     plt.semilogy()
     plt.semilogx()
+    plt.xlabel(r"Regularization $\alpha$")
+    plt.ylabel(r"Crossval score")
     plt.savefig("cross_val_vs_alpha_fixed_sigma.pdf")
     plt.savefig("cross_val_vs_alpha_fixed_sigma.png")
 
