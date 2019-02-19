@@ -167,7 +167,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
 
             # calculate matrix for trajectory
             start_idx = 0
-            for chunk in md.iterload(self.trajnames[n], top=topfile, chunk=1000):
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=1000):
                 N_chunk = chunk.n_frames
 
                 psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
@@ -534,7 +534,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
             sys.stdout.flush()
 
             start_idx = 0
-            for chunk in md.iterload(trajnames[n], top=topfile, chunk=1000):
+            for chunk in md.iterload(trajnames[n], top=self.topfile, chunk=1000):
                 N_curr = chunk.n_frames
 
                 # cartesian coordinates unraveled
