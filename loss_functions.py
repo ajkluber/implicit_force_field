@@ -132,7 +132,7 @@ class CrossValidatedLoss(object):
             self.X_train_val.append([ train_X, self.X_sets[i]])
             self.d_train_val.append([ train_d, self.d_sets[i]])
 
-    def _solve_regularized(self, alphas, X_train_val, d_train_val, D):
+    def _solve_regularized(self, alphas, X_train_val, d_train_val, X, d, D):
 
         coeffs = [] 
         train_mse = []
@@ -191,7 +191,7 @@ class CrossValidatedLoss(object):
         else:
             raise ValueError("Only method=ridge supported")
 
-        coeffs, train_mse, valid_mse = self._solve_regularized(self, alphas, self.X_train_val, self.d_train_val, D)
+        coeffs, train_mse, valid_mse = self._solve_regularized(alphas, self.X_train_val, self.d_train_val, self.X, self.d, D)
 
         self.alphas = alphas
         self.coeffs = coeffs
@@ -226,18 +226,14 @@ class CrossValidatedLoss(object):
         if not hasattr(self, "X_train_val"):
             self._training_and_validation_matrices()
 
-        if method == "ridge":
-            D = np.identity(self.X.shape[1])
-        else:
-            raise ValueError("Only method=ridge supported")
 
         keep_idxs = np.array([ x for x in range(self.X.shape[1]) if x not in fix_ck_idxs ])
 
         X_train_val = []
         d_train_val = []
         for k in range(self.n_cv_sets):
-            X_train, X_val = self.X_train_val[k]
-            d_train, d_val = self.d_train_val[k]
+            X_train, X_val = np.copy(self.X_train_val[k])
+            d_train, d_val = np.copy(self.d_train_val[k])
 
             d_train -= np.einsum("ij,j->i", X_train[:,fix_ck_idxs], fix_ck_vals)
             d_val -= np.einsum("ij,j->i", X_val[:,fix_ck_idxs], fix_ck_vals)
@@ -245,7 +241,18 @@ class CrossValidatedLoss(object):
             X_train_val.append([X_train[:,keep_idxs], X_val[:,keep_idxs]])
             d_train_val.append([d_train, d_val])
 
-        coeffs, train_mse, valid_mse = self._solve_regularized(self, alphas, X_train_val, d_train_val, D)
+        X = np.copy(self.X[:,keep_idxs])
+        d = np.copy(self.d - np.einsum("ij,j->i", self.X[:,fix_ck_idxs], fix_ck_vals))
+
+        #import pdb
+        #pdb.set_trace()
+
+        if method == "ridge":
+            D = np.identity(X.shape[1])
+        else:
+            raise ValueError("Only method=ridge supported")
+
+        coeffs, train_mse, valid_mse = self._solve_regularized(alphas, X_train_val, d_train_val, X, d, D)
         return coeffs, train_mse, valid_mse
 
 class LinearSpectralLoss(CrossValidatedLoss):
@@ -576,6 +583,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
 
         if Ucg.fixed_a_coeff:
             c_r = coeff
+            a_coeff = Ucg.a_coeff
         else:
             c_r = coeff[:-1] 
             a_coeff = 1./coeff[-1]  #?
