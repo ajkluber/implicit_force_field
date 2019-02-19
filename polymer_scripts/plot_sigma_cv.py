@@ -30,36 +30,39 @@ if __name__ == "__main__":
     bondcut = [4, 3, 4, 3]
     linesty = ["-", "--", "-", "--"]
     colors = ["k", "k", "r", "r"]
-    legend = ["spectral", "spectral", "force-matching", "force-matching"] 
-
-    #plt.figure()
-    #for i in range(len(method_code)):
-
-    #    cg_savedir = "Ucg_{}_fixback_CV_1_40_100_bondcut_{}".format(method_code[i], bondcut[i])
-    #    if method_code[i] == "EG":
-    #        cg_savedir += "_fixed_a"
-    #    os.chdir(cg_savedir)
-    #    if os.path.exists("alpha_sigma_valid_mse.npy"):
-    #        label = "{}  excl $|i - j| < {}$".format(legend[i], bondcut[i])
-    #        vl_mse = np.load("alpha_sigma_valid_mse.npy")
-    #        sigma_idx, alpha_idx = np.load("best_sigma_alpha_idx.npy")
-    #        new_sigma = np.load("scaled_sigma_vals.npy")
-    #        at_best_alpha = vl_mse[:, alpha_idx, 0]
-    #        plt.plot(new_sigma, at_best_alpha, color=colors[i], ls=linesty[i], label=label)
-    #    os.chdir("..")
-
-    #plt.legend()
-    #plt.semilogy()
-    #plt.xlabel(r"Scaled radius $\sigma'$ (nm)")
-    #plt.ylabel(r"Crossval score")
-
-    #plt.savefig("plots/compare_crossval_vs_scaled_sigma.pdf")
-    #plt.savefig("plots/compare_crossval_vs_scaled_sigma.png")
+    legend = ["spectral", "spectral", "force match", "force match"] 
 
     plt.figure()
     for i in range(len(method_code)):
-        label = "{}  excl $|i - j| < {}$".format(legend[i], bondcut[i])
-        print(label)
+        print("{} |i - j| >= {}".format(legend[i], bondcut[i]))
+
+        cg_savedir = util.Ucg_dirname(cg_method[i], M, using_U0, fix_back,
+                fix_exvol, bondcut[i], using_cv, n_cv_basis_funcs=n_basis,
+                n_cv_test_funcs=n_test, a_coeff=a_coeff)
+
+        os.chdir(cg_savedir)
+        if os.path.exists("alpha_sigma_valid_mse.npy"):
+            label = r"{}  $|i - j|$ >= ${}$".format(legend[i], bondcut[i])
+            vl_mse = np.load("alpha_sigma_valid_mse.npy")
+            sigma_idx, alpha_idx = np.load("best_sigma_alpha_idx.npy")
+            new_sigma = np.load("scaled_sigma_vals.npy")
+            at_best_alpha = vl_mse[:, alpha_idx, 0]
+            #plt.plot(new_sigma, at_best_alpha, color=colors[i], ls=linesty[i], label=label)
+            plt.plot(new_sigma, at_best_alpha, label=label)
+        os.chdir("..")
+
+    plt.legend(loc=2)
+    plt.ylim(1e-3, 1e12)
+    plt.semilogy()
+    plt.xlabel(r"Scaled radius $\sigma_{ex}$ (nm)")
+    plt.ylabel(r"Crossval score")
+
+    plt.savefig("plots/compare_crossval_vs_scaled_sigma.pdf")
+    plt.savefig("plots/compare_crossval_vs_scaled_sigma.png")
+
+    plt.figure()
+    for i in range(len(method_code)):
+        print("{} |i - j| >= {}".format(legend[i], bondcut[i]))
 
         cg_savedir = util.Ucg_dirname(cg_method[i], M, using_U0, fix_back,
                 fix_exvol, bondcut[i], using_cv, n_cv_basis_funcs=n_basis,
@@ -75,11 +78,12 @@ if __name__ == "__main__":
             coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
             Ucv = Ucg.Ucv_values(coeff, cv_grid)
 
-            label = "{}  excl $|i - j| < {}$".format(legend[i], bondcut[i])
+            label = r"{}  $|i - j|$ >= ${}$".format(legend[i], bondcut[i])
             plt.plot(cv_grid, Ucv, label=label)
 
     #plt.legend(title=r"$n_{basis}$  $n_{test}$", fontsize=12)
+    plt.legend()
     plt.xlabel("TIC1")
-    plt.ylabel(r"$U_{cv}(\psi_1)$ (k$_B$T)")
-    plt.saveplt("plots/compare_Ucv_fixed_sigma.pdf")
-    plt.saveplt("plots/compare_Ucv_fixed_sigma.png")
+    plt.ylabel(r"$U_{cv}(\psi_1)$")
+    plt.savefig("plots/compare_Ucv_fixed_sigma.pdf")
+    plt.savefig("plots/compare_Ucv_fixed_sigma.png")
