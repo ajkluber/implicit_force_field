@@ -35,7 +35,7 @@ def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
     if using_U0 or not using_cv:
         cg_savedir += "_bondcut_{}".format(bond_cutoff)
 
-    if not a_coeff is None:
+    if method == "eigenpair" and (not a_coeff is None):
         cg_savedir += "_fixed_a"
 
     return cg_savedir 

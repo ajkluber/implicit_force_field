@@ -1060,12 +1060,12 @@ class PolymerModel(FunctionLibrary):
         Ucv = np.zeros(len(cv_vals))
         if self.fixed_a_coeff: 
             for i in range(len(coeff) - 1):
-                Ucv += coeff[self.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_vals)
-            Ucv -= U.min()
+                Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
+            Ucv -= Ucv.min()
         else:
             for i in range(len(coeff)):
-                Ucv += coeff[self.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_vals)
-            Ucv -= U.min()
+                Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
+            Ucv -= Ucv.min()
         return Ucv
 
 

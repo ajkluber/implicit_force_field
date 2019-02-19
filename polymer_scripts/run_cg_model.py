@@ -21,12 +21,14 @@ import simulation.openmm as sop
 
 import implicit_force_field.polymer_scripts.util as util
 
-def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, savedir):
+def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, savedir, psi_lims):
+
+    psi1_min, psi1_max = psi_lims
 
     n = np.load(msm_savedir + "/psi1_n.npy").astype(float)
     Pn = n/np.sum(n)
 
-    n_grid = scipy.interpolate.interp1d(temp_cv_r0, n)(cv_grid)
+    n_grid = scipy.interpolate.interp1d(temp_cv_r0, n, fill_value=0)(cv_grid)
 
     # linearly extend potential at edges of domain to keep system where
     # potential is well-defined
@@ -73,6 +75,8 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
     plt.figure()
     plt.plot(cv_grid, Ucv, label="original")
     plt.plot(cv_grid_ext, Ucv_ext, 'k--', label="extended")
+    plt.axvline(psi1_min, ls='--', color='r')
+    plt.axvline(psi1_max, ls='--', color='r')
     plt.xlabel("TIC1")
     plt.ylabel(r"$U(\psi_1)$ potential")
     plt.legend()
@@ -221,6 +225,8 @@ if __name__ == "__main__":
     else:
         cg_method = "eigenpair"
 
+    a_coeff = True 
+
     cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
             bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
             n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff)
@@ -266,37 +272,43 @@ if __name__ == "__main__":
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
     ####################################################
-    # create potential
+    # create collective variable potential
     ####################################################
-    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
-
-    # create tabulated function of collective variable 
-    temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
-    psi1_min, psi1_max = temp_cv_r0.min(), temp_cv_r0.max()
-
-    cv_grid = np.linspace(psi1_min, psi1_max, 200)
-    dcv = np.abs(cv_grid[1] - cv_grid[0])
-
-    cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
-    cv_mean = np.load(msm_savedir + "/tica_mean.npy")
-
-
     #coeff = np.load(cg_savedir + "/rdg_cstar.npy")
     #coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
     coeff = np.load(cg_savedir + "/" + args.coeff_file)
 
-    # set domain of potential
-    Ucv = Ucg.Ucv_values(coeff, cv_grid)
+    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
 
+    cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
+    cv_mean = np.load(msm_savedir + "/tica_mean.npy")
+
+    temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
+    #psi1_min, psi1_max = temp_cv_r0.min(), temp_cv_r0.max()
+    #cv_grid = np.linspace(psi1_min, psi1_max, 200)
+
+    # set domain of potential
+    # real min and max from data
+    psinames = glob.glob(msm_savedir + "/run_*TIC_1.npy")
+    psi1_min = np.min([ np.load(x).min() for x in psinames  ])
+    psi1_max = np.max([ np.load(x).max() for x in psinames  ])
+    cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200).reshape((-1,1))
+
+    dcv = np.abs(cv_grid[1] - cv_grid[0])
+
+    Ucv = Ucg.Ucv_values(coeff, cv_grid[:,0])
     dUcv = np.diff(Ucv)/dcv
 
-    if os.path.exists(cg_savedir + "/Ucv_table.npy"):
+    # create tabulated function of collective variable 
+    if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
         data = np.load(cg_savedir + "/Ucv_table.npy")
         cv_grid_ext = data[:,0]
         Ucv_ext = data[:,1]
     else:
         n_thresh = 500 
-        cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir)
+        cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir, (psi1_min, psi1_max))
+
+    raise SystemExit
 
     pair_idxs = []
     for i in range(n_beads - 1):
