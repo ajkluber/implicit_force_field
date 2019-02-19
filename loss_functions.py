@@ -65,6 +65,189 @@ class CrossValidatedLoss(object):
         self.cv_set_assignment = set_assignment
         self.cv_sets_are_assigned = True
 
+    def matrix_files_exist(self):
+        X_files_exist = np.all([ os.path.exists("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
+        d_files_exist = np.all([ os.path.exists("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
+        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
+        files_exist = X_files_exist and d_files_exist and set_files_exist
+
+        return files_exist
+
+    def _save_matrices(self): 
+        for k in range(self.n_cv_sets):
+            np.save("{}/X_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.X_sets[k])
+            np.save("{}/d_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.d_sets[k])
+            np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.cv_set_assignment[k])    
+
+        np.save("{}/X_{}.npy".format(self.savedir, self.suffix), self.X)
+        np.save("{}/d_{}.npy".format(self.savedir, self.suffix), self.d)
+
+    def _load_matrices(self):
+        
+        if self.n_cv_sets is None:
+            raise ValueErro("Need to define number of cross val sets in order to load them")
+
+        print("Loaded saved matrices...")
+        self.X_sets = [ np.load("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
+        self.d_sets = [ np.load("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
+        set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
+
+        self.n_frames_in_set = []
+        for k in range(self.n_cv_sets):
+            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(self.n_cv_sets) ]))
+        self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
+        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
+
+        if self.n_cv_sets > 1:
+            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+        else:
+            self.X = self.X_sets[0]
+            self.d = self.d_sets[0]
+
+        self.matrices_estimated = True
+        self.cv_sets_are_assigned = True
+        self._training_and_validation_matrices()
+
+    def _training_and_validation_matrices(self):
+        """Create training and validation matrices"""
+
+        self.X_train_val = []
+        self.d_train_val = []
+        for i in range(self.n_cv_sets):
+            frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
+            #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
+
+            train_X = []
+            train_d = []
+            for j in range(self.n_cv_sets):
+                w_j = self.n_frames_in_set[j]/float(frame_subtotal)
+                if j != i:
+                    train_X.append(w_j*self.X_sets[j])
+                    train_d.append(w_j*self.d_sets[j])
+
+            train_X = np.sum(np.array(train_X), axis=0)
+            train_d = np.sum(np.array(train_d), axis=0)
+
+            self.X_train_val.append([ train_X, self.X_sets[i]])
+            self.d_train_val.append([ train_d, self.d_sets[i]])
+
+    def _solve_regularized(self, alphas, X_train_val, d_train_val, D):
+
+        coeffs = [] 
+        train_mse = []
+        valid_mse = []
+        for i in range(len(alphas)):
+            if i == len(alphas) - 1: 
+                print("Solving: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
+            else:
+                print("Solving: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
+            sys.stdout.flush()
+            
+            # folds are precalculated matrices on trajectory chunks
+            train_mse_folds = [] 
+            valid_mse_folds = [] 
+            for k in range(self.n_cv_sets):
+                X_train, X_val = X_train_val[k]
+                d_train, d_val = d_train_val[k]
+
+                X_reg = np.dot(X_train.T, X_train) + alphas[i]*D
+                d_reg = np.dot(X_train.T, d_train)
+                coeff_fold = scl.lstsq(X_reg, d_reg, cond=1e-10)[0]
+        
+                train_mse_folds.append(np.mean((np.dot(X_train, coeff_fold) - d_train)**2))
+                valid_mse_folds.append(np.mean((np.dot(X_val, coeff_fold) - d_val)**2))
+        
+            train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(self.n_cv_sets))])
+            valid_mse.append([np.mean(valid_mse_folds), np.std(valid_mse_folds)/np.sqrt(float(self.n_cv_sets))])
+
+            X_reg = np.dot(X.T, X) + alphas[i]*D
+            d_reg = np.dot(X.T, d)
+            coeffs.append(scl.lstsq(X_reg, d_reg, cond=1e-10)[0])
+
+        return np.array(coeffs), np.array(train_mse), np.array(valid_mse)
+
+    def solve(self, alphas, method="ridge"):
+        """Ridge regression with cross-validation
+        
+        Parameters
+        ----------
+        alphas : np.array
+            Regularization parameter values.
+
+        method : str
+            Regularization method to use.
+            
+        """
+
+        if not self.matrices_estimated:
+            raise ValueError("Need to calculate or eigenpair matrices")
+
+        if not hasattr(self, "X_train_val"):
+            self._training_and_validation_matrices()
+
+        if method == "ridge":
+            D = np.identity(self.X.shape[1])
+        else:
+            raise ValueError("Only method=ridge supported")
+
+        coeffs, train_mse, valid_mse = self._solve_regularized(self, alphas, self.X_train_val, self.d_train_val, D)
+
+        self.alphas = alphas
+        self.coeffs = coeffs
+        self.train_mse = train_mse
+        self.valid_mse = valid_mse
+
+        self.alpha_star_idx = np.argmin(self.valid_mse[:,0])
+        self.coeff_star = self.coeffs[self.alpha_star_idx]
+
+    def solve_with_fixed_params(self, alphas, fix_ck_idxs, fix_ck_vals, method="ridge"):
+        """Ridge regression with cross-validation
+        
+        Parameters
+        ----------
+        alphas : np.array
+            Regularization parameter values.
+
+        fix_ck_idxs : np.array
+            Indices of parameters to fix
+
+        fix_ck_vals : np.array
+            Values of fixed parameters
+
+        method : str
+            Regularization method to use.
+            
+        """
+
+        if not self.matrices_estimated:
+            raise ValueError("Need to calculate or eigenpair matrices")
+
+        if not hasattr(self, "X_train_val"):
+            self._training_and_validation_matrices()
+
+        if method == "ridge":
+            D = np.identity(self.X.shape[1])
+        else:
+            raise ValueError("Only method=ridge supported")
+
+        keep_idxs = np.array([ x for x in range(self.X.shape[1]) if x not in fix_ck_idxs ])
+
+        X_train_val = []
+        d_train_val = []
+        for k in range(self.n_cv_sets):
+            X_train, X_val = self.X_train_val[k]
+            d_train, d_val = self.d_train_val[k]
+
+            d_train -= np.einsum("ij,j->i", X_train[:,fix_ck_idxs], fix_ck_vals)
+            d_val -= np.einsum("ij,j->i", X_val[:,fix_ck_idxs], fix_ck_vals)
+
+            X_train_val.append([X_train[:,keep_idxs], X_val[:,keep_idxs]])
+            d_train_val.append([d_train, d_val])
+
+        coeffs, train_mse, valid_mse = self._solve_regularized(self, alphas, X_train_val, d_train_val, D)
+        return coeffs, train_mse, valid_mse
+
 class LinearSpectralLoss(CrossValidatedLoss):
 
     def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
@@ -84,6 +267,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
         """
         CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
 
+        self.suffix = "EG"
         self.matrices_estimated = False
         self.recalc = recalc
 
@@ -321,28 +505,6 @@ class LinearSpectralLoss(CrossValidatedLoss):
         self.cv_sets_are_assigned = True
         self._training_and_validation_matrices()
 
-    def _training_and_validation_matrices(self):
-        """Create training and validation matrices"""
-
-        self.X_train_val = []
-        self.d_train_val = []
-        for i in range(self.n_cv_sets):
-            frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
-            #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
-
-            train_X = []
-            train_d = []
-            for j in range(self.n_cv_sets):
-                w_j = self.n_frames_in_set[j]/float(frame_subtotal)
-                if j != i:
-                    train_X.append(w_j*self.X_sets[j])
-                    train_d.append(w_j*self.d_sets[j])
-
-            train_X = np.sum(np.array(train_X), axis=0)
-            train_d = np.sum(np.array(train_d), axis=0)
-
-            self.X_train_val.append([ train_X, self.X_sets[i]])
-            self.d_train_val.append([ train_d, self.d_sets[i]])
 
     def solve(self, alphas, method="ridge"):
         """Ridge regression with cross-validation
@@ -573,6 +735,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         """
         CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
 
+        self.suffix = "FM"
         self.matrices_estimated = False
         self.recalc = recalc
 
@@ -748,133 +911,3 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         self.matrices_estimated = True
         self._save_matrices()
         self._training_and_validation_matrices()
-
-    def matrix_files_exist(self):
-        X_files_exist = np.all([ os.path.exists("{}/X_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        d_files_exist = np.all([ os.path.exists("{}/d_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        set_files_exist = np.all([ os.path.exists("{}/frame_set_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ])
-        files_exist = X_files_exist and d_files_exist and set_files_exist
-
-        return files_exist
-
-    def _save_matrices(self): 
-        for k in range(self.n_cv_sets):
-            np.save("{}/X_FM_{}.npy".format(self.savedir, k + 1), self.X_sets[k])
-            np.save("{}/d_FM_{}.npy".format(self.savedir, k + 1), self.d_sets[k])
-            np.save("{}/frame_set_FM_{}.npy".format(self.savedir,  k + 1), self.cv_set_assignment[k])    
-
-        np.save("{}/X_FM.npy".format(self.savedir), self.X)
-        np.save("{}/d_FM.npy".format(self.savedir), self.d)
-
-    def _load_matrices(self):
-        
-        if self.n_cv_sets is None:
-            raise ValueErro("Need to define number of cross val sets in order to load them")
-
-        print("Loaded saved matrices...")
-        self.X_sets = [ np.load("{}/X_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-        self.d_sets = [ np.load("{}/d_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-        set_assignment = [ np.load("{}/frame_set_FM_{}.npy".format(self.savedir, i + 1)) for i in range(self.n_cv_sets) ]
-
-        self.n_frames_in_set = []
-        for k in range(self.n_cv_sets):
-            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(self.n_cv_sets) ]))
-        self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
-        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
-
-        if self.n_cv_sets > 1:
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-        else:
-            self.X = self.X_sets[0]
-            self.d = self.d_sets[0]
-
-        self.matrices_estimated = True
-        self.cv_sets_are_assigned = True
-        self._training_and_validation_matrices()
-
-    def _training_and_validation_matrices(self):
-        """Create training and validation matrices"""
-
-        self.X_train_val = []
-        self.d_train_val = []
-        for i in range(self.n_cv_sets):
-            frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
-            #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
-
-            train_X = []
-            train_d = []
-            for j in range(self.n_cv_sets):
-                w_j = self.n_frames_in_set[j]/float(frame_subtotal)
-                if j != i:
-                    train_X.append(w_j*self.X_sets[j])
-                    train_d.append(w_j*self.d_sets[j])
-
-            train_X = np.sum(np.array(train_X), axis=0)
-            train_d = np.sum(np.array(train_d), axis=0)
-
-            self.X_train_val.append([ train_X, self.X_sets[i]])
-            self.d_train_val.append([ train_d, self.d_sets[i]])
-
-    def solve(self, alphas, method="ridge"):
-        """Ridge regression with cross-validation
-        
-        Parameters
-        ----------
-        alphas : np.array
-            Regularization parameter values.
-
-        method : str
-            Regularization method to use.
-            
-        """
-
-        if not self.matrices_estimated:
-            raise ValueError("Need to calculate or eigenpair matrices")
-
-        if not hasattr(self, "X_train_val"):
-            self._training_and_validation_matrices()
-
-        if method == "ridge":
-            D = np.identity(self.X.shape[1])
-        else:
-            raise ValueError("Only method=ridge supported")
-
-        coeffs = [] 
-        train_mse = []
-        valid_mse = []
-        for i in range(len(alphas)):
-            if i == len(alphas) - 1: 
-                print("Solving: {:>5d}/{:<5d} DONE".format(i+1, len(alphas)))
-            else:
-                print("Solving: {:>5d}/{:<5d}".format(i+1, len(alphas)), end="\r")
-            sys.stdout.flush()
-            
-            # folds are precalculated matrices on trajectory chunks
-            train_mse_folds = [] 
-            valid_mse_folds = [] 
-            for k in range(self.n_cv_sets):
-                X_train, X_val = self.X_train_val[k]
-                d_train, d_val = self.d_train_val[k]
-
-                X_reg = np.dot(X_train.T, X_train) + alphas[i]*D
-                d_reg = np.dot(X_train.T, d_train)
-                coeff_fold = scl.lstsq(X_reg, d_reg, cond=1e-10)[0]
-        
-                train_mse_folds.append(np.mean((np.dot(X_train, coeff_fold) - d_train)**2))
-                valid_mse_folds.append(np.mean((np.dot(X_val, coeff_fold) - d_val)**2))
-        
-            train_mse.append([np.mean(train_mse_folds), np.std(train_mse_folds)/np.sqrt(float(self.n_cv_sets))])
-            valid_mse.append([np.mean(valid_mse_folds), np.std(valid_mse_folds)/np.sqrt(float(self.n_cv_sets))])
-
-            X_reg = np.dot(self.X.T, self.X) + alphas[i]*D
-            d_reg = np.dot(self.X.T, self.d)
-            coeffs.append(scl.lstsq(X_reg, d_reg, cond=1e-10)[0])
-
-        self.alphas = alphas
-        self.coeffs = np.array(coeffs)
-        self.train_mse = np.array(train_mse)
-        self.valid_mse = np.array(valid_mse)
-
-        self.alpha_star_idx = np.argmin(self.valid_mse[:,0])
-        self.coeff_star = self.coeffs[self.alpha_star_idx]
