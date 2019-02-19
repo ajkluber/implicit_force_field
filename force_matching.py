@@ -25,16 +25,16 @@ def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=N
     for n in range(len(idxs)):
         coeff = coeffs[idxs[n]]
         U = np.zeros(len(cv_r0))
-        for i in range(len(coeff)):
-            U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+        for i in range(len(Ucg.cv_U_funcs)):
+            U += coeff[Ucg.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
         U -= U.min()
 
         plt.plot(cv_r0[:,0], U, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
 
     coeff = coeffs[idx_star]
     U = np.zeros(len(cv_r0))
-    for i in range(len(coeff)):
-        U += coeff[i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
+    for i in range(len(Ucg.cv_U_funcs)):
+        U += coeff[Ucg.n_cart_params + i]*Ucg.cv_U_funcs[i](cv_r0[:,0])
     U -= U.min()
     plt.plot(cv_r0[:,0], U, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
 
