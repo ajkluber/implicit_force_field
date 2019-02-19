@@ -245,7 +245,7 @@ if __name__ == "__main__":
             n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff)
 
     print(cg_savedir)
-    raise SystemExit
+    #raise SystemExit
 
     # create potential energy function
     Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
@@ -268,7 +268,6 @@ if __name__ == "__main__":
 
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
-    print(cg_savedir)
 
     ##################################################################
     # calculate matrix X and d 

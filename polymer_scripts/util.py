@@ -59,23 +59,27 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
     r0_nm = r0/unit.nanometer
 
 
-    print("creating Ucg...")
+    print("creating Ucg with...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2, a_coeff=a_coeff)
 
     if fix_back:
+        print("  fixed bond and angle potentials")
         Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
         Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
         #Ucg.LJ6_potentials(sigma_ply_nm, scale_factor=eps_ply_kj)
 
     if fix_exvol:
+        print("  fixed excluded volume potentials")
         Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=True,
                 bond_cutoff=bond_cutoff)
     else:
+        print("  parametric excluded volume potentials")
         Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=0.5, fixed=False,
                 bond_cutoff=bond_cutoff)
 
     if using_cv:
+        print("  collective variable potentials")
         # centers of test functions in collective variable (CV) space
         temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")[1:-1]
         cv_r0 = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_cv_basis_funcs)
@@ -101,6 +105,8 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
         Ucg.gaussian_cv_potentials(cv_r0_basis, cv_w_basis)
 
     else:
+        print("  pairwise gaussian potentials")
+        cv_r0_basis = None
         gauss_r0_nm = np.linspace(0.3, 1, n_pair_gauss)
         gauss_sigma = gauss_r0_nm[1] - gauss_r0_nm[0]
         gauss_w_nm = gauss_sigma*np.ones(len(gauss_r0_nm))
