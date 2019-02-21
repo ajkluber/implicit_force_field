@@ -1,5 +1,7 @@
 from __future__ import print_function
 import os
+import glob
+import sys
 import shutil
 import time
 import argparse
@@ -28,7 +30,7 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
     n = np.load(msm_savedir + "/psi1_n.npy").astype(float)
     Pn = n/np.sum(n)
 
-    n_grid = scipy.interpolate.interp1d(temp_cv_r0, n, fill_value=0)(cv_grid)
+    n_grid = scipy.interpolate.interp1d(temp_cv_r0, n, fill_value=0, bounds_error=False)(cv_grid)
 
     # linearly extend potential at edges of domain to keep system where
     # potential is well-defined
@@ -159,14 +161,15 @@ if __name__ == "__main__":
     parser.add_argument("--n_basis", type=int, default=-1)
     parser.add_argument("--n_test", type=int, default=-1)
     parser.add_argument("--n_pair_gauss", type=int, default=10)
-    parser.add_argument("--bond_cutoff", type=int, default=3)
+    parser.add_argument("--bond_cutoff", type=int, default=4)
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
-    parser.add_argument('--force_matching', action="store_true", help='Solution is from force matching.')
+    parser.add_argument('--cg_method', type=str, help='Solution is from force matching.')
 
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
     parser.add_argument('--collision_rate', type=float, default=0, help='Simulation collision_rate (1/ps).')
+    parser.add_argument('--a_coeff', type=float, default=0, help='Diffusion coefficient used in eigenpair.')
     parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
@@ -190,29 +193,19 @@ if __name__ == "__main__":
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
 
-    from_fm = args.force_matching
-    fixed_bonded_terms = args.fixed_bonded_terms
+    cg_method = args.cg_method
     using_U0 = fix_back or fix_exvol
 
     print(" ".join(sys.argv))
-
-    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
-        print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
-        using_cv = True
-    else:
-        if using_cv:
-            raise ValueError("Please specify n_test and n_basis")
 
     timestep = args.timestep*unit.picosecond
     collision_rate = args.collision_rate
     nsteps_out = args.nsteps_out
     run_idx = args.run_idx
     T = args.T
+    a_coeff = args.a_coeff
     n_steps = args.n_steps
-    #save_forces = args.save_forces
-    #save_velocities = args.save_velocities
-    #cuda = not args.nocuda
-    use_platform = args.platform
+    platform = args.platform
     dry_run = args.dry_run
     temperature = T*unit.kelvin
     beta = 1/(0.0083145*T)
@@ -220,12 +213,13 @@ if __name__ == "__main__":
     using_D2 = False
     n_cross_val_sets = 5
 
-    if from_fm:
-        cg_method = "force matching"
-    else:
-        cg_method = "eigenpair"
 
-    a_coeff = True 
+    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
+        print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
+        using_cv = True
+    else:
+        if using_cv:
+            raise ValueError("Please specify n_test and n_basis")
 
     cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
             bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
@@ -292,23 +286,24 @@ if __name__ == "__main__":
     psinames = glob.glob(msm_savedir + "/run_*TIC_1.npy")
     psi1_min = np.min([ np.load(x).min() for x in psinames  ])
     psi1_max = np.max([ np.load(x).max() for x in psinames  ])
-    cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200).reshape((-1,1))
+    cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
 
     dcv = np.abs(cv_grid[1] - cv_grid[0])
 
-    Ucv = Ucg.Ucv_values(coeff, cv_grid[:,0])
+    Ucv = Ucg.Ucv_values(coeff, cv_grid)
     dUcv = np.diff(Ucv)/dcv
 
     # create tabulated function of collective variable 
-    if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
-        data = np.load(cg_savedir + "/Ucv_table.npy")
-        cv_grid_ext = data[:,0]
-        Ucv_ext = data[:,1]
-    else:
-        n_thresh = 500 
-        cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir, (psi1_min, psi1_max))
+    #if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
+    #    data = np.load(cg_savedir + "/Ucv_table.npy")
+    #    cv_grid_ext = data[:,0]
+    #    Ucv_ext = data[:,1]
+    #else:
+    #    n_thresh = 500 
+    #    cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir, (psi1_min, psi1_max))
 
-    raise SystemExit
+    cv_grid_ext = cv_grid
+    Ucv_ext = Ucv
 
     pair_idxs = []
     for i in range(n_beads - 1):
@@ -369,7 +364,7 @@ if __name__ == "__main__":
         sop.run.production(system, topology, ensemble, temperature, timestep,
                 collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
                 traj_name, final_state_name, ini_positions=positions,
-                minimize=minimize, use_platform="CPU", save_E_groups=save_E_groups)
+                minimize=minimize, use_platform=platform, save_E_groups=save_E_groups)
 
         stoptime = time.time()
         with open("running_time.log", "w") as fout:
@@ -403,8 +398,11 @@ if __name__ == "__main__":
     cv_traj = Ucg.calculate_cv(xyz_traj)
 
     U0 = Ucg.potential_U0(xyz_traj, cv_traj, sumterms=False)
-    Ub, Ua, Uex = U0
-    U1 = np.einsum("k,tk->t", coeff, Ucg.potential_U1(xyz_traj, cv_traj))
+    #Ub, Ua, Uex = U0
+    Ub, Ua = U0
+
+    Uex = coeff[0]*Uex_md
+    U1 = np.einsum("k,tk->t", coeff[1:], Ucg.potential_U1(xyz_traj, cv_traj))
 
     simE = [Eb, Ea, Eex, Ecv]
     calcE = [Ub, Ua, Uex, U1]
