@@ -92,8 +92,10 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
             "angle":"angle(p{}, p{}, p{})", "dih":"dihedral(p{}, p{}, p{}, p{})"}
 
 
-    cv_expr = "Table(Q); Q = "
-    pr_cv_expr = ""
+    cv_expr = "Table("
+    pr_cv_expr = "Table("
+    #cv_expr = ""
+    #pr_cv_expr = ""
     feat_idx = 0
     atm_to_p_idx = []
     p_idx = -np.ones(n_beads, int)
@@ -136,20 +138,24 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
             pr_cv_expr += feat_explicit
 
             if feat_mean < 0:
-                cv_expr += " - {:.5f})".format(abs(feat_mean))
-                pr_cv_expr += " - {:.5f})".format(abs(feat_mean))
-            else:
                 cv_expr += " + {:.5f})".format(abs(feat_mean))
                 pr_cv_expr += " + {:.5f})".format(abs(feat_mean))
+            else:
+                cv_expr += " - {:.5f})".format(abs(feat_mean))
+                pr_cv_expr += " - {:.5f})".format(abs(feat_mean))
 
             feat_idx += 1 
 
-    cv_expr += ";"
-    pr_cv_expr += ";"
+    cv_expr += ");"
+    pr_cv_expr += ");"
+    #cv_expr += ";"
+    #pr_cv_expr += ";"
 
     Ucv_force = omm.CustomCompoundBondForce(n_beads, cv_expr)
     Ucv_force.addBond(atm_to_p_idx)
-    Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
+    #Ucv_force.addFunction("Table", Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
+    Table_func = omm.Continuous1DFunction(Ucv_ext, cv_grid_ext[0], cv_grid_ext[-1])
+    Ucv_force.addTabulatedFunction("Table", Table_func)
 
     return Ucv_force, pr_cv_expr
 
@@ -316,6 +322,9 @@ if __name__ == "__main__":
 
     Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
 
+    print(pr_cv_expr)
+    #raise SystemExit
+
     ###################################################
     # Run production 
     ###################################################
@@ -335,8 +344,8 @@ if __name__ == "__main__":
 
     ff_kwargs = {}
     ff_kwargs["mass_ply"] = mass_ply
+    ff_kwargs["eps_ply"] = coeff[0]*0.5*unit.kilojoule_per_mole
     ff_kwargs["sigma_ply"] = sigma_ply
-    ff_kwargs["eps_ply"] = 0.5*unit.kilojoule_per_mole
 
     ff_filename = "ff_cgs.xml"
     sop.build_ff.polymer_in_solvent(n_beads, "r12", "NONE",
@@ -401,11 +410,12 @@ if __name__ == "__main__":
     #Ub, Ua, Uex = U0
     Ub, Ua = U0
 
+    U_k = Ucg.potential_U1(xyz_traj, cv_traj)
     Uex = coeff[0]*Uex_md
-    U1 = np.einsum("k,tk->t", coeff[1:], Ucg.potential_U1(xyz_traj, cv_traj))
+    Ucv_calc = np.einsum("k,tk->t", coeff[1:], U_k[:,1:])
 
     simE = [Eb, Ea, Eex, Ecv]
-    calcE = [Ub, Ua, Uex, U1]
+    calcE = [Ub, Ua, Uex, Ucv_calc]
     labels = ["Bond", "Angle", "Excl.", "CV"]
 
     #((ax1, ax2), (ax3, ax4))
