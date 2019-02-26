@@ -5,7 +5,6 @@ import numpy as np
 import sympy
 
 import scipy.interpolate
-from scipy.stats import binned_statistic as bin1d
 
 import mdtraj as md
 import simtk.unit as unit
@@ -213,6 +212,8 @@ class FunctionLibrary(object):
             #self.phi_ijkl_sym2 = sympy.atan2(y, x)                # stackoverflow
 
             self.phi_ijkl_args = (x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4)
+
+            
 
         # TODO: many-body variables?
 
@@ -631,7 +632,7 @@ class PolymerModel(FunctionLibrary):
     ##########################################################
     # POTENTIAL FUNCTIONS
     ##########################################################
-    def _generate_pairwise_idxs(self, bond_cutoff=3, sort_by_seq_sep=False):
+    def _generate_pairwise_idxs(self, bond_cutoff=4, sort_by_seq_sep=False):
         if sort_by_seq_sep:
             idxs_by_seq_sep = [ [] for i in range(self.n_atoms - bond_cutoff) ]
             for i in range(self.n_atoms - bond_cutoff):
@@ -735,7 +736,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def inverse_r12_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+    def inverse_r12_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=4):
 
         U_sym = scale_factor*(sigma_nm**12)*(self.r12_sym**(-12))
         U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
@@ -750,7 +751,7 @@ class PolymerModel(FunctionLibrary):
 
         self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
 
-    def LJ6_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=3):
+    def LJ6_potentials(self, sigma_nm, scale_factor=1, fixed=False, bond_cutoff=4):
 
         U_sym = 4*scale_factor*((sigma_nm/self.r12_sym)**(12) - (sigma_nm/self.r12_sym)**6)
         U_lamb = sympy.lambdify(self.rij_args, U_sym, modules="numpy")
@@ -776,7 +777,7 @@ class PolymerModel(FunctionLibrary):
         return temp_dU_funcs
 
     def gaussian_pair_potentials(self, r0_nm, w_nm, scale_factor=1,
-            fixed=False, bond_cutoff=3, symmetry="shared"):
+            fixed=False, bond_cutoff=4, symmetry="shared"):
         """Assign a Gaussian well a each position
         
         Parameters
@@ -977,7 +978,7 @@ class PolymerModel(FunctionLibrary):
 
             self._add_test_functions(f_sym, f_lamb, temp_f_coord_idxs, temp_df_funcs, temp_d2f_funcs)
 
-    def gaussian_pair_test_funcs(self, r0_nm, w_nm, coeff=1, bond_cutoff=3):
+    def gaussian_pair_test_funcs(self, r0_nm, w_nm, coeff=1, bond_cutoff=4):
         """Assign a Gaussian well a each position"""
 
         assert self.n_atoms > bond_cutoff, "Not enough number of atoms to have angle interactions"
@@ -1059,13 +1060,11 @@ class PolymerModel(FunctionLibrary):
 
         Ucv = np.zeros(len(cv_vals))
         if self.fixed_a_coeff: 
-            for i in range(len(coeff) - 1):
+            for i in range(len(coeff) - self.n_cart_params):
                 Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
-            Ucv -= Ucv.min()
         else:
-            for i in range(len(coeff)):
+            for i in range(len(coeff) - 1 - self.n_cart_params):
                 Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
-            Ucv -= Ucv.min()
         return Ucv
 
 
@@ -1160,14 +1159,20 @@ class PolymerModel(FunctionLibrary):
             Potential energy for each parameter
         """
 
+        U1 = np.zeros((xyz_traj.shape[0], self.n_tot_params), float)
+        if self.n_cart_params > 0:
+            for i in range(len(self.U_funcs[1])): 
+                coord_idxs = self.U_coord_idxs[1][i]
+                U_func = self.U_funcs[1][i]
+                for n in range(len(coord_idxs)):
+                    # coordinates assigned this potential
+                    U1[:,i] += U_func(*xyz_traj[:,coord_idxs[n]].T)
+
         if self.using_cv:
-            U1 = np.zeros((xyz_traj.shape[0], self.n_params), float)
-            for i in range(self.n_params): 
-                # derivative wrt argument j
+            for i in range(self.n_cv_params): 
                 U_func = self.cv_U_funcs[i]
-                U1[:,i] = U_func(*cv_traj.T)
-        else:
-            raise NotImplementedError
+                U1[:,i + self.n_cart_params] = U_func(*cv_traj.T)
+
         return U1
 
     def gradient_U1(self, xyz_traj, cv_traj):
