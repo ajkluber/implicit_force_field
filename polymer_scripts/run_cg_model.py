@@ -173,6 +173,7 @@ if __name__ == "__main__":
     parser.add_argument('--cg_method', type=str, help='Solution is from force matching.')
 
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
+    parser.add_argument('--walltime', type=float, default=7.8, help='Number hours to run.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
     parser.add_argument('--collision_rate', type=float, default=0, help='Simulation collision_rate (1/ps).')
     parser.add_argument('--a_coeff', type=float, default=0, help='Diffusion coefficient used in eigenpair.')
@@ -205,6 +206,7 @@ if __name__ == "__main__":
     print(" ".join(sys.argv))
 
     timestep = args.timestep*unit.picosecond
+    walltime = args.walltime*unit.hour
     collision_rate = args.collision_rate
     nsteps_out = args.nsteps_out
     run_idx = args.run_idx
@@ -237,11 +239,6 @@ if __name__ == "__main__":
             msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
             using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
             bond_cutoff, a_coeff=a_coeff)
-
-    #Ucg, cg_savedir, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
-    #        msm_savedir, n_beads, M, beta, fixed_bonded_terms,
-    #        using_cv, using_cv_r0, using_D2, n_cv_basis_funcs, n_cv_test_funcs,
-    #        bond_cutoff, cg_savedir=dir_stem)
 
     cwd = os.getcwd()
     Hdir = cwd + "/" + cg_savedir
@@ -299,6 +296,7 @@ if __name__ == "__main__":
     Ucv = Ucg.Ucv_values(coeff, cv_grid)
     dUcv = np.diff(Ucv)/dcv
 
+    # IS THIS NEEDED?
     # create tabulated function of collective variable 
     #if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
     #    data = np.load(cg_savedir + "/Ucv_table.npy")
@@ -331,6 +329,13 @@ if __name__ == "__main__":
     if not os.path.exists(rundir):
         os.makedirs(rundir)
     os.chdir(rundir)
+
+    plt.figure()
+    plt.plot(cv_grid, Ucv)
+    plt.xlabel(r"TIC1 $\psi_1$")
+    plt.ylabel(r"$U_{\mathrm{cv}}(\psi_1)$ (kJ/mol)")
+    plt.savefig("tab_Ucv_func.pdf")
+    plt.savefig("tab_Ucv_func.png")
 
     ini_pdb_file = name + "_noslv_min.pdb"
     if not os.path.exists(ini_pdb_file):
@@ -366,19 +371,24 @@ if __name__ == "__main__":
     ensemble = "NVT"
     firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
 
-    save_E_groups = [0, 1, 2, 3, 4]
+    #save_E_groups = [0, 1, 2, 3, 4]
+    save_E_groups = []
 
     if not dry_run:
         print("Running production...")
+        sys.stdout.flush()
         sop.run.production(system, topology, ensemble, temperature, timestep,
                 collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
                 traj_name, final_state_name, ini_positions=positions,
-                minimize=minimize, use_platform=platform, save_E_groups=save_E_groups)
+                minimize=minimize, use_platform=platform, walltime=walltime,
+                save_E_groups=save_E_groups)
 
         stoptime = time.time()
         with open("running_time.log", "w") as fout:
             fout.write("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
         print("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
+
+    raise SystemExit
 
     #Esim = np.loadtxt("c25_1.log", usecols=(1,), delimiter=",")
     #Eterms = np.loadtxt("E_terms.dat")
