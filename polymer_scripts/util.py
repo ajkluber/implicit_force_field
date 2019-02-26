@@ -11,12 +11,12 @@ def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
         using_cv, n_cv_basis_funcs=None, n_cv_test_funcs=None,
         n_pair_gauss=None, a_coeff=None):
 
-    if method == "force matching":
+    if method == "force-matching":
         cg_savedir = "Ucg_FM"
     elif method == "eigenpair":
         cg_savedir = "Ucg_EG"
     else:
-        raise ValueError("Method must be force matching or eigenpair")
+        raise ValueError("Method must be force-matching or eigenpair")
 
     if using_U0:
         if fix_back:
@@ -36,13 +36,14 @@ def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
         cg_savedir += "_bondcut_{}".format(bond_cutoff)
 
     if method == "eigenpair" and (not a_coeff is None):
-        cg_savedir += "_fixed_a"
+        #cg_savedir += "_fixed_a"
+        cg_savedir += "_fixed_a_{:.2e}".format(a_coeff)
 
     return cg_savedir 
 
 def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
         using_cv, using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
-        bond_cutoff, a_coeff=None):
+        bond_cutoff, a_coeff=None, n_cvs=None):
 
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
     r0, kb, theta0, ka = bonded_params
@@ -97,7 +98,10 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
                 pair_idxs.append([ply_idxs[i], ply_idxs[j]])
         pair_idxs = np.array(pair_idxs)
 
-        cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
+        if n_cvs is None:
+            n_cvs = M
+
+        cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:n_cvs]
         cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
         Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
@@ -116,3 +120,30 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
         Ucg.gaussian_pair_test_funcs(gauss_r0_nm, gauss_w_nm)
 
     return Ucg, cv_r0_basis, cv_r0_test
+
+def create_Ucg_collective_variable(msm_savedir, n_beads, n_cvs, beta,
+        using_cv, using_D2, bond_cutoff, a_coeff=None):
+
+    if "PL" not in app.element.Element._elements_by_symbol:
+        sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
+        app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
+
+    print("creating Ucg with...")
+    # coarse-grain polymer potential with free parameters
+    Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2, a_coeff=a_coeff)
+
+    print("  collective variable potentials")
+    # centers of test functions in collective variable (CV) space
+    ply_idxs = np.arange(n_beads)
+    pair_idxs = []
+    for i in range(len(ply_idxs) - 1):
+        for j in range(i + 4, len(ply_idxs)):
+            pair_idxs.append([ply_idxs[i], ply_idxs[j]])
+    pair_idxs = np.array(pair_idxs)
+
+    cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:n_cvs]
+    cv_mean = np.load(msm_savedir + "/tica_mean.npy")
+
+    Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
+
+    return Ucg
