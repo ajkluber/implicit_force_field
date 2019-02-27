@@ -111,10 +111,16 @@ class FunctionLibrary(object):
 
     @property
     def n_test_funcs(self):
-        if self.using_cv:
-            return len(self.cv_f_funcs)
-        else:
-            return int(np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ]))
+        #return len(self.cv_f_funcs) + int(np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ]))
+        return self.n_cv_test_funcs + self.n_cart_test_funcs
+    
+    @property
+    def n_cv_test_funcs(self):
+        return len(self.cv_f_funcs) 
+
+    @property
+    def n_cart_test_funcs(self):
+        return int(np.sum([ len(self.f_coord_idxs[i]) for i in range(len(self.f_funcs)) ]))
 
     @property
     def n_cv_dim(self):
@@ -814,6 +820,7 @@ class PolymerModel(FunctionLibrary):
                 temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff)
                 temp_dU_funcs = self._take_symbolic_derivatives(U_sym, self.rij_args) 
                 self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
         elif symmetry == "seq_sep":
             coord_idxs_by_seq_sep = self._generate_pairwise_idxs(bond_cutoff=bond_cutoff, sort_by_seq_sep=True)
 
@@ -1261,7 +1268,15 @@ class PolymerModel(FunctionLibrary):
     def test_funcs_gradient_and_laplacian(self, xyz_traj, cv_traj):
         """Gradient of test functions"""
 
-        if self.using_cv:
+        grad_x_f = np.zeros((xyz_traj.shape[0], self.n_dof, self.n_test_funcs), float)
+        Lap_x_f = np.zeros((xyz_traj.shape[0], self.n_test_funcs), float)
+
+        if self.n_cart_test_funcs > 0:
+            # Cartesian coordinate test functions 
+            grad_x_f[:,:,:self.n_cart_test_funcs] = self._cartesian_test_funcs_gradient(xyz_traj)
+            Lap_x_f[:,:self.n_cart_test_funcs] = self._cartesian_test_funcs_laplacian(xyz_traj)
+
+        if self.n_cv_test_funcs > 0:
             # collective variable test functions
             Jac = self._cv_cartesian_Jacobian(xyz_traj)
             Hess_cv = self._cv_cartesian_Hessian(xyz_traj)
@@ -1269,15 +1284,11 @@ class PolymerModel(FunctionLibrary):
             grad_cv_f = self._gradient_test_functions_cv_wrt_cv(cv_traj)
             One = np.ones(self.n_dof)
 
-            grad_x_f = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
+            grad_x_f[:,:,self.n_cart_test_funcs:] = np.einsum("tmd,tmp->tdp", Jac, grad_cv_f)
 
             Lap_term1 = np.einsum("d,tkd,tkp->tp", One, Hess_cv, grad_cv_f)
             Lap_term2 = np.einsum("tnd,tmd,tmnp->tp", Jac, Jac, Hess_f)   
-            Lap_x_f = Lap_term1 + Lap_term2
-        else:
-            # Cartesian coordinate test functions 
-            grad_x_f = self._cartesian_test_funcs_gradient(xyz_traj)
-            Lap_x_f = self._cartesian_test_funcs_laplacian(xyz_traj)
+            Lap_x_f[:,self.n_cart_test_funcs:] = Lap_term1 + Lap_term2
 
         return grad_x_f, Lap_x_f
 
