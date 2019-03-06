@@ -68,10 +68,11 @@ if __name__ == "__main__":
     parser.add_argument("msm_savedir", type=str)
     parser.add_argument("--psi_dims", type=int, default=1)
     parser.add_argument("--using_cv", action="store_true")
-    parser.add_argument("--n_basis", type=int, default=40)
-    parser.add_argument("--n_test", type=int, default=100)
-    parser.add_argument("--n_pair_gauss", type=int, default=10)
-    parser.add_argument("--bond_cutoff", type=int, default=3)
+    parser.add_argument("--n_basis", type=int, default=-1)
+    parser.add_argument("--n_test", type=int, default=-1)
+    parser.add_argument("--n_pair_gauss", type=int, default=-1)
+    parser.add_argument("--pair_symmetry", type=str, default=None)
+    parser.add_argument("--bond_cutoff", type=int, default=4)
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
@@ -91,12 +92,16 @@ if __name__ == "__main__":
 
     print(" ".join(sys.argv))
 
-    if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
+    if (n_cv_basis_funcs != -1):
         print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
         using_cv = True
     else:
         if using_cv:
             raise ValueError("Please specify n_test and n_basis")
+
+    if n_pair_gauss != -1:
+        if not pair_symmetry in ["shared", "seq_sep", "unique"]:
+            raise ValueError("Must specificy pair_symmetry")
 
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --fixed_bonds
     #python ~/code/implicit_force_field/force_matching.py msm_dists --psi_dims 1 --n_basis 40 --n_test 100 --bond_cutoff 4
@@ -112,9 +117,10 @@ if __name__ == "__main__":
     using_D2 = False
     n_cross_val_sets = 5
 
-    cg_savedir = util.Ucg_dirname("force matching", M, using_U0, fix_back,
+    cg_savedir = util.Ucg_dirname("force-matching", M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
-            n_cv_test_funcs=n_cv_test_funcs)
+            n_cv_test_funcs=n_cv_test_funcs, n_pair_gauss=n_pair_gauss,
+            pair_symmetry=pair_symmetry)
 
     print(cg_savedir)
 
@@ -122,7 +128,7 @@ if __name__ == "__main__":
     Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
             msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
             using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
-            bond_cutoff)
+            bond_cutoff, pair_symmetry=pair_symmetry)
 
     # only get trajectories that have saved forces
     temp_forcenames = glob.glob("run_*/" + name + "_forces_*.dat") 
@@ -209,7 +215,7 @@ if __name__ == "__main__":
                 ylabel="Mean squared error (MSE)", 
                 title="Ridge regression", prefix="ridge_")
 
-    if not os.path.exists("rdg_fixed_sigma_cstar.npy"):
+    if not os.path.exists("rdg_fixed_sigma_cstar.npy") or True:
         f_mult_12, alphas, all_coeffs, tr_mse, vl_mse = iff.util.scan_with_fixed_sigma(fm_loss, Ucg, cv_r0_basis)
         sigma_idx, alpha_idx = np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0]
         new_coeffs = np.concatenate([ np.array([f_mult_12[sigma_idx]]), all_coeffs[sigma_idx, alpha_idx]])
