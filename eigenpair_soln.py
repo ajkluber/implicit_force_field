@@ -99,325 +99,6 @@ def plot_Ucg_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, cv_r0, prefix, ylim=N
         fig.savefig("{}compare_Ucv.pdf".format(prefix))
         fig.savefig("{}compare_Ucv.png".format(prefix))
 
-def plot_Upair_vs_alpha(idxs, idx_star, coeffs, alphas, Ucg, r_vals, n_pair_gauss, prefix, ylims=None, fixed_a=False):
-    """Plot pair potential solution"""
-
-    N = Ucg.n_atoms
-    bcut = Ucg.bond_cutoff
-    xlims = (r_vals.min(), r_vals.max())
-
-    xyz_traj = np.zeros((len(r_vals), 6)) 
-    xyz_traj[:,4] = r_vals
-
-    if Ucg.pair_symmetry == "shared":
-        plt.figure()
-        for n in range(len(idxs)):
-            coeff = coeffs[idxs[n]]
-            Upair = np.zeros(len(r_vals))
-            for i in range(len(coeff)):
-                Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-
-            plt.plot(r_vals, Upair, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
-
-        coeff = coeffs[idx_star]
-        Upair = np.zeros(len(r_vals))
-        for i in range(len(coeff)):
-            Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-        plt.plot(r_vals, Upair, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-
-        if not ylims is None:
-            plt.ylim(*ylims)
-
-        plt.xlims(*xlims)
-
-        plt.xlabel(r"$r_{ij}$ (nm)")
-        plt.ylabel(r"$U_{\mathrm{pair}}(r_{ij})$")
-    elif Ucg.pair_symmetry == "seq_sep":
-        coord_idxs_by_seq_sep = Ucg._generate_pairwise_idxs(bond_cutoff=Ucg.bond_cutoff, sort_by_seq_sep=True)
-        n_pots = len(coord_idxs_by_seq_sep)
-
-        seps = [ ]
-        for i in range(N - bcut):
-            for j in range(i + bcut, N):
-                seps.append(j - i)
-
-        fig, axes = plt.subplots(1, n_pots, figsize=(n_pots*4, 4))
-        for i in range(n_pots):
-            ax = axes[i]
-            sep = seps[i]
-
-            c_idx_start = i*n_pair_gauss
-
-            # plot for each regularization
-            for n in range(len(idxs)):
-                coeff = coeffs[idxs[n]]
-
-                Upair = np.zeros(len(r_vals))
-                Upair += coeff[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
-                for k in range(n_pair_gauss):
-                    c_k = coeff[c_idx_start + k + 1]
-                    Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
-
-                if i == 0:
-                    ax.plot(r_vals, Upair, label=r"$\alpha^*={:.2e}$".format(alphas[idxs[n]]))
-                else:
-                    ax.plot(r_vals, Upair)
-
-            coeff = coeffs[idx_star]
-            Upair += coeff[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
-            for k in range(n_pair_gauss):
-                c_k = coeff[c_idx_start + k + 1]
-                Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
-
-            if i == 0:
-                ax.plot(r_vals, Upair, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-                ax.legend()
-            else:
-                ax.plot(r_vals, Upair, color='k', lw=3)
-
-            if not ylims is None:
-                ax.set_ylim(*ylims)
-            ax.set_xlim(*xlims)
-            
-
-    elif Ucg.pair_symmetry == "unique":
-        raise NotImplementedError
-
-        coord_idxs_by_seq_sep = Ucg._generate_pairwise_idxs(bond_cutoff=Ucg.bond_cutoff)
-
-        fig, axes = plt.subplots(N, N, figsize=(4*N, 4*N), sharex=True)
-        for i in range(N):
-            for j in range(N):
-                if j >= i + bcut:
-                    # for seq sep |j - i|
-                    ax = axes[i,j]
-
-                    sep = np.abs(j - i)
-
-                    # plot for each regularization
-                    for n in range(len(idxs)):
-                        coeff = coeffs[idxs[n]]
-                        c_idx = 0
-
-                        coeff[sep]
-                        for i in range(len(coeff) - 1):
-                            ax = axes[i, j]
-
-                            Upair = np.zeros(len(r_vals))
-                            # excluded volume
-                            Upair += coeff[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
-                            for i in range(len(coeff)):
-                                Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-
-                            #ax.plot(r_vals, Upair, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
-                            ax.plot(r_vals, Upair)
-
-                    coeff = coeffs[idx_star]
-                    Upair = np.zeros(len(r_vals))
-                    for i in range(len(coeff)):
-                        Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-                    plt.plot(r_vals, Upair, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-
-                    if not ylims is None:
-                        ax.set_ylim(*ylims)
-                    ax.set_xlim(*xlims)
-                     
-                else:
-                    # remove axis junk to declutter
-                    pass
-
-    plt.savefig("{}compare_Upair.pdf".format(prefix))
-    plt.savefig("{}compare_Upair.png".format(prefix))
-
-def plot_Upair_for_best_sigma(Ucg, r_vals, coeffs, sigma_star, alpha_star, n_pair_gauss, prefix, ylims=None):
-    """Plot pair potential solution"""
-
-    #alpha_reg_idx = -10
-    #sigma_idx, _ = np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0]
-    #sig_star = scaled_sigma[sigma_idx]
-    #if sig_star < 0.3:
-    #    plot_sigs = [sig_star, 0.3, 0.45]
-    #    star_idx = 0
-    #elif 0.3 <= sig_star <= 0.45:
-    #    plot_sigs = [0.3, sig_star, 0.45]
-    #    star_idx = 1
-    #else:
-    #    plot_sigs = [0.3, 0.45, sig_star]
-    #    star_idx = 2
-
-    #plot_idxs = [ np.argwhere((scaled_sigma - x) >= 0)[:,0][0] for x in plot_sigs ]
-    #plot_idxs = [new_sigma_idx]
-    #plot_sigs = [scaled_sigma[new_sigma_idx]]
-
-    N = Ucg.n_atoms
-    bcut = Ucg.bond_cutoff
-    xlims = (r_vals.min(), r_vals.max())
-
-    xyz_traj = np.zeros((len(r_vals), 6)) 
-    xyz_traj[:,4] = r_vals
-
-    if Ucg.pair_symmetry == "shared":
-        coeff = coeffs[plot_idxs[n], new_alpha_idx]
-
-        plt.figure()
-        for n in range(len(idxs)):
-            coeff = coeffs[idxs[n]]
-            Upair = np.zeros(len(r_vals))
-            for i in range(len(coeff)):
-                Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-
-            plt.plot(r_vals, Upair, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
-
-        coeff = coeffs[idx_star]
-        Upair = np.zeros(len(r_vals))
-        for i in range(len(coeff)):
-            Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-        plt.plot(r_vals, Upair, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-
-        if not ylims is None:
-            plt.ylim(*ylims)
-
-        plt.xlims(*xlims)
-
-        plt.xlabel(r"$r_{ij}$ (nm)")
-        plt.ylabel(r"$U_{\mathrm{pair}}(r_{ij})$")
-    elif Ucg.pair_symmetry == "seq_sep":
-        coord_idxs_by_seq_sep = Ucg._generate_pairwise_idxs(bond_cutoff=Ucg.bond_cutoff, sort_by_seq_sep=True)
-        n_pots = len(coord_idxs_by_seq_sep)
-        ncols = int(np.ceil(np.sqrt(float(n_pots))))
-
-        seps = [ ]
-        for i in range(N - bcut):
-            for j in range(i + bcut, N):
-                seps.append(j - i)
-
-        fig, axes = plt.subplots(ncols, ncols, figsize=(4*ncols, 4*ncols))
-        for i in range(ncols):
-            for j in range(ncols):
-                ax = axes[i,j] 
-                pot_idx = i*ncols + j
-                if pot_idx >= n_pots:
-                    ax.plot([-10],[-10], 'k.')
-                    if not ylims is None:
-                        ax.set_ylim(*ylims)
-                    ax.set_xlim(*xlims)
-
-                    if j == 0:
-                        ax.set_ylabel(r"$U_{\mathrm{pair}}(r_{ij})$")
-                    if i == (ncols - 1):
-                        ax.set_xlabel(r"$r_{ij}$ (nm)")
-                else:
-                    sep = seps[pot_idx]
-                    c_idx_start = pot_idx*n_pair_gauss
-
-                    # plot for each regularization
-                    for n in range(len(plot_idxs)):
-                        alpha_idx = np.argwhere(vl_mse[plot_idxs[n],:,0] == vl_mse[plot_idxs[n],:,0].min())[:,0][0]
-                        coeff = coeffs[plot_idxs[n], new_alpha_idx]
-                        #coeff = coeffs[plot_idxs[n], alpha_idx]
-
-                        Upair = np.zeros(len(r_vals))
-                        Upair += f_mult_12[plot_idxs[n]]*Ucg.U_funcs[1][0](*xyz_traj.T)
-                        for k in range(n_pair_gauss):
-                            c_k = coeff[c_idx_start + k]
-                            Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
-
-                        coeff_reg = coeffs[plot_idxs[n], alpha_reg_idx]
-                        Upair_reg = np.zeros(len(r_vals))
-                        Upair_reg += f_mult_12[plot_idxs[n]]*Ucg.U_funcs[1][0](*xyz_traj.T)
-                        for k in range(n_pair_gauss):
-                            c_k = coeff_reg[c_idx_start + k]
-                            Upair_reg += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
-
-                        if pot_idx == 0:
-                            ax.plot(r_vals, Upair, color='k', lw=3, label=r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(plot_sigs[n], sig_alphas[new_alpha_idx]))
-                        else:
-                            ax.plot(r_vals, Upair, color='k', lw=3)
-
-                        #if pot_idx == 0:
-                        #    if n == star_idx:
-                        #        ax.plot(r_vals, Upair, color='k', lw=3, label=r"$\sigma^*={:.2f}$  $\alpha^* = {:.2e}$".format(plot_sigs[n], sig_alphas[alpha_idx]))
-                        #        ax.plot(r_vals, Upair_reg, color='k', ls='--', lw=3, label=r"$\sigma^*={:.2f}$  $\alpha = {:.2e}$".format(plot_sigs[n], sig_alphas[alpha_reg_idx]))
-                        #    else:
-                        #        ln1 = ax.plot(r_vals, Upair, label=r"$\sigma ={:.2f}$  $\alpha^* = {:.2e}$".format(plot_sigs[n], sig_alphas[alpha_idx]))
-                        #        ax.plot(r_vals, Upair_reg, color=ln1[0].get_color(), ls="--", label=r"$\sigma={:.2f}$  $\alpha = {:.2e}$".format(plot_sigs[n], sig_alphas[alpha_reg_idx]))
-                        #else:
-                        #    if n == star_idx:
-                        #        ax.plot(r_vals, Upair, color='k', lw=3)
-                        #        ax.plot(r_vals, Upair_reg, color='k', ls="--", lw=3)
-                        #    else:
-                        #        ln1 = ax.plot(r_vals, Upair)
-                        #        ax.plot(r_vals, Upair_reg, ls="--", color=ln1[0].get_color())
-
-                    if pot_idx == 0:
-                        ax.legend()
-
-                    if not ylims is None:
-                        ax.set_ylim(*ylims)
-                    ax.set_xlim(*xlims)
-
-                    if j == 0:
-                        ax.set_ylabel(r"$U_{\mathrm{pair}}(r_{ij})$")
-                    if i == (ncols - 1):
-                        ax.set_xlabel(r"$r_{ij}$ (nm)")
-
-                    ax.annotate(r"$|i - j| = {:d}$".format(seps[pot_idx]), fontsize=16,
-                            xy=(0,0), xytext=(0.55, 0.7), 
-                            xycoords="axes fraction", textcoords="axes fraction")
-                    #ax.annotate(r"$|i - j| = {:d}$".format(seps[pot_idx]), fontsize=16,
-                    #        xy=(0,0), xytext=(0.55, 0.05), 
-                    #        xycoords="axes fraction", textcoords="axes fraction")
-        plt.savefig("{}compare_Upair_new_crit.pdf".format(prefix))
-        plt.savefig("{}compare_Upair_new_crit.png".format(prefix))
-
-    elif Ucg.pair_symmetry == "unique":
-        raise NotImplementedError
-
-        coord_idxs_by_seq_sep = Ucg._generate_pairwise_idxs(bond_cutoff=Ucg.bond_cutoff)
-
-        fig, axes = plt.subplots(N, N, figsize=(4*N, 4*N), sharex=True)
-        for i in range(N):
-            for j in range(N):
-                if j >= i + bcut:
-                    # for seq sep |j - i|
-                    ax = axes[i,j]
-
-                    sep = np.abs(j - i)
-
-                    # plot for each regularization
-                    for n in range(len(idxs)):
-                        coeff = coeffs[idxs[n]]
-                        c_idx = 0
-
-                        coeff[sep]
-                        for i in range(len(coeff) - 1):
-                            ax = axes[i, j]
-
-                            Upair = np.zeros(len(r_vals))
-                            # excluded volume
-                            Upair += coeff[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
-                            for i in range(len(coeff)):
-                                Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-
-                            #ax.plot(r_vals, Upair, label=r"$\alpha={:.2e}$".format(alphas[idxs[n]]))
-                            ax.plot(r_vals, Upair)
-
-                    coeff = coeffs[idx_star]
-                    Upair = np.zeros(len(r_vals))
-                    for i in range(len(coeff)):
-                        Upair += coeff[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
-                    plt.plot(r_vals, Upair, color='k', lw=3, label=r"$\alpha^*={:.2e}$".format(alphas[idx_star]))
-
-                    if not ylims is None:
-                        ax.set_ylim(*ylims)
-                    ax.set_xlim(*xlims)
-                     
-                else:
-                    # remove axis junk to declutter
-                    pass
-
-    plt.savefig("{}compare_Upair.pdf".format(prefix))
-    plt.savefig("{}compare_Upair.png".format(prefix))
 
 def plot_Xcoeff_vs_d(idxs, idx_star, coeffs, alphas, X, d, prefix):
 
@@ -523,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--pair_symmetry", type=str, default=None)
     parser.add_argument("--bond_cutoff", type=int, default=4)
     parser.add_argument("--lin_pot", action="store_true")
-    parser.add_argument("--skip_trajs", action="store_true")
+    parser.add_argument("--skip_trajs", type=int, default=1)
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
@@ -583,17 +264,16 @@ if __name__ == "__main__":
     cg_savedir = util.Ucg_dirname("eigenpair", M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv,
             n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
-            a_coeff=a_coeff, n_pair_gauss=n_pair_gauss,
+            a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
             pair_symmetry=pair_symmetry)
 
     print(cg_savedir)
 
-
     # create potential energy function
-    Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
-            msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
-            using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
-            bond_cutoff, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
+    Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg( msm_savedir,
+            n_beads, M, beta, fix_back, fix_exvol, using_cv, using_D2,
+            n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss, bond_cutoff,
+            cv_lin_pot=lin_pot, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
 
     topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
     trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
@@ -616,10 +296,7 @@ if __name__ == "__main__":
     ##################################################################
     s_loss = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    if skip_trajs:
-        include_trajs = [ x for x in range(1,len(trajnames), 4) ]
-    else:
-        include_trajs = [ x for x in range(len(trajnames)) ]
+    include_trajs = [ x for x in range(0, len(trajnames), skip_trajs) ]
 
     if not s_loss.matrix_files_exist() or recalc_matrices:
         s_loss.assign_crossval_sets()
@@ -627,87 +304,101 @@ if __name__ == "__main__":
 
     os.chdir(cg_savedir)
 
-    rdg_alphas = np.logspace(-10, 8, 500)
-    if not os.path.exists("rdg_valid_mse.npy") or recalc_matrices:
-        print("Ridge regularization...")
-        s_loss.solve(rdg_alphas)
-
-        np.save("rdg_cstar.npy", s_loss.coeff_star)
-        np.save("rdg_coeffs.npy", s_loss.coeffs)
-        np.save("rdg_train_mse.npy", s_loss.train_mse)
-        np.save("rdg_valid_mse.npy", s_loss.valid_mse)
-
-        rdg_cstar = s_loss.coeff_star
-        rdg_coeffs = s_loss.coeffs
-        rdg_train_mse = s_loss.train_mse
-        rdg_valid_mse = s_loss.valid_mse
-    else:
-        rdg_cstar = np.load("rdg_cstar.npy")
-        rdg_coeffs = np.load("rdg_coeffs.npy")
-        rdg_train_mse = np.load("rdg_train_mse.npy")
-        rdg_valid_mse = np.load("rdg_valid_mse.npy")
-
-    alpha_star_idx = np.argmin(rdg_valid_mse[:,0])
-    if not noplot_ridge:
-        print("Plotting ridge results...")
-        iff.util.plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_valid_mse, 
-                xlabel=r"Regularization $\alpha$", 
-                ylabel="Mean squared error (MSE)", 
-                title="Ridge regression", prefix="ridge_")
-
-
-    if using_cv:
-        print("Plotting Ucv...")
-        rdg_idxs = [5, 50, 200, 300]
-        plot_Ucg_vs_alpha(rdg_idxs, alpha_star_idx, rdg_coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_", fixed_a=fixed_a)
-    else:
-        # cross validation as a function of sigma and alpha
-        if not os.path.exists("rdg_fixed_sigma_coeffs.npy"):
+    if not fix_exvol:
+        # k-fold cross validation with respect to both sigma and alpha
+        if not os.path.exists("rdg_fixed_sigma_coeffs.npy") or recalc_matrices:
             print("Cross-validating sigma_ex...")
             f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(s_loss, Ucg, cv_r0_basis)
-            sigma_idx, alpha_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
-
-
-            sig_cstar = np.concatenate([ np.array([f_mult_12[sigma_idx]]), sig_coeffs[sigma_idx, alpha_idx]])
+            #sigma_idx, alpha_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
 
             np.save("rdg_fixed_sigma_f_mult_12.npy", f_mult_12)
             np.save("rdg_fixed_sigma_alphas.npy", sig_alphas)
-            np.save("rdg_fixed_sigma_cstar.npy", sig_cstar)
             np.save("rdg_fixed_sigma_coeffs.npy", sig_coeffs)
             np.save("rdg_fixed_sigma_train_mse.npy", sig_tr_mse)
             np.save("rdg_fixed_sigma_valid_mse.npy", sig_vl_mse)
         else:
             f_mult_12 = np.load("rdg_fixed_sigma_f_mult_12.npy")
             sig_alphas = np.load("rdg_fixed_sigma_alphas.npy")
-            sig_cstar = np.load("rdg_fixed_sigma_cstar.npy")
             sig_coeffs = np.load("rdg_fixed_sigma_coeffs.npy")
             sig_tr_mse = np.load("rdg_fixed_sigma_train_mse.npy")
             sig_vl_mse = np.load("rdg_fixed_sigma_valid_mse.npy")
 
-        # plot best potential for each value of sigma
-        scaled_sigma = 0.373*(f_mult_12**(1./12))
-        #r_vals = np.linspace(0.2, 1.5, 200)
-        r_vals = np.linspace(0.1, 1.2, 200)
-
+        print("Plotting cross-val vs (sigma, alpha)...")
         sigma_orig = 0.373
+        scaled_sigma = sigma_orig*(f_mult_12**(1./12))
+
         # Accept all solutions within 10% of the minimum validation error
-        min_vl_idxs = np.argwhere(sig_vl_mse[:,:,0] <= 1.1*sig_vl_mse[:,:,0].min())
+        min_vl_domain = sig_vl_mse[:,:,0] <= 1.1*sig_vl_mse[:,:,0].min()
+        min_vl_idxs = np.argwhere(min_vl_domain)
 
         # choose sigma closest to that of original simulation
         # choose largest alpha among those sigma
-        new_sigma_idx = np.argmin((sigma_orig - scaled_sigma[np.unique(min_vl_idxs[:,0])])**2)
-        new_alpha_idx = np.max((min_vl_idxs[min_vl_idxs[:,0] == new_sigma_idx,:])[:,1])
+        optimal_sigma_idx = np.argmin((sigma_orig - scaled_sigma[np.unique(min_vl_idxs[:,0])])**2)
+        max_alpha_idx = np.max((min_vl_idxs[min_vl_idxs[:,0] == optimal_sigma_idx,:])[:,1])
+        min_alpha_idx = np.min((min_vl_idxs[min_vl_idxs[:,0] == optimal_sigma_idx,:])[:,1])
 
-        sigma_star = scaled_sigma[new_sigma_idx]
-        alpha_star = sig_alphas[new_alpha_idx]
-        coeff_star = np.concatenate([ np.array([f_mult_12[new_sigma_idx]]), sig_coeffs[new_sigma_idx, new_alpha_idx]])
+        sigma_star = scaled_sigma[optimal_sigma_idx]
+        alpha_max = sig_alphas[max_alpha_idx]
+        alpha_min = sig_alphas[min_alpha_idx]
+        coeff_star = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, max_alpha_idx]])
+        coeff_min = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, min_alpha_idx]])
 
-        print("Plotting Upair...")
-        #plot_Upair_vs_alpha(rdg_idxs, alpha_star_idx, rdg_coeffs, rdg_alphas, Ucg, r_vals, n_pair_gauss, "rdg_", ylims=(-10, 10))
-        #plot_Upair_for_best_sigma(Ucg, r_vals, scaled_sigma, f_mult_12, sig_coeffs, sig_vl_mse, n_pair_gauss, "sig_", ylims=(-2, 5))
-        plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, sigma_star, alpha_star, n_pair_gauss, "sig_", ylims=(-2, 5))
+        np.save("rdg_fixed_sigma_cstar.npy", coeff_star)
 
-        cstar = sig_cstar
+        # plot cross validation score with respect to sigma and alpha, add contour at
+        # 10% of minimum. Add marker at the chosen values.
+        X, Y = np.meshgrid(scaled_sigma, sig_alphas)
+        plt.figure()
+        pcol = plt.pcolormesh(X, Y, np.log10(sig_vl_mse[:,:,0]).T, linewidth=0, rasterized=True)
+        pcol.set_edgecolor("face")
+        plt.contour(X, Y, sig_vl_mse[:,:,0].T, [1.1*sig_vl_mse[:,:,0].min()], colors="k", linewidths=3)
+        plt.plot([sigma_star], [alpha_max], markersize=10, marker="o", color="r")
+        plt.plot([sigma_star], [alpha_min], markersize=10, marker="o", color="w")
+        plt.xlabel(r"Scaled radius $\sigma'$ (nm)")
+        plt.ylabel(r"Regularization $\alpha$")
+        plt.semilogy()
+        cbar = plt.colorbar(mappable=pcol)
+        cbar.set_label("log(crossval score)")
+        plt.savefig("cross_val_vs_sigma_alpha_contour.pdf")
+        plt.savefig("cross_val_vs_sigma_alpha_contour.png")
+
+        if using_cv:
+            print("Plotting Ucv...")
+            cv_vals = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
+            iff.util.plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, "sig_", ylims=None)
+        else:
+            print("Plotting Upair...")
+            r_vals = np.linspace(0.1, 1.2, 200)
+            iff.util.plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, n_pair_gauss, "sig_", ylims=(-2, 5))
+    else:
+        # cross validation with respect to regularization parameter alpha
+        rdg_alphas = np.logspace(-10, 8, 500)
+        if not os.path.exists("rdg_valid_mse.npy") or recalc_matrices:
+            print("Ridge regularization...")
+            s_loss.solve(rdg_alphas)
+
+            np.save("rdg_cstar.npy", s_loss.coeff_star)
+            np.save("rdg_coeffs.npy", s_loss.coeffs)
+            np.save("rdg_train_mse.npy", s_loss.train_mse)
+            np.save("rdg_valid_mse.npy", s_loss.valid_mse)
+
+            rdg_cstar = s_loss.coeff_star
+            rdg_coeffs = s_loss.coeffs
+            rdg_train_mse = s_loss.train_mse
+            rdg_valid_mse = s_loss.valid_mse
+        else:
+            rdg_cstar = np.load("rdg_cstar.npy")
+            rdg_coeffs = np.load("rdg_coeffs.npy")
+            rdg_train_mse = np.load("rdg_train_mse.npy")
+            rdg_valid_mse = np.load("rdg_valid_mse.npy")
+
+        alpha_max_idx = np.argmin(rdg_valid_mse[:,0])
+
+        print("Plotting ridge results...")
+        iff.util.plot_train_test_mse(rdg_alphas, rdg_train_mse, rdg_valid_mse, 
+                xlabel=r"Regularization $\alpha$", 
+                ylabel="Mean squared error (MSE)", 
+                title="Ridge regression", prefix="ridge_")
     
     raise SystemExit
     os.chdir("..")
