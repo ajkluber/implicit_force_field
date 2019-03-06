@@ -139,10 +139,6 @@ if __name__ == "__main__":
         min_since_mod = np.abs(current_time - os.path.getmtime(temp_forcenames[i]))/60.
         if min_since_mod > 10:
             forcenames.append(temp_forcenames[i])
-            #try:
-            #    np.loadtxt(temp_forcenames[i])
-            #except:
-            #    print("can't load: " + temp_forcenames[i]) 
         else:
             print("skipping: " + temp_forcenames[i])
 
@@ -189,34 +185,34 @@ if __name__ == "__main__":
     ##################################################################
     # calculate matrix X and d 
     ##################################################################
-    fm_loss = loss.LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    loss_func = loss.LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    if not fm_loss.matrix_files_exist() or recalc_matrices:
-        fm_loss.assign_crossval_sets()
-        fm_loss.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
+    if not loss_func.matrix_files_exist() or recalc_matrices:
+        loss_func.assign_crossval_sets()
+        loss_func.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
 
     os.chdir(cg_savedir)
 
     if not os.path.exists("rdg_valid_mse.npy"):
         rdg_alphas = np.logspace(-10, 8, 500)
-        fm_loss.solve(rdg_alphas)
+        loss_func.solve(rdg_alphas)
 
-        np.save("rdg_cstar.npy", fm_loss.coeff_star)
-        np.save("rdg_coeffs.npy", fm_loss.coeffs)
-        np.save("rdg_train_mse.npy", fm_loss.train_mse)
-        np.save("rdg_valid_mse.npy", fm_loss.valid_mse)
+        np.save("rdg_cstar.npy", loss_func.coeff_star)
+        np.save("rdg_coeffs.npy", loss_func.coeffs)
+        np.save("rdg_train_mse.npy", loss_func.train_mse)
+        np.save("rdg_valid_mse.npy", loss_func.valid_mse)
 
         rdg_idxs = [5, 50, 200, 300]
-        plot_Ucg_vs_alpha(rdg_idxs, fm_loss.alpha_star_idx, fm_loss.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_")
-        #plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, fm_loss.X, fm_loss.d, "rdg_")
+        plot_Ucg_vs_alpha(rdg_idxs, loss_func.alpha_star_idx, loss_func.coeffs, rdg_alphas, Ucg, cv_r0_basis, "rdg_")
+        #plot_Xcoeff_vs_d(rdg_idxs, rdg_idx_star, rdg_coeffs, rdg_alphas, loss_func.X, loss_func.d, "rdg_")
 
-        iff.util.plot_train_test_mse(rdg_alphas, fm_loss.train_mse, fm_loss.valid_mse, 
+        iff.util.plot_train_test_mse(rdg_alphas, loss_func.train_mse, loss_func.valid_mse, 
                 xlabel=r"Regularization $\alpha$", 
                 ylabel="Mean squared error (MSE)", 
                 title="Ridge regression", prefix="ridge_")
 
     if not os.path.exists("rdg_fixed_sigma_cstar.npy") or True:
-        f_mult_12, alphas, all_coeffs, tr_mse, vl_mse = iff.util.scan_with_fixed_sigma(fm_loss, Ucg, cv_r0_basis)
+        f_mult_12, alphas, all_coeffs, tr_mse, vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis)
         sigma_idx, alpha_idx = np.argwhere(vl_mse[:,:,0] == vl_mse[:,:,0].min())[0]
         new_coeffs = np.concatenate([ np.array([f_mult_12[sigma_idx]]), all_coeffs[sigma_idx, alpha_idx]])
         np.save("rdg_fixed_sigma_cstar.npy", new_coeffs)
