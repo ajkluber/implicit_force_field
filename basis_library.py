@@ -810,6 +810,7 @@ class PolymerModel(FunctionLibrary):
 
             The number of free parameters grows from shared -> seq_sep -> unique.
         """
+        self.pair_symmetry = symmetry
         
         if symmetry == "shared":
             for m in range(len(r0_nm)):
@@ -848,6 +849,20 @@ class PolymerModel(FunctionLibrary):
 
                     temp_dU_funcs = self._take_symbolic_derivatives(U_sym, self.rij_args) 
                     self._add_potential_term(fixed, U_sym, U_lamb, scale_factor, temp_U_coord_idxs, temp_dU_funcs)
+
+    def linear_cv_potential(self, scale_factor=1):
+
+        # linear basis function 
+        for i in range(self.n_cv_dim):
+            f_sym = scale_factor*self.cv_sym[i]
+            f_lamb = sympy.lambdify(self.cv_args, f_sym, modules="numpy")
+
+            self.cv_U_sym.append(f_sym)
+            self.cv_U_funcs.append(f_lamb)
+
+            # first and second derivative wrt each arg
+            temp_cv_dU_funcs = self._take_symbolic_derivatives(f_sym, self.cv_args) 
+            self.cv_dU_funcs.append(temp_cv_dU_funcs)
 
     def gaussian_cv_potentials(self, cv_r0, cv_w, scale_factors=1):
 
@@ -1074,6 +1089,17 @@ class PolymerModel(FunctionLibrary):
                 Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
         return Ucv
 
+    #def Upair_values(self, coeff, r_vals):
+    #    """Return the """
+
+    #    Upair = np.zeros(len(r_vals))
+    #    if self.fixed_a_coeff: 
+    #        for i in range(len(coeff) - self.n_cart_params):
+    #            Upair += coeff[i]*self.U_funcs[i](r_vals)
+    #    else:
+    #        for i in range(len(coeff) - 1 - self.n_cart_params):
+    #            Upair += coeff[i]*self.U_funcs[i](r_vals)
+    #    return Upair
 
     def potential_U0(self, xyz_traj, cv_traj, sumterms=True):
         """Fixed potential energy term
