@@ -155,7 +155,7 @@ def plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alp
     #title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_star)
     title = r"$\sigma^*={:.2f} \mathrm{{nm}}$".format(sigma_star)
     plt.figure()
-    plt.plot(cv_vals, Ucv, 'k', lw=3, label=r"$\alpha^* = {:.1e}$".format(alpha_max))
+    plt.plot(cv_vals, Ucv, 'k', lw=3, label=r"$\alpha_{\mathrm{max}} =" + "{:.1e}$".format(alpha_max))
     plt.plot(cv_vals, Ucv_1, 'k--', lw=3, label=r"$\alpha_{\mathrm{min}} =" + "{:.1e}$".format(alpha_min))
 
     if not ylims is None:
@@ -173,7 +173,7 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
 
     #title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_max)
     title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_max)
-    label = r"$\alpha^* = {:.1e}$".format(alpha_max)
+    label = r"$\alpha_{\mathrm{max}}" + " = {:.1e}$".format(alpha_max)
     label_1 = r"$\alpha_{\mathrm{min}}" + " = {:.1e}$".format(alpha_min)
 
     N = Ucg.n_atoms
@@ -190,11 +190,11 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
             Upair += coeff_star[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
 
         Upair_1 = np.zeros(len(r_vals))
-        for i in range(len(coeff_star)):
-            Upair_1 += coeff_star[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
+        for i in range(len(coeff_min)):
+            Upair_1 += coeff_min[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
 
-        plt.plot(r_vals, Upair, 'k', lw=3, label=label)
-        plt.plot(r_vals, Upair_1, 'k--', lw=3, label=label_1)
+        plt.plot(r_vals, Upair,  color='k', ls="-", lw=3, label=label)
+        plt.plot(r_vals, Upair_1, color='k', ls='--', lw=3, label=label_1)
         plt.title(title, fontsize=16)
         plt.legend()
 
@@ -232,7 +232,14 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
                         c_k = coeff_star[c_idx_start + k + 1]
                         Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
 
-                    ax.plot(r_vals, Upair, color='k', lw=3)
+                    Upair_1 = np.zeros(len(r_vals))
+                    Upair_1 += coeff_min[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
+                    for k in range(n_pair_gauss):
+                        c_k = coeff_min[c_idx_start + k + 1]
+                        Upair_1 += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
+
+                    ax.plot(r_vals, Upair, color='k', ls="-", lw=3)
+                    ax.plot(r_vals, Upair_1, color='k', ls='--', lw=3)
 
                     ax.annotate(r"$|i - j| = {:d}$".format(seps[pot_idx]), fontsize=16,
                             xy=(0,0), xytext=(0.55, 0.7), 
