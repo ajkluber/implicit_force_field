@@ -195,6 +195,7 @@ def split_trajs_into_train_and_test_sets(trajnames, psinames, n_cross_val_sets=5
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("msm_savedir", type=str)
+    parser.add_argument("cg_method", type=str)
     parser.add_argument("--psi_dims", type=int, default=1)
     parser.add_argument("--a_coeff", type=float, default=None)
     parser.add_argument("--using_cv", action="store_true")
@@ -208,10 +209,10 @@ if __name__ == "__main__":
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
-    parser.add_argument("--noplot_ridge", action="store_true")
     args = parser.parse_args()
 
     msm_savedir = args.msm_savedir
+    cg_method = args.cg_method
     M = args.psi_dims
     a_coeff = args.a_coeff
     using_cv = args.using_cv
@@ -225,7 +226,6 @@ if __name__ == "__main__":
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
-    noplot_ridge = args.noplot_ridge
     using_U0 = fix_back or fix_exvol
 
     print(" ".join(sys.argv))
@@ -260,8 +260,9 @@ if __name__ == "__main__":
 
     using_D2 = False
     n_cross_val_sets = 5
+    include_trajs = [ x for x in range(0, len(trajnames), skip_trajs) ]
 
-    cg_savedir = util.Ucg_dirname("eigenpair", M, using_U0, fix_back,
+    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv,
             n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
             a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
@@ -275,40 +276,87 @@ if __name__ == "__main__":
             n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss, bond_cutoff,
             cv_lin_pot=lin_pot, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
 
-    topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
-    trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
-    ti_file = msm_savedir + "/tica_ti_ps.npy"
-    psinames = []
-    for i in range(len(trajnames)):
-        tname = trajnames[i]
-        idx1 = (os.path.dirname(tname)).split("_")[-1]
-        idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-        temp_names = []
-        for n in range(M):
-            temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
-        psinames.append(temp_names)
+    if cg_method == "force-matching":
+        # only get trajectories that have saved forces
+        temp_forcenames = glob.glob("run_*/" + name + "_forces_*.dat") 
+
+        forcenames = []
+        current_time = time.time()
+        for i in range(len(temp_forcenames)):
+            min_since_mod = np.abs(current_time - os.path.getmtime(temp_forcenames[i]))/60.
+            if min_since_mod > 10:
+                forcenames.append(temp_forcenames[i])
+            else:
+                print("skipping: " + temp_forcenames[i])
+
+        topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+        rundirs = []
+        psinames = []
+        trajnames = []
+        for i in range(len(forcenames)):
+            fname = forcenames[i]
+            idx1 = (os.path.dirname(fname)).split("_")[-1]
+            idx2 = (os.path.basename(fname)).split(".dat")[0].split("_")[-1]
+
+            traj_name = "run_{}/{}_traj_cent_{}.dcd".format(idx1, name, idx2)
+            if not os.path.exists(traj_name):
+                #raise ValueError("Trajectory does not exist: " + traj_name)
+                print("Trajectory does not exist: " + traj_name)
+
+            trajnames.append(traj_name)
+
+            temp_names = []
+            for n in range(M):
+                psi_name = msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1)
+                if not os.path.exists(psi_name):
+                    psi_temp = []
+                    for chunk in md.iterload(trajnames[i], top=topfile):
+                        xyz_traj = np.reshape(chunk.xyz, (-1, 75))
+                        psi_chunk = Ucg.calculate_cv(xyz_traj)
+                        psi_temp.append(psi_chunk[:,n])
+                    psi_temp = np.concatenate(psi_temp)
+                    np.save(psi_name, psi_temp)
+                temp_names.append(psi_name)
+            psinames.append(temp_names)
+    else:
+        topfile = glob.glob("run_*/" + name + "_min_cent.pdb")[0]
+        trajnames = glob.glob("run_*/" + name + "_traj_cent_*.dcd") 
+        ti_file = msm_savedir + "/tica_ti_ps.npy"
+        psinames = []
+        for i in range(len(trajnames)):
+            tname = trajnames[i]
+            idx1 = (os.path.dirname(tname)).split("_")[-1]
+            idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+            temp_names = []
+            for n in range(M):
+                temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
+            psinames.append(temp_names)
 
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
 
-    ##################################################################
-    # calculate matrix X and d 
-    ##################################################################
-    s_loss = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+    # choose loss function for coarse-graining method
+    if cg_method == "force-matching":
+        loss_func = loss.LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    include_trajs = [ x for x in range(0, len(trajnames), skip_trajs) ]
+        if not loss_func.matrix_files_exist() or recalc_matrices:
+            loss_func.assign_crossval_sets()
+            loss_func.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
+    elif cg_method == "eigenpair":
+        loss_func = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
-    if not s_loss.matrix_files_exist() or recalc_matrices:
-        s_loss.assign_crossval_sets()
-        s_loss.calc_matrices(Ucg, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True, include_trajs=include_trajs)
+        if not loss_func.matrix_files_exist() or recalc_matrices:
+            loss_func.assign_crossval_sets()
+            loss_func.calc_matrices(Ucg, psinames, ti_file, M=M, coll_var_names=psinames, verbose=True, include_trajs=include_trajs)
 
     os.chdir(cg_savedir)
 
+    # plot cross validated solutions
     if not fix_exvol:
         # k-fold cross validation with respect to both sigma and alpha
         if not os.path.exists("rdg_fixed_sigma_coeffs.npy") or recalc_matrices:
             print("Cross-validating sigma_ex...")
-            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(s_loss, Ucg, cv_r0_basis)
+            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis)
             #sigma_idx, alpha_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
 
             np.save("rdg_fixed_sigma_f_mult_12.npy", f_mult_12)
@@ -375,17 +423,17 @@ if __name__ == "__main__":
         rdg_alphas = np.logspace(-10, 8, 500)
         if not os.path.exists("rdg_valid_mse.npy") or recalc_matrices:
             print("Ridge regularization...")
-            s_loss.solve(rdg_alphas)
+            loss_func.solve(rdg_alphas)
 
-            np.save("rdg_cstar.npy", s_loss.coeff_star)
-            np.save("rdg_coeffs.npy", s_loss.coeffs)
-            np.save("rdg_train_mse.npy", s_loss.train_mse)
-            np.save("rdg_valid_mse.npy", s_loss.valid_mse)
+            np.save("rdg_cstar.npy", loss_func.coeff_star)
+            np.save("rdg_coeffs.npy", loss_func.coeffs)
+            np.save("rdg_train_mse.npy", loss_func.train_mse)
+            np.save("rdg_valid_mse.npy", loss_func.valid_mse)
 
-            rdg_cstar = s_loss.coeff_star
-            rdg_coeffs = s_loss.coeffs
-            rdg_train_mse = s_loss.train_mse
-            rdg_valid_mse = s_loss.valid_mse
+            rdg_cstar = loss_func.coeff_star
+            rdg_coeffs = loss_func.coeffs
+            rdg_train_mse = loss_func.train_mse
+            rdg_valid_mse = loss_func.valid_mse
         else:
             rdg_cstar = np.load("rdg_cstar.npy")
             rdg_coeffs = np.load("rdg_coeffs.npy")
@@ -402,12 +450,12 @@ if __name__ == "__main__":
     
     raise SystemExit
     os.chdir("..")
-    s_loss.scalar_product_Gen_fj(Ucg, cstar, psinames, cv_names=psinames)
+    loss_func.scalar_product_Gen_fj(Ucg, cstar, psinames, cv_names=psinames)
     os.chdir(cg_savedir)
 
-    np.save("psi_fj.npy", s_loss.psi_fj)
-    np.save("psi_gU0_fj.npy", s_loss.psi_gU0_fj)
-    np.save("psi_gU1_fj.npy", s_loss.psi_gU1_fj)
-    np.save("psi_Lap_fj.npy", s_loss.psi_Lap_fj)
-    np.save("psi_Gen_fj.npy", s_loss.psi_Gen_fj)
+    np.save("psi_fj.npy", loss_func.psi_fj)
+    np.save("psi_gU0_fj.npy", loss_func.psi_gU0_fj)
+    np.save("psi_gU1_fj.npy", loss_func.psi_gU1_fj)
+    np.save("psi_Lap_fj.npy", loss_func.psi_Lap_fj)
+    np.save("psi_Gen_fj.npy", loss_func.psi_Gen_fj)
 
