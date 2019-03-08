@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import
 import os
 import glob
+import time
 import sys
 import argparse
 import numpy as np
@@ -209,6 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
+    parser.add_argument("--n_fixed_sigma", type=int, default=100)
     args = parser.parse_args()
 
     msm_savedir = args.msm_savedir
@@ -226,6 +228,7 @@ if __name__ == "__main__":
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
+    n_fixed_sigma = args.n_fixed_sigma
     using_U0 = fix_back or fix_exvol
 
     print(" ".join(sys.argv))
@@ -260,7 +263,6 @@ if __name__ == "__main__":
 
     using_D2 = False
     n_cross_val_sets = 5
-    include_trajs = [ x for x in range(0, len(trajnames), skip_trajs) ]
 
     cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv,
@@ -332,6 +334,8 @@ if __name__ == "__main__":
                 temp_names.append(msm_savedir + "/run_{}_{}_TIC_{}.npy".format(idx1, idx2, n+1))
             psinames.append(temp_names)
 
+    include_trajs = [ x for x in range(0, len(trajnames), skip_trajs) ]
+
     if not os.path.exists(cg_savedir):
         os.mkdir(cg_savedir)
 
@@ -356,7 +360,7 @@ if __name__ == "__main__":
         # k-fold cross validation with respect to both sigma and alpha
         if not os.path.exists("rdg_fixed_sigma_coeffs.npy") or recalc_matrices:
             print("Cross-validating sigma_ex...")
-            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis)
+            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis, n_fixed_sigma=n_fixed_sigma)
             #sigma_idx, alpha_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
 
             np.save("rdg_fixed_sigma_f_mult_12.npy", f_mult_12)
@@ -374,34 +378,51 @@ if __name__ == "__main__":
         print("Plotting cross-val vs (sigma, alpha)...")
         sigma_orig = 0.373
         scaled_sigma = sigma_orig*(f_mult_12**(1./12))
+        sigma_orig_idx = np.argmin((sigma_orig - scaled_sigma)**2)
 
-        # Accept all solutions within 10% of the minimum validation error
-        min_vl_domain = sig_vl_mse[:,:,0] <= 1.1*sig_vl_mse[:,:,0].min()
+        # check if original sigma is within acceptable range to global minimum
+        sig_idx, alp_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
+        acc_idxs = np.argwhere(sig_vl_mse[:,:,0] <= (sig_vl_mse[sig_idx, alp_idx, 0] + 0.5*sig_vl_mse[sig_idx, alp_idx, 0]))
+
+        if sigma_orig_idx in np.unique(acc_idxs[:,0]):
+            # choose original sigma 
+            optimal_sigma_idx = sigma_orig_idx
+        else:
+            # original radius is not in the acceptable domain
+            optimal_sigma_idx = sig_idx
+            optimal_alpha_idx = alp_idx
+
+        opt_std = 0.5*sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 1] 
+
+        min_vl_domain = sig_vl_mse[:,:,0] <= (sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 0] + opt_std)
         min_vl_idxs = np.argwhere(min_vl_domain)
 
-        # choose sigma closest to that of original simulation
-        # choose largest alpha among those sigma
-        optimal_sigma_idx = np.argmin((sigma_orig - scaled_sigma[np.unique(min_vl_idxs[:,0])])**2)
         max_alpha_idx = np.max((min_vl_idxs[min_vl_idxs[:,0] == optimal_sigma_idx,:])[:,1])
         min_alpha_idx = np.min((min_vl_idxs[min_vl_idxs[:,0] == optimal_sigma_idx,:])[:,1])
 
         sigma_star = scaled_sigma[optimal_sigma_idx]
+        alpha_star = sig_alphas[optimal_alpha_idx]
         alpha_max = sig_alphas[max_alpha_idx]
         alpha_min = sig_alphas[min_alpha_idx]
-        coeff_star = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, max_alpha_idx]])
+
+        coeff_star = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, optimal_alpha_idx]])
+        coeff_max = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, max_alpha_idx]])
         coeff_min = np.concatenate([ np.array([f_mult_12[optimal_sigma_idx]]), sig_coeffs[optimal_sigma_idx, min_alpha_idx]])
 
         np.save("rdg_fixed_sigma_cstar.npy", coeff_star)
 
         # plot cross validation score with respect to sigma and alpha, add contour at
         # 10% of minimum. Add marker at the chosen values.
+        cont_lvl = sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 0] + opt_std 
+
         X, Y = np.meshgrid(scaled_sigma, sig_alphas)
         plt.figure()
         pcol = plt.pcolormesh(X, Y, np.log10(sig_vl_mse[:,:,0]).T, linewidth=0, rasterized=True)
         pcol.set_edgecolor("face")
-        plt.contour(X, Y, sig_vl_mse[:,:,0].T, [1.1*sig_vl_mse[:,:,0].min()], colors="k", linewidths=3)
-        plt.plot([sigma_star], [alpha_max], markersize=10, marker="o", color="r")
+        plt.contour(X, Y, sig_vl_mse[:,:,0].T, [cont_lvl], colors="k", linewidths=3)
+        plt.plot([sigma_star], [alpha_max], markersize=10, marker="o", color="w")
         plt.plot([sigma_star], [alpha_min], markersize=10, marker="o", color="w")
+        plt.plot([sigma_star], [alpha_star], markersize=14, marker="*", color="y")
         plt.xlabel(r"Scaled radius $\sigma'$ (nm)")
         plt.ylabel(r"Regularization $\alpha$")
         plt.semilogy()
@@ -410,14 +431,17 @@ if __name__ == "__main__":
         plt.savefig("cross_val_vs_sigma_alpha_contour.pdf")
         plt.savefig("cross_val_vs_sigma_alpha_contour.png")
 
+        plot_cffs = (coeff_star, coeff_min, coeff_max)
+        plot_alph = (alpha_star, alpha_min, alpha_max)
+
         if using_cv:
             print("Plotting Ucv...")
             cv_vals = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
-            iff.util.plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, "sig_", ylims=None)
+            iff.util.plot_Ucv_for_best_sigma(Ucg, cv_vals, plot_cffs, plot_alph, sigma_star, "sig_", ylims=(-10, 100))
         else:
             print("Plotting Upair...")
             r_vals = np.linspace(0.1, 1.2, 200)
-            iff.util.plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, n_pair_gauss, "sig_", ylims=(-2, 5))
+            iff.util.plot_Upair_for_best_sigma(Ucg, r_vals, plot_cffs, plot_alph, sigma_star, n_pair_gauss, "sig_", ylims=(-2, 5), with_min=True)
     else:
         # cross validation with respect to regularization parameter alpha
         rdg_alphas = np.logspace(-10, 8, 500)
