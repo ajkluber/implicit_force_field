@@ -61,9 +61,9 @@ def plot_Ucv_vs_alpha_with_fixed_sigma(alpha_idx, sigma_idx, coeffs, alphas, new
     plt.savefig("{}Ucv.pdf".format(prefix))
     plt.savefig("{}Ucv.png".format(prefix))
 
-def scan_with_fixed_sigma(loss, Ucg, cv_r0_basis):
-    f_mult_12 = np.linspace(0.6, 1.35, 100)**12
-    alphas = np.logspace(-10, 2,50)
+def scan_with_fixed_sigma(loss, Ucg, cv_r0_basis, n_fixed_sigma=100):
+    f_mult_12 = np.linspace(0.6, 1.35, n_fixed_sigma)**12
+    alphas = np.logspace(-10, 2, 50)
 
     fix_ck_idxs = np.array([0])
     all_coeffs = []
@@ -144,7 +144,10 @@ def scan_with_fixed_sigma(loss, Ucg, cv_r0_basis):
 
     return f_mult_12, alphas, all_coeffs, tr_mse, vl_mse
 
-def plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, prefix, ylims=None):
+def plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_list, alpha_list, sigma_star, prefix, ylims=None):
+
+    coeff_star, coeff_min, coeff_max = coeff_list
+    alpha_star, alpha_min, alpha_max = alpha_list
 
     Ucv = Ucg.Ucv_values(coeff_star, cv_vals)
     Ucv -= Ucv.min()
@@ -152,11 +155,15 @@ def plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alp
     Ucv_1 = Ucg.Ucv_values(coeff_min, cv_vals)
     Ucv_1 -= Ucv_1.min()
 
+    Ucv_2 = Ucg.Ucv_values(coeff_max, cv_vals)
+    Ucv_2 -= Ucv_2.min()
+
     #title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_star)
     title = r"$\sigma^*={:.2f} \mathrm{{nm}}$".format(sigma_star)
     plt.figure()
-    plt.plot(cv_vals, Ucv, 'k', lw=3, label=r"$\alpha_{\mathrm{max}} =" + "{:.1e}$".format(alpha_max))
-    plt.plot(cv_vals, Ucv_1, 'k--', lw=3, label=r"$\alpha_{\mathrm{min}} =" + "{:.1e}$".format(alpha_min))
+    plt.plot(cv_vals, Ucv_1, lw=3, label=r"$\alpha_{\mathrm{min}} =" + "{:.1e}$".format(alpha_min))
+    plt.plot(cv_vals, Ucv_2, lw=3, label=r"$\alpha_{\mathrm{max}} =" + "{:.1e}$".format(alpha_max))
+    plt.plot(cv_vals, Ucv, 'k', lw=3, label=r"$\alpha^* =" + "{:.1e}$".format(alpha_star))
 
     if not ylims is None:
         plt.ylim(*ylims)
@@ -168,13 +175,21 @@ def plot_Ucv_for_best_sigma(Ucg, cv_vals, coeff_star, coeff_min, sigma_star, alp
     plt.savefig("{}compare_Ucv.pdf".format(prefix))
     plt.savefig("{}compare_Ucv.png".format(prefix))
 
-def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, alpha_max, alpha_min, n_pair_gauss, prefix, ylims=None):
+def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_list, alpha_list, sigma_star, n_pair_gauss, prefix, ylims=None, with_min=False):
     """Plot pair potential solution"""
 
+    coeff_star, coeff_min, coeff_max = coeff_list
+    alpha_star, alpha_min, alpha_max = alpha_list
+
     #title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_max)
-    title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_max)
-    label = r"$\alpha_{\mathrm{max}}" + " = {:.1e}$".format(alpha_max)
+    title = r"$\sigma^*={:.2f} \mathrm{{nm}}$  $\alpha^* = {:.1e}$".format(sigma_star, alpha_star)
+    label = r"$\alpha^*" + " = {:.1e}$".format(alpha_star)
     label_1 = r"$\alpha_{\mathrm{min}}" + " = {:.1e}$".format(alpha_min)
+    label_2 = r"$\alpha_{\mathrm{max}}" + " = {:.1e}$".format(alpha_max)
+
+    suffix = "_{}".format(Ucg.pair_symmetry)
+    if with_min:
+        suffix += "_with_min"
 
     N = Ucg.n_atoms
     bcut = Ucg.bond_cutoff
@@ -193,10 +208,18 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
         for i in range(len(coeff_min)):
             Upair_1 += coeff_min[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
 
+        Upair_2 = np.zeros(len(r_vals))
+        for i in range(len(coeff_max)):
+            Upair_2 += coeff_max[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
+
+        if with_min:
+            plt.plot(r_vals, Upair_1, lw=3, label=label_1)
+            plt.plot(r_vals, Upair_2, lw=3, label=label_2)
+
         plt.plot(r_vals, Upair,  color='k', ls="-", lw=3, label=label)
-        plt.plot(r_vals, Upair_1, color='k', ls='--', lw=3, label=label_1)
-        plt.title(title, fontsize=16)
+
         plt.legend()
+        plt.title(title, fontsize=16)
 
         if not ylims is None:
             plt.ylim(*ylims)
@@ -238,11 +261,20 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
                         c_k = coeff_min[c_idx_start + k + 1]
                         Upair_1 += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
 
+                    Upair_2 = np.zeros(len(r_vals))
+                    Upair_2 += coeff_max[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
+                    for k in range(n_pair_gauss):
+                        c_k = coeff_max[c_idx_start + k + 1]
+                        Upair_2 += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
+
+                    if with_min:
+                        ax.plot(r_vals, Upair_1, lw=3)
+                        ax.plot(r_vals, Upair_2, lw=3)
+
                     ax.plot(r_vals, Upair, color='k', ls="-", lw=3)
-                    ax.plot(r_vals, Upair_1, color='k', ls='--', lw=3)
 
                     ax.annotate(r"$|i - j| = {:d}$".format(seps[pot_idx]), fontsize=16,
-                            xy=(0,0), xytext=(0.55, 0.7), 
+                            xy=(0,0), xytext=(0.55, 0.7), bbox={"facecolor":"w", "alpha":1, "edgecolor":"k"},
                             xycoords="axes fraction", textcoords="axes fraction")
 
                 if not ylims is None:
@@ -290,5 +322,5 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_star, coeff_min, sigma_star, al
                     ax.set_xlabel(r"$r_{ij}$ (nm)")
         fig.suptitle(title, fontsize=18)
 
-    plt.savefig("{}compare_Upair_{}.pdf".format(prefix, Ucg.pair_symmetry))
-    plt.savefig("{}compare_Upair_{}.png".format(prefix, Ucg.pair_symmetry))
+    plt.savefig("{}compare_Upair{}.pdf".format(prefix, suffix))
+    plt.savefig("{}compare_Upair{}.png".format(prefix, suffix))
