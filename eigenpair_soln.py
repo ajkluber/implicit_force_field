@@ -206,10 +206,12 @@ if __name__ == "__main__":
     parser.add_argument("--pair_symmetry", type=str, default=None)
     parser.add_argument("--bond_cutoff", type=int, default=4)
     parser.add_argument("--lin_pot", action="store_true")
+    parser.add_argument("--alpha_lims", nargs=3, type=float, default=[-10, 2, 100])
     parser.add_argument("--skip_trajs", type=int, default=1)
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
+    parser.add_argument("--recalc_cross_val", action="store_true")
     parser.add_argument("--n_fixed_sigma", type=int, default=100)
     args = parser.parse_args()
 
@@ -224,10 +226,12 @@ if __name__ == "__main__":
     pair_symmetry = args.pair_symmetry
     bond_cutoff = args.bond_cutoff
     lin_pot = args.lin_pot
+    alpha_lims = args.alpha_lims
     skip_trajs = args.skip_trajs
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
+    recalc_cross_val = args.recalc_cross_val
     n_fixed_sigma = args.n_fixed_sigma
     using_U0 = fix_back or fix_exvol
 
@@ -358,9 +362,9 @@ if __name__ == "__main__":
     # plot cross validated solutions
     if not fix_exvol:
         # k-fold cross validation with respect to both sigma and alpha
-        if not os.path.exists("rdg_fixed_sigma_coeffs.npy") or recalc_matrices:
+        if not os.path.exists("rdg_fixed_sigma_coeffs.npy") or recalc_cross_val:
             print("Cross-validating sigma_ex...")
-            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis, n_fixed_sigma=n_fixed_sigma)
+            f_mult_12, sig_alphas, sig_coeffs, sig_tr_mse, sig_vl_mse = iff.util.scan_with_fixed_sigma(loss_func, Ucg, cv_r0_basis, alpha_lims, n_fixed_sigma=n_fixed_sigma)
             #sigma_idx, alpha_idx = np.argwhere(sig_vl_mse[:,:,0] == sig_vl_mse[:,:,0].min())[0]
 
             np.save("rdg_fixed_sigma_f_mult_12.npy", f_mult_12)
@@ -387,6 +391,7 @@ if __name__ == "__main__":
         if sigma_orig_idx in np.unique(acc_idxs[:,0]):
             # choose original sigma 
             optimal_sigma_idx = sigma_orig_idx
+            optimal_alpha_idx = np.argmin(sig_vl_mse[optimal_sigma_idx,:,0])
         else:
             # original radius is not in the acceptable domain
             optimal_sigma_idx = sig_idx
@@ -445,7 +450,7 @@ if __name__ == "__main__":
     else:
         # cross validation with respect to regularization parameter alpha
         rdg_alphas = np.logspace(-10, 8, 500)
-        if not os.path.exists("rdg_valid_mse.npy") or recalc_matrices:
+        if not os.path.exists("rdg_valid_mse.npy") or recalc_cross_val:
             print("Ridge regularization...")
             loss_func.solve(rdg_alphas)
 
