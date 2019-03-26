@@ -1043,7 +1043,6 @@ class PolymerModel(FunctionLibrary):
         # 1. Test functions as function of TICs
         #   a. Gaussian centers and widths
 
-
         for n in range(len(cv_r0)):
             # test function is Gaussian with center r0 and width w
             f_sym = (self.cv_sym[0] - cv_r0[n][0])**2
@@ -1272,11 +1271,7 @@ class PolymerModel(FunctionLibrary):
 
         test_f = np.zeros((xyz_traj.shape[0], self.n_test_funcs), float)
 
-        if self.using_cv:
-            # collective variable test functions
-            for i in range(len(self.cv_f_funcs)):
-                test_f[:,i] = self.cv_f_funcs[i](*cv_traj.T)
-        else:
+        if self.n_cart_test_funcs > 0:
             # Cartesian coordinate test functions 
             start_idx = 0
             for j in range(len(self.f_funcs)):
@@ -1286,8 +1281,13 @@ class PolymerModel(FunctionLibrary):
                 for n in range(len(self.f_coord_idxs[j])):
                     # each coordinate assignment is a different test function
                     xi_idxs = self.f_coord_idxs[j][n]
-                    test_f[:, start_idx + n] = f_j_func(*xyz_traj[:,xi_idxs].T)
+                    test_f[:,start_idx + n] = f_j_func(*xyz_traj[:,xi_idxs].T)
                 start_idx += len(self.f_coord_idxs[j])
+
+        if self.n_cv_test_funcs > 0:
+            # collective variable test functions
+            for i in range(len(self.cv_f_funcs)):
+                test_f[:,self.n_cart_test_funcs + i] = self.cv_f_funcs[i](*cv_traj.T)
 
         return test_f
             

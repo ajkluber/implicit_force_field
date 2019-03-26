@@ -10,6 +10,8 @@ import scipy.linalg
 
 import mdtraj as md
 
+
+from memory_profiler import profile
 # TODO: nonlinear loss function
 
 class CrossValidatedLoss(object):
@@ -508,10 +510,10 @@ class LinearSpectralLoss(CrossValidatedLoss):
         if len(psinames) != len(self.trajnames):
             raise ValueError("Need eigenvector for every trajectory!")
 
-        if len(include_trajs) > 0:
-            n_trajs = len(include_trajs)
-        else:
-            n_trajs = len(self.trajnames)
+        if len(include_trajs) == 0:
+            include_trajs = np.arange(len(self.trajnames))
+
+        n_trajs = len(include_trajs)
         
         N_prev = 0
         count = 0
@@ -762,7 +764,8 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         if self.matrix_files_exist() and not recalc:
             self._load_matrices()
 
-    def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True):
+    @profile
+    def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True, include_trajs=[], chunksize=1000):
         """Calculate eigenpair matrices
        
         Parameters
@@ -815,16 +818,27 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
         A_b_set = {}
 
-        chunksize = 1000
+        #chunksize = 1000
         max_rows = chunksize*Ucg.n_dof
 
+        if len(include_trajs) > 0:
+            n_trajs = len(include_trajs)
+        else:
+            n_trajs = len(self.trajnames)
+
+        count = 0
         N_prev = np.zeros(self.n_cv_sets, float)
         for n in range(len(self.trajnames)):
+            if n in include_trajs:
+                count += 1
+            else:
+                continue
+
             if verbose:
-                if n == len(self.trajnames) - 1:
-                    print("force matching traj: {:>5d}/{:<5d} DONE".format(n + 1, len(self.trajnames)))
+                if count == n_trajs:
+                    print("force matching traj: {:>5d}/{:<5d} DONE".format(count, n_trajs))
                 else:
-                    print("force matching traj: {:>5d}/{:<5d}".format(n + 1, len(self.trajnames)), end="\r")
+                    print("force matching traj: {:>5d}/{:<5d}".format(count, n_trajs), end="\r")
                 sys.stdout.flush()
 
             # load force from simulation 
@@ -887,9 +901,6 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                         frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
                         n_frames_set = np.sum(frames_in_this_set)
                         n_rows_set = n_frames_set*Ucg.n_dof
-
-                        #import pdb
-                        #pdb.set_trace()
 
                         if n_frames_set > 0:
                             f_cg_subset = np.reshape(U1_force[frames_in_this_set], (n_rows_set, n_params))  
