@@ -212,6 +212,8 @@ if __name__ == "__main__":
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
     parser.add_argument("--recalc_cross_val", action="store_true")
+    parser.add_argument("--plot_scalar", action="store_true")
+    parser.add_argument("--recalc_scalar", action="store_true")
     parser.add_argument("--n_fixed_sigma", type=int, default=100)
     args = parser.parse_args()
 
@@ -232,6 +234,8 @@ if __name__ == "__main__":
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
     recalc_cross_val = args.recalc_cross_val
+    plot_scalar = args.plot_scalar
+    recalc_scalar = args.recalc_scalar
     n_fixed_sigma = args.n_fixed_sigma
     using_U0 = fix_back or fix_exvol
 
@@ -349,7 +353,7 @@ if __name__ == "__main__":
 
         if not loss_func.matrix_files_exist() or recalc_matrices:
             loss_func.assign_crossval_sets()
-            loss_func.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True)
+            loss_func.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True, include_trajs=include_trajs, chunksize=100)
     elif cg_method == "eigenpair":
         loss_func = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
 
@@ -477,14 +481,19 @@ if __name__ == "__main__":
                 ylabel="Mean squared error (MSE)", 
                 title="Ridge regression", prefix="ridge_")
     
-    raise SystemExit
-    os.chdir("..")
-    loss_func.scalar_product_Gen_fj(Ucg, cstar, psinames, cv_names=psinames)
-    os.chdir(cg_savedir)
+    if plot_scalar:
+        if recalc_scalar:
+            os.chdir("..")
+            #include_trajs = np.arange(0, len(trajnames), 10)
+            include_trajs = np.arange(0, 5)
+            loss_func.scalar_product_Gen_fj(Ucg, coeff_star, psinames, cv_names=psinames, include_trajs=include_trajs)
+            os.chdir(cg_savedir)
 
-    np.save("psi_fj.npy", loss_func.psi_fj)
-    np.save("psi_gU0_fj.npy", loss_func.psi_gU0_fj)
-    np.save("psi_gU1_fj.npy", loss_func.psi_gU1_fj)
-    np.save("psi_Lap_fj.npy", loss_func.psi_Lap_fj)
-    np.save("psi_Gen_fj.npy", loss_func.psi_Gen_fj)
+            np.save("psi_fj.npy", loss_func.psi_fj)
+            np.save("psi_gU0_fj.npy", loss_func.psi_gU0_fj)
+            np.save("psi_gU1_fj.npy", loss_func.psi_gU1_fj)
+            np.save("psi_Lap_fj.npy", loss_func.psi_Lap_fj)
+            np.save("psi_Gen_fj.npy", loss_func.psi_Gen_fj)
 
+        import implicit_force_field.polymer_scripts.plot_scalar
+        implicit_force_field.polymer_scripts.plot_scalar.plot_scalar()
