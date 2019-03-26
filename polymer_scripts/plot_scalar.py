@@ -7,8 +7,7 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 mpl.rcParams['mathtext.rm'] = 'serif'
 import matplotlib.pyplot as plt
 
-if __name__ == "__main__":
-
+def plot_scalar():
     psi_fj = np.load("psi_fj.npy")[0]
     psi_gU0_fj = np.load("psi_gU0_fj.npy")[0]
     psi_gU1_fj = np.load("psi_gU1_fj.npy")[0]
@@ -26,7 +25,6 @@ if __name__ == "__main__":
 
     import scipy.optimize
     popt, pcov = scipy.optimize.curve_fit(lambda x, m, b: m*x + b, psi_Gen_fj, -kappa*psi_fj, p0=(1,0))
-
 
     #plt.figure()
     #plt.plot(x, temp_Gen)
@@ -79,3 +77,6 @@ if __name__ == "__main__":
 
     fig.savefig("scalar_gU0_gU1_Lap_fj.pdf")
     fig.savefig("scalar_gU0_gU1_Lap_fj.png")
+
+if __name__ == "__main__":
+    plot_scalar()

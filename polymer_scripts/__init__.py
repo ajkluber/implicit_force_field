@@ -1,2 +1,3 @@
 from __future__ import absolute_import
 import implicit_force_field.polymer_scripts.util
+import implicit_force_field.polymer_scripts.plot_scalar
