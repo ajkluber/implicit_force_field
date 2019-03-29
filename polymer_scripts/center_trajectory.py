@@ -48,6 +48,11 @@ if __name__ == "__main__":
         if (not os.path.exists(new_name) or recenter) and ((last_change > 5) or not nowait):
             # get indices for polymer
             topfile = name + "_min.pdb"
+            if not os.path.exists(topfile):
+                topfile = name + "_min_1.pdb"
+                if not os.path.exists(topfile):
+                    raise ValueError("No pdb file present!")
+                    
             pdb = md.load(topfile)
             ply_idxs = pdb.top.select("name PL") 
 
