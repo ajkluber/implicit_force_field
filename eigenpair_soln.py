@@ -407,7 +407,7 @@ if __name__ == "__main__":
             optimal_sigma_idx = sig_idx
             optimal_alpha_idx = alp_idx
 
-        opt_std = 0.5*sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 1] 
+        opt_std = sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 1] 
 
         min_vl_domain = sig_vl_mse[:,:,0] <= (sig_vl_mse[optimal_sigma_idx, optimal_alpha_idx, 0] + opt_std)
         min_vl_idxs = np.argwhere(min_vl_domain)
@@ -488,8 +488,8 @@ if __name__ == "__main__":
                 title="Ridge regression", prefix="ridge_")
     
     if plot_scalar:
-        files_exist = [ os.path.exist(fname) for fname in ["psi_fj.npy",
-            "psi_gU0_fj.npy", "psi_gU1_fj.npy", "psi_Lap_fj.npy", "psi_Gen_fj.npy"]])
+        files_exist = [ os.path.exists(fname) for fname in ["psi_fj.npy",
+            "psi_gU0_fj.npy", "psi_gU1_fj.npy", "psi_Lap_fj.npy", "psi_Gen_fj.npy"]]
         if not np.all(files_exist) or recalc_scalar:
             os.chdir("..")
             #include_trajs = np.arange(0, len(trajnames), 10)
