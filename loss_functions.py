@@ -11,7 +11,7 @@ import scipy.linalg
 import mdtraj as md
 
 
-from memory_profiler import profile
+#from memory_profiler import profile
 # TODO: nonlinear loss function
 
 class CrossValidatedLoss(object):
@@ -791,7 +791,6 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         if self.matrix_files_exist() and not recalc:
             self._load_matrices()
 
-    @profile
     def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True, include_trajs=[], chunksize=1000):
         """Calculate force-matching matrices 
        
@@ -903,8 +902,9 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                         A = np.zeros((n_params + max_rows, n_params), float)
                         b = np.zeros(n_params + max_rows, float)
 
-                        A[:n_params,:] = R[:n_params,:].copy()
-                        b[:n_params] = np.dot(Q.T, f_target)
+
+                        A[:R.shape[0],:] = R.copy()
+                        b[:R.shape[0]] = np.dot(Q.T, f_target)
                     else:
                         # augment matrix system with next chunk of data
                         A[n_params:n_params + n_rows,:] = f_cg 
@@ -912,8 +912,8 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
                         Q_next, R_next = scl.qr(A, mode="economic")
 
-                        A[:n_params,:] = R_next
-                        b[:n_params] = np.dot(Q_next.T, b)
+                        A[:R_next.shape[0],:] = R_next
+                        b[:R_next.shape[0]] = np.dot(Q_next.T, b)
                 else:
                     for k in range(self.n_cv_sets):   
                         frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
@@ -930,20 +930,22 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                                 A = np.zeros((n_params + max_rows, n_params), float)
                                 b = np.zeros(n_params + max_rows, float)
 
-                                A[:n_params,:] = R[:n_params,:].copy()
-                                b[:n_params] = np.dot(Q.T, f_target_subset)
+                                rows_fill = R.shape[0]
+
+                                A[:rows_fill,:] = R.copy()
+                                b[:rows_fill] = np.dot(Q.T, f_target_subset)
 
                                 A_b_set[str(k)] = (A, b)
                             else:
                                 # augment matrix system with next chunk of data
                                 (A, b) = A_b_set[str(k)]
-                                A[n_params:n_params + n_rows_set,:] = f_cg_subset
-                                b[n_params:n_params + n_rows_set] = f_target_subset
+                                A[rows_fill:rows_fill + n_rows_set,:] = f_cg_subset
+                                b[rows_fill:rows_fill + n_rows_set] = f_target_subset
 
                                 Q_next, R_next = scl.qr(A, mode="economic")
 
-                                A[:n_params,:] = R_next
-                                b[:n_params] = np.dot(Q_next.T, b)
+                                A[:R_next.shape[0],:] = R_next
+                                b[:R_next.shape[0]] = np.dot(Q_next.T, b)
 
                 start_idx += N_chunk
 
