@@ -71,6 +71,7 @@ class CrossValidatedLoss(object):
         self.cv_sets_are_assigned = True
 
     def matrix_files_exist(self):
+
         X_files_exist = np.all([ os.path.exists("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
         d_files_exist = np.all([ os.path.exists("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
         set_files_exist = np.all([ os.path.exists("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(len(self.trajnames)) ])
@@ -94,9 +95,6 @@ class CrossValidatedLoss(object):
         
         if self.n_cv_sets is None:
             raise ValueErro("Need to define number of cross val sets in order to load them")
-
-        if self.save_by_traj:
-            pass
 
         print("Loading saved matrices...")
         self.X_sets = [ np.load("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
@@ -286,7 +284,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
         self.suffix = "EG"
         self.matrices_estimated = False
 
-        if self.matrix_files_exist() and not recalc:
+        if self.matrix_files_exist() and not self.recalc:
             self._load_matrices()
 
     def calc_matrices(self, Ucg, psinames, ti_file, M=1, coll_var_names=None, verbose=True, include_trajs=[]):
@@ -788,7 +786,7 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         self.suffix = "FM"
         self.matrices_estimated = False
 
-        if self.matrix_files_exist() and not recalc:
+        if self.matrix_files_exist() and not self.recalc:
             self._load_matrices()
 
     def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True, include_trajs=[], chunksize=1000):
@@ -845,11 +843,25 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         else:
             n_trajs = len(self.trajnames)
 
+        save_X_str = lambda num1, num2, num3: "{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
+        save_d_str = lambda num1, num2, num3: "{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
+        save_frm_str = lambda num1, num2: "{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, num1, num2, self.suffix)
+
         count = 0
         for n in range(len(self.trajnames)):
             if n in include_trajs:
                 count += 1
             else:
+                continue
+
+            tname = self.trajnames[n]
+            idx1 = (os.path.dirname(tname)).split("_")[-1]
+            idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+            files_out = [ save_X_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+            files_out += [ save_d_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+            files_out.append(save_frm_str(idx1, idx2))
+            file_out_exist = [ os.path.exists(fname) for fname in files_out ]
+            if np.all(files_out_exist) and not self.recalc:
                 continue
 
             if verbose:
@@ -951,13 +963,10 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
             if self.save_by_traj:
                 # save matrices for this traj alone
-                tname = self.trajnames[n]
-                idx1 = (os.path.dirname(tname)).split("_")[-1]
-                idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
                 for k in range(self.n_cv_sets):
-                    np.save("{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), A_b_set[str(k)][0])
-                    np.save("{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), A_b_set[str(k)][1])
-                np.save("{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, idx1, idx2, self.suffix), self.cv_set_assignment[n])
+                    np.save(save_X_str(idx1, idx2, k + 1), A_b_set[str(k)][0])
+                    np.save(save_d_str(idx1, idx2, k + 1), A_b_set[str(k)][1])
+                np.save(save_frm_str(idx1, idx2), self.cv_set_assignment[n])
 
                 A_b_set = {}
 
