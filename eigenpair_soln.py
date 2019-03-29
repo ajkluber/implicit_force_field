@@ -488,7 +488,9 @@ if __name__ == "__main__":
                 title="Ridge regression", prefix="ridge_")
     
     if plot_scalar:
-        if recalc_scalar:
+        files_exist = [ os.path.exist(fname) for fname in ["psi_fj.npy",
+            "psi_gU0_fj.npy", "psi_gU1_fj.npy", "psi_Lap_fj.npy", "psi_Gen_fj.npy"]])
+        if not np.all(files_exist) or recalc_scalar:
             os.chdir("..")
             #include_trajs = np.arange(0, len(trajnames), 10)
             #include_trajs = np.arange(0, 10)
