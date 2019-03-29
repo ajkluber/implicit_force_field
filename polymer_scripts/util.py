@@ -7,6 +7,43 @@ import simtk.openmm.app as app
 import simulation.openmm as sop
 import implicit_force_field as iff
 
+def test_Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
+        using_cv, cv_lin_pot=None, n_cv_basis_funcs=None, n_cv_test_funcs=None,
+        n_pair_gauss=None, pair_symmetry=None, a_coeff=None):
+
+    if method == "force-matching":
+        cg_savedir = "TEST_Ucg_FM"
+    elif method == "eigenpair":
+        cg_savedir = "TEST_Ucg_EG"
+    else:
+        raise ValueError("Method must be force-matching or eigenpair")
+
+    if using_U0:
+        if fix_back:
+            cg_savedir += "_fixback"
+
+        if fix_exvol:
+            cg_savedir += "_fixexvol"
+    else:
+        cg_savedir += "_noU0"
+
+    if using_cv:
+        if (cv_lin_pot is None) or (cv_lin_pot == False):
+            cg_savedir += "_CV_{}_{}_{}".format(M, n_cv_basis_funcs, n_cv_test_funcs)
+        else:
+            cg_savedir += "_CV_lin_{}_{}_{}".format(M, n_cv_basis_funcs, n_cv_test_funcs)
+    else:
+        cg_savedir += "_{}_pair_{}".format(pair_symmetry, n_pair_gauss)
+
+    if using_U0 or not using_cv:
+        cg_savedir += "_bondcut_{}".format(bond_cutoff)
+
+    if method == "eigenpair" and (not a_coeff is None):
+        #cg_savedir += "_fixed_a"
+        cg_savedir += "_fixed_a_{:.2e}".format(a_coeff)
+
+    return cg_savedir 
+
 def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
         using_cv, cv_lin_pot=None, n_cv_basis_funcs=None, n_cv_test_funcs=None,
         n_pair_gauss=None, pair_symmetry=None, a_coeff=None):
@@ -62,7 +99,6 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
     theta0_rad = theta0/unit.radian
     r0_nm = r0/unit.nanometer
 
-
     print("creating Ucg with...")
     # coarse-grain polymer potential with free parameters
     Ucg = iff.basis_library.PolymerModel(n_beads, beta, using_cv=using_cv, using_D2=using_D2, a_coeff=a_coeff)
@@ -112,7 +148,6 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
         cv_w_basis = 2*np.abs(cv_r0[1] - cv_r0[0])*np.ones(len(cv_r0), float)
         cv_r0_basis = cv_r0.reshape((-1, 1))
 
-        Ucg.gaussian_cv_test_funcs(cv_r0_test, cv_w_test)
         if (cv_lin_pot is None) or (cv_lin_pot == False):
             Ucg.using_linear = False
         else:
