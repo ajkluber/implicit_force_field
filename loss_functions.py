@@ -15,7 +15,8 @@ from memory_profiler import profile
 # TODO: nonlinear loss function
 
 class CrossValidatedLoss(object):
-    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5):
+    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5,
+            save_by_traj=False, recalc=False):
         """Creates matrices for minimizing the linear spectral loss equations
         
         Parameters
@@ -34,6 +35,8 @@ class CrossValidatedLoss(object):
         self.savedir = savedir
         self.n_cv_sets = n_cv_sets
         self.cv_sets_are_assigned = False
+        self.recalc = recalc
+        self.save_by_traj = save_by_traj
 
     def assign_crossval_sets(self):
         """Randomly assign frames to training and validation sets
@@ -70,7 +73,7 @@ class CrossValidatedLoss(object):
     def matrix_files_exist(self):
         X_files_exist = np.all([ os.path.exists("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
         d_files_exist = np.all([ os.path.exists("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
-        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
+        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(len(self.trajnames)) ])
         files_exist = X_files_exist and d_files_exist and set_files_exist
 
         return files_exist
@@ -79,25 +82,33 @@ class CrossValidatedLoss(object):
         for k in range(self.n_cv_sets):
             np.save("{}/X_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.X_sets[k])
             np.save("{}/d_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.d_sets[k])
+
+        for k in range(len(self.trajnames)):
             np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.cv_set_assignment[k])    
 
         np.save("{}/X_{}.npy".format(self.savedir, self.suffix), self.X)
         np.save("{}/d_{}.npy".format(self.savedir, self.suffix), self.d)
 
     def _load_matrices(self):
+
         
         if self.n_cv_sets is None:
             raise ValueErro("Need to define number of cross val sets in order to load them")
 
-        print("Loaded saved matrices...")
+        if self.save_by_traj:
+            pass
+
+        print("Loading saved matrices...")
         self.X_sets = [ np.load("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
         self.d_sets = [ np.load("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
-        set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
+        #set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
+        set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(len(self.trajnames)) ]
 
         self.n_frames_in_set = []
         for k in range(self.n_cv_sets):
-            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(self.n_cv_sets) ]))
-        self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
+            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(self.trajnames)) ]))
+        #self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
+        self.total_n_frames = np.sum(self.n_frames_in_set)
         self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
 
         if self.n_cv_sets > 1:
@@ -255,7 +266,7 @@ class CrossValidatedLoss(object):
 
 class LinearSpectralLoss(CrossValidatedLoss):
 
-    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
+    def __init__(self, topfile, trajnames, savedir, **kwargs):
         """Creates matrices for minimizing the linear spectral loss equations
         
         Parameters
@@ -270,11 +281,10 @@ class LinearSpectralLoss(CrossValidatedLoss):
             Recalculated 
 
         """
-        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, **kwargs)
 
         self.suffix = "EG"
         self.matrices_estimated = False
-        self.recalc = recalc
 
         if self.matrix_files_exist() and not recalc:
             self._load_matrices()
@@ -470,18 +480,36 @@ class LinearSpectralLoss(CrossValidatedLoss):
                             N_prev[k] += float(N_curr_set)
                 start_idx += N_chunk
 
-        self.X_sets = X 
-        self.d_sets = d
-        if self.n_cv_sets > 1:
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-        else:
-            self.X = self.X_sets[0]
-            self.d = self.d_sets[0]
+            if self.save_by_traj:
+                # save
+                tname = self.trajnames[n]
+                idx1 = (os.path.dirname(tname)).split("_")[-1]
+                idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+                for k in range(self.n_cv_sets):
+                    np.save("{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), X[k])
+                    np.save("{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), d[k])
+                np.save("{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, idx1, idx2, self.suffix), self.cv_set_assignment[n])
 
-        self.matrices_estimated = True
-        self._save_matrices()
-        self._training_and_validation_matrices()
+                N_prev = np.zeros(self.n_cv_sets, float)
+                d = np.zeros((self.n_cv_sets, P), float)
+                if Ucg.fixed_a_coeff:
+                    X = np.zeros((self.n_cv_sets, P, R), float)
+                else:
+                    X = np.zeros((self.n_cv_sets, P, R + 1), float)
+
+        if not self.save_by_traj:
+            self.X_sets = X 
+            self.d_sets = d
+            if self.n_cv_sets > 1:
+                self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+                self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            else:
+                self.X = self.X_sets[0]
+                self.d = self.d_sets[0]
+
+            self.matrices_estimated = True
+            self._save_matrices()
+            self._training_and_validation_matrices()
 
     def scalar_product_Gen_fj(self, Ucg, coeff, psinames, M=1, cv_names=[], include_trajs=[]):
 
@@ -740,7 +768,7 @@ class LinearSpectralLoss(CrossValidatedLoss):
 
 class LinearForceMatchingLoss(CrossValidatedLoss):
 
-    def __init__(self, topfile, trajnames, savedir, n_cv_sets=5, recalc=False):
+    def __init__(self, topfile, trajnames, savedir, **kwargs):
         """Creates matrices for minimizing the linear spectral loss equations
         
         Parameters
@@ -755,18 +783,17 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             Recalculated 
 
         """
-        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, n_cv_sets=n_cv_sets)
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, **kwargs)
 
         self.suffix = "FM"
         self.matrices_estimated = False
-        self.recalc = recalc
 
         if self.matrix_files_exist() and not recalc:
             self._load_matrices()
 
     @profile
     def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True, include_trajs=[], chunksize=1000):
-        """Calculate eigenpair matrices
+        """Calculate force-matching matrices 
        
         Parameters
         ----------
@@ -789,6 +816,10 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             Collective variable rilenames if pre-calculated. Will calculate
             collective variables on the fly if not given. 
 
+        Description
+        -----------
+        Using running QR decomposition to calculate.
+
         """
 
         self.Ucg = Ucg
@@ -801,14 +832,8 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
         n_params = Ucg.n_tot_params
         P = Ucg.n_test_funcs
-
-        # if constant diff coeff
-        if Ucg.constant_a_coeff:
-            d = np.zeros((self.n_cv_sets, P), float)
-            X = np.zeros((self.n_cv_sets, P, n_params), float)
-            D2 = np.zeros((self.n_cv_sets, n_params, n_params), float)    # TODO: high-dimensional smoothness 
-        else:
-            raise NotImplementedError("Only constant diffusion coefficient is supported.")
+        max_rows = chunksize*Ucg.n_dof
+        A_b_set = {}
 
         if Ucg.using_cv and not Ucg.cv_defined:
             raise ValueError("Collective variables are not defined!")
@@ -816,18 +841,12 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         if len(forcenames) != len(self.trajnames):
             raise ValueError("Need forces for every trajectory!")
 
-        A_b_set = {}
-
-        #chunksize = 1000
-        max_rows = chunksize*Ucg.n_dof
-
         if len(include_trajs) > 0:
             n_trajs = len(include_trajs)
         else:
             n_trajs = len(self.trajnames)
 
         count = 0
-        N_prev = np.zeros(self.n_cv_sets, float)
         for n in range(len(self.trajnames)):
             if n in include_trajs:
                 count += 1
@@ -895,7 +914,6 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
 
                         A[:n_params,:] = R_next
                         b[:n_params] = np.dot(Q_next.T, b)
-                    N_prev[0] += float(N_chunk)
                 else:
                     for k in range(self.n_cv_sets):   
                         frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
@@ -927,18 +945,30 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                                 A[:n_params,:] = R_next
                                 b[:n_params] = np.dot(Q_next.T, b)
 
-                            N_prev[k] += float(n_frames_set)
                 start_idx += N_chunk
 
-        if self.n_cv_sets > 1:
-            self.X_sets = [ A_b_set[str(k)][0] for k in range(self.n_cv_sets) ]
-            self.d_sets = [ A_b_set[str(k)][1] for k in range(self.n_cv_sets) ]
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-        else:
-            self.X = A
-            self.d = b
+            if self.save_by_traj:
+                # save matrices for this traj alone
+                tname = self.trajnames[n]
+                idx1 = (os.path.dirname(tname)).split("_")[-1]
+                idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+                for k in range(self.n_cv_sets):
+                    np.save("{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), A_b_set[str(k)][0])
+                    np.save("{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, idx1, idx2, self.suffix, k + 1), A_b_set[str(k)][1])
+                np.save("{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, idx1, idx2, self.suffix), self.cv_set_assignment[n])
 
-        self.matrices_estimated = True
-        self._save_matrices()
-        self._training_and_validation_matrices()
+                A_b_set = {}
+
+        if not self.save_by_traj:
+            if self.n_cv_sets > 1:
+                self.X_sets = [ A_b_set[str(k)][0] for k in range(self.n_cv_sets) ]
+                self.d_sets = [ A_b_set[str(k)][1] for k in range(self.n_cv_sets) ]
+                self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+                self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            else:
+                self.X = A
+                self.d = b
+
+            self.matrices_estimated = True
+            self._save_matrices()
+            self._training_and_validation_matrices()

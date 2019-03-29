@@ -162,27 +162,29 @@ def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Runs coarse-grain model of polymer')
     parser.add_argument('msm_savedir', type=str, help='MSM save directory.')
+    parser.add_argument("cg_method", type=str, help='Coarse-graining method.')
     parser.add_argument("--psi_dims", type=int, default=1)
+    parser.add_argument("--a_coeff", type=float, default=None, help='Diffusion coefficient used in eigenpair.')
     parser.add_argument("--using_cv", action="store_true")
     parser.add_argument("--n_basis", type=int, default=-1)
     parser.add_argument("--n_test", type=int, default=-1)
-    parser.add_argument("--n_pair_gauss", type=int, default=10)
+    parser.add_argument("--n_pair_gauss", type=int, default=-1)
+    parser.add_argument("--pair_symmetry", type=str, default=None)
     parser.add_argument("--bond_cutoff", type=int, default=4)
+    parser.add_argument("--lin_pot", action="store_true")
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
-    parser.add_argument('--cg_method', type=str, help='Solution is from force matching.')
+    parser.add_argument('--coeff_file', type=str, default="rdg_fixed_sigma_cstar.npy", help='Specify file with coefficients.')
 
     parser.add_argument('--starting_pdb', type=str, default="", help='Starting pdb filename.')
     parser.add_argument('--walltime', type=float, default=7.8, help='Number hours to run.')
     parser.add_argument('--timestep', type=float, default=0.002, help='Simulation timestep (ps).')
     parser.add_argument('--collision_rate', type=float, default=0, help='Simulation collision_rate (1/ps).')
-    parser.add_argument('--a_coeff', type=float, default=0, help='Diffusion coefficient used in eigenpair.')
     parser.add_argument('--nsteps_out', type=int, default=100, help='Number of steps between saves.')
     parser.add_argument('--run_idx', type=int, default=0, help='Run index.')
     parser.add_argument('--T', type=float, default=300, help='Temperature.')
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--platform', type=str, default=None, help='Specify platform (CUDA, CPU).')
-    parser.add_argument('--coeff_file', type=str, default="rdg_cstar.npy", help='Specify file with coefficients.')
     parser.add_argument('--dry_run', action="store_true", help='Dry run. No simulation.')
     args = parser.parse_args()
     
@@ -190,17 +192,20 @@ if __name__ == "__main__":
     name = "c" + str(n_beads)
     #name = args.name
     #n_beads = args.n_beads
+
     msm_savedir = args.msm_savedir
+    cg_method = args.cg_method
     M = args.psi_dims
     using_cv = args.using_cv
     n_cv_basis_funcs = args.n_basis
     n_cv_test_funcs = args.n_test
     n_pair_gauss = args.n_pair_gauss
+    pair_symmetry = args.pair_symmetry
     bond_cutoff = args.bond_cutoff
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
+    lin_pot = args.lin_pot
 
-    cg_method = args.cg_method
     using_U0 = fix_back or fix_exvol
 
     print(" ".join(sys.argv))
@@ -216,11 +221,17 @@ if __name__ == "__main__":
     platform = args.platform
     dry_run = args.dry_run
     temperature = T*unit.kelvin
-    beta = 1/(0.0083145*T)
+
+    kb = 0.0083145
+    beta = 1./(kb*T)
+
+    if a_coeff is None:
+        fixed_a = False
+    else:
+        fixed_a = True
 
     using_D2 = False
     n_cross_val_sets = 5
-
 
     if (n_cv_basis_funcs != -1) and (n_cv_test_funcs != -1):
         print("Since n_test ({}) and n_basis ({}) are specified -> using_cv=True".format(n_cv_test_funcs, n_cv_basis_funcs))
@@ -229,16 +240,24 @@ if __name__ == "__main__":
         if using_cv:
             raise ValueError("Please specify n_test and n_basis")
 
+    if n_pair_gauss != -1:
+        if not pair_symmetry in ["shared", "seq_sep", "unique"]:
+            raise ValueError("Must specificy pair_symmetry")
+
     cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
             bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
-            n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff)
+            n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff,
+            n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
+            pair_symmetry=pair_symmetry)
 
     print(cg_savedir)
+    #print(str(os.path.exists(cg_savedir + "/" + args.coeff_file)))
+    #raise SystemExit
 
-    Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg(
-            msm_savedir, n_beads, M, beta, fix_back, fix_exvol, using_cv,
-            using_D2, n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss,
-            bond_cutoff, a_coeff=a_coeff)
+    Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg( msm_savedir,
+            n_beads, M, beta, fix_back, fix_exvol, using_cv, using_D2,
+            n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss, bond_cutoff,
+            cv_lin_pot=lin_pot, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
 
     cwd = os.getcwd()
     Hdir = cwd + "/" + cg_savedir
@@ -258,8 +277,8 @@ if __name__ == "__main__":
 
     # If trajectories exist in run directory, extend the last one.
     traj_idx = 1
-    #while all_trajfiles_exist(run_idx, traj_idx):
-    #    traj_idx += 1
+    while all_trajfiles_exist(run_idx, traj_idx):
+        traj_idx += 1
 
     if traj_idx == 1:
         minimize = True
@@ -318,9 +337,10 @@ if __name__ == "__main__":
     feat_types = ["dist"]
     feat_idxs = [pair_idxs]
 
-    Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
+    if using_cv:
+        Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
+        #print(pr_cv_expr)
 
-    print(pr_cv_expr)
     #raise SystemExit
 
     ###################################################
@@ -330,12 +350,13 @@ if __name__ == "__main__":
         os.makedirs(rundir)
     os.chdir(rundir)
 
-    plt.figure()
-    plt.plot(cv_grid, Ucv)
-    plt.xlabel(r"TIC1 $\psi_1$")
-    plt.ylabel(r"$U_{\mathrm{cv}}(\psi_1)$ (kJ/mol)")
-    plt.savefig("tab_Ucv_func.pdf")
-    plt.savefig("tab_Ucv_func.png")
+    if using_cv:
+        plt.figure()
+        plt.plot(cv_grid, Ucv)
+        plt.xlabel(r"TIC1 $\psi_1$")
+        plt.ylabel(r"$U_{\mathrm{cv}}(\psi_1)$ (kJ/mol)")
+        plt.savefig("tab_Ucv_func.pdf")
+        plt.savefig("tab_Ucv_func.png")
 
     ini_pdb_file = name + "_noslv_min.pdb"
     if not os.path.exists(ini_pdb_file):
@@ -360,7 +381,12 @@ if __name__ == "__main__":
     forcefield = app.ForceField(ff_filename)
 
     system = forcefield.createSystem(topology, ignoreExternalBonds=True, residueTemplates=templates)
-    system.addForce(Ucv_force)
+
+    if using_cv:
+        system.addForce(Ucv_force)
+    else:
+        # add pairwise potentials
+        pass
 
     if collision_rate == 0:
         # gamma = m/D ? does temperature enter?
@@ -374,13 +400,20 @@ if __name__ == "__main__":
     #save_E_groups = [0, 1, 2, 3, 4]
     save_E_groups = []
 
+    if traj_idx == 1:
+        prev_state_name = None
+    else:
+        positions = None
+        prev_state_name = name + "_final_state_" + str(traj_idx - 1) + ".xml"
+
     if not dry_run:
         print("Running production...")
         sys.stdout.flush()
         sop.run.production(system, topology, ensemble, temperature, timestep,
                 collision_rate, n_steps, nsteps_out, firstframe_name, log_name,
-                traj_name, final_state_name, ini_positions=positions,
-                minimize=minimize, use_platform=platform, walltime=walltime,
+                traj_name, final_state_name, ini_state_name=prev_state_name,
+                ini_positions=positions, minimize=minimize,
+                use_platform=platform, walltime=walltime,
                 save_E_groups=save_E_groups)
 
         stoptime = time.time()

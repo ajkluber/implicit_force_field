@@ -208,6 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("--lin_pot", action="store_true")
     parser.add_argument("--alpha_lims", nargs=3, type=float, default=[-10, 2, 100])
     parser.add_argument("--skip_trajs", type=int, default=1)
+    parser.add_argument("--save_by_traj", action="store_true")
     parser.add_argument("--fix_back", action="store_true")
     parser.add_argument("--fix_exvol", action="store_true")
     parser.add_argument("--recalc_matrices", action="store_true")
@@ -230,6 +231,7 @@ if __name__ == "__main__":
     lin_pot = args.lin_pot
     alpha_lims = args.alpha_lims
     skip_trajs = args.skip_trajs
+    save_by_traj = args.save_by_traj
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
     recalc_matrices = args.recalc_matrices
@@ -272,7 +274,7 @@ if __name__ == "__main__":
     using_D2 = False
     n_cross_val_sets = 5
 
-    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
+    cg_savedir = util.test_Ucg_dirname(cg_method, M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv,
             n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
             a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
@@ -349,13 +351,17 @@ if __name__ == "__main__":
 
     # choose loss function for coarse-graining method
     if cg_method == "force-matching":
-        loss_func = loss.LinearForceMatchingLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+        loss_func = loss.LinearForceMatchingLoss(topfile, trajnames,
+                cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices,
+                save_by_traj=save_by_traj)
 
         if not loss_func.matrix_files_exist() or recalc_matrices:
             loss_func.assign_crossval_sets()
             loss_func.calc_matrices(Ucg, forcenames, coll_var_names=psinames, verbose=True, include_trajs=include_trajs, chunksize=100)
     elif cg_method == "eigenpair":
-        loss_func = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir, n_cv_sets=n_cross_val_sets, recalc=recalc_matrices)
+        loss_func = loss.LinearSpectralLoss(topfile, trajnames, cg_savedir,
+                n_cv_sets=n_cross_val_sets, recalc=recalc_matrices,
+                save_by_traj=save_by_traj)
 
         if not loss_func.matrix_files_exist() or recalc_matrices:
             loss_func.assign_crossval_sets()
@@ -485,7 +491,8 @@ if __name__ == "__main__":
         if recalc_scalar:
             os.chdir("..")
             #include_trajs = np.arange(0, len(trajnames), 10)
-            include_trajs = np.arange(0, 5)
+            #include_trajs = np.arange(0, 10)
+            include_trajs = np.arange(0, len(trajnames))
             loss_func.scalar_product_Gen_fj(Ucg, coeff_star, psinames, cv_names=psinames, include_trajs=include_trajs)
             os.chdir(cg_savedir)
 
