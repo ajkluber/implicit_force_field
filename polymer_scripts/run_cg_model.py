@@ -244,7 +244,7 @@ if __name__ == "__main__":
         if not pair_symmetry in ["shared", "seq_sep", "unique"]:
             raise ValueError("Must specificy pair_symmetry")
 
-    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
+    cg_savedir = util.test_Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
             bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
             n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff,
             n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
@@ -275,6 +275,9 @@ if __name__ == "__main__":
 
     rundir = rundir_str(run_idx)
 
+    if not os.path.exists(rundir):
+        os.makedirs(rundir)
+
     # If trajectories exist in run directory, extend the last one.
     traj_idx = 1
     while all_trajfiles_exist(run_idx, traj_idx):
@@ -287,77 +290,81 @@ if __name__ == "__main__":
 
     min_name, log_name, traj_name, final_state_name = sop.util.output_filenames(name, traj_idx)
 
-    ####################################################
-    # create collective variable potential
-    ####################################################
-    #coeff = np.load(cg_savedir + "/rdg_cstar.npy")
-    #coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
     coeff = np.load(cg_savedir + "/" + args.coeff_file)
-
     sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
 
-    cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
-    cv_mean = np.load(msm_savedir + "/tica_mean.npy")
-
-    temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
-    #psi1_min, psi1_max = temp_cv_r0.min(), temp_cv_r0.max()
-    #cv_grid = np.linspace(psi1_min, psi1_max, 200)
-
-    # set domain of potential
-    # real min and max from data
-    psinames = glob.glob(msm_savedir + "/run_*TIC_1.npy")
-    psi1_min = np.min([ np.load(x).min() for x in psinames  ])
-    psi1_max = np.max([ np.load(x).max() for x in psinames  ])
-    cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
-
-    dcv = np.abs(cv_grid[1] - cv_grid[0])
-
-    Ucv = Ucg.Ucv_values(coeff, cv_grid)
-    dUcv = np.diff(Ucv)/dcv
-
-    # IS THIS NEEDED?
-    # create tabulated function of collective variable 
-    #if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
-    #    data = np.load(cg_savedir + "/Ucv_table.npy")
-    #    cv_grid_ext = data[:,0]
-    #    Ucv_ext = data[:,1]
-    #else:
-    #    n_thresh = 500 
-    #    cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir, (psi1_min, psi1_max))
-
-    cv_grid_ext = cv_grid
-    Ucv_ext = Ucv
-
-    pair_idxs = []
-    for i in range(n_beads - 1):
-        for j in range(i + 4, n_beads):
-            pair_idxs.append([i, j])
-    pair_idxs = np.array(pair_idxs)
-
-    feat_types = ["dist"]
-    feat_idxs = [pair_idxs]
-
     if using_cv:
+        ####################################################
+        # create collective variable potential
+        ####################################################
+        #coeff = np.load(cg_savedir + "/rdg_cstar.npy")
+        #coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
+
+
+        cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:M]
+        cv_mean = np.load(msm_savedir + "/tica_mean.npy")
+
+        temp_cv_r0 = np.load(msm_savedir + "/psi1_mid_bin.npy")
+        #psi1_min, psi1_max = temp_cv_r0.min(), temp_cv_r0.max()
+        #cv_grid = np.linspace(psi1_min, psi1_max, 200)
+
+        # set domain of potential
+        # real min and max from data
+        psinames = glob.glob(msm_savedir + "/run_*TIC_1.npy")
+        psi1_min = np.min([ np.load(x).min() for x in psinames  ])
+        psi1_max = np.max([ np.load(x).max() for x in psinames  ])
+        cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
+
+        dcv = np.abs(cv_grid[1] - cv_grid[0])
+
+        Ucv = Ucg.Ucv_values(coeff, cv_grid)
+        dUcv = np.diff(Ucv)/dcv
+
+        # IS THIS NEEDED?
+        # create tabulated function of collective variable 
+        #if os.path.exists(cg_savedir + "/Ucv_table.npy") and False:
+        #    data = np.load(cg_savedir + "/Ucv_table.npy")
+        #    cv_grid_ext = data[:,0]
+        #    Ucv_ext = data[:,1]
+        #else:
+        #    n_thresh = 500 
+        #    cv_grid_ext, Ucv_ext = add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, n_thresh, cg_savedir, (psi1_min, psi1_max))
+
+        cv_grid_ext = cv_grid
+        Ucv_ext = Ucv
+
+        pair_idxs = []
+        for i in range(n_beads - 1):
+            for j in range(i + 4, n_beads):
+                pair_idxs.append([i, j])
+        pair_idxs = np.array(pair_idxs)
+
+        feat_types = ["dist"]
+        feat_idxs = [pair_idxs]
+
         Ucv_force, pr_cv_expr = get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs)
         #print(pr_cv_expr)
 
-    #raise SystemExit
-
-    ###################################################
-    # Run production 
-    ###################################################
-    if not os.path.exists(rundir):
-        os.makedirs(rundir)
-    os.chdir(rundir)
-
-    if using_cv:
         plt.figure()
         plt.plot(cv_grid, Ucv)
         plt.xlabel(r"TIC1 $\psi_1$")
         plt.ylabel(r"$U_{\mathrm{cv}}(\psi_1)$ (kJ/mol)")
-        plt.savefig("tab_Ucv_func.pdf")
-        plt.savefig("tab_Ucv_func.png")
+        plt.savefig(rundir + "/tab_Ucv_func.pdf")
+        plt.savefig(rundir + "/tab_Ucv_func.png")
+    else:
+        if pair_symmetry == "shared":
+            pass
+        elif pair_symmetry == "shared":
+            pass
+        elif pair_symmetry == "shared":
+            pass
+        else:
+            print("ERROR")
 
+    ###################################################
+    # Run production 
+    ###################################################
+    os.chdir(rundir)
     ini_pdb_file = name + "_noslv_min.pdb"
     if not os.path.exists(ini_pdb_file):
         shutil.copy("../../" + ini_pdb_file, ini_pdb_file)
