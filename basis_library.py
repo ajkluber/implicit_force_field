@@ -271,7 +271,7 @@ class FunctionLibrary(object):
             Number of frames to . s_frames > 0 when using the Kramers-Moyal
             relation.
             
-        G : None or np.ndarray
+        G : None or np.array
             If G is None then new matrix is created otherwise results are added
             to previous calculation.
         """
@@ -314,13 +314,13 @@ class FunctionLibrary(object):
             Number of frames to . s_frames > 0 when using the Kramers-Moyal
             relation.
             
-        G : None or np.ndarray
+        G : None or np.array
             If G is None then new matrix is created otherwise results are added
             to previous calculation.
 
         Returns
         -------
-        G : np.ndarray (T, P)
+        G : np.array (T, P)
             Matrix of 
         """
 
@@ -578,7 +578,7 @@ class PolymerModel(FunctionLibrary):
             Each element is an array of coefficients that multiple the
             corresponding feature.
 
-        feature_mean : np.ndarray
+        feature_mean : np.array
             Mean value of each feature.
 
         """
@@ -923,7 +923,7 @@ class PolymerModel(FunctionLibrary):
         w_nm : np.ndarry float
             Widths of Gaussians for each bond in nanometers
 
-        coeff : float or np.ndarray
+        coeff : float or np.array
             Coefficient to multiple each test function
         """
 
@@ -960,13 +960,13 @@ class PolymerModel(FunctionLibrary):
         
         Parameters
         ----------
-        theta0_rad : np.ndarray, float
+        theta0_rad : np.array, float
             Center of Von Mises function in radians
 
-        kappa : np.ndarray, float
+        kappa : np.array, float
             Steepness of Von Mises function
         
-        coeff : float or np.ndarray
+        coeff : float or np.array
             Coefficient to multiple each test function
         
         """
@@ -1033,10 +1033,10 @@ class PolymerModel(FunctionLibrary):
         
         Parameters
         ----------
-        cv_r0 : np.ndarray(P_cv, M) 
+        cv_r0 : np.array(P_cv, M) 
             Centers of test functions in collective variable space
 
-        cv_w : np.ndarray(P_cv)
+        cv_w : np.array(P_cv)
             Widths of test functions in collective variable space
         """
 
@@ -1088,17 +1088,73 @@ class PolymerModel(FunctionLibrary):
                 Ucv += coeff[self.n_cart_params + i]*self.cv_U_funcs[i](cv_vals)
         return Ucv
 
-    #def Upair_values(self, coeff, r_vals):
-    #    """Return the """
+    def Upair_values(self, coeff, r_vals):
+        """Pair potential values
 
-    #    Upair = np.zeros(len(r_vals))
-    #    if self.fixed_a_coeff: 
-    #        for i in range(len(coeff) - self.n_cart_params):
-    #            Upair += coeff[i]*self.U_funcs[i](r_vals)
-    #    else:
-    #        for i in range(len(coeff) - 1 - self.n_cart_params):
-    #            Upair += coeff[i]*self.U_funcs[i](r_vals)
-    #    return Upair
+        Parameters
+        ----------
+        coeff : np.array
+            Coefficients for potential.
+
+        r_vals : np.array
+            Radial distance values to evaluate potential (nm).
+        
+        Returns
+        -------
+        Upair : list of np.array 
+        
+        """
+
+        if not self.fixed_a_coeff:
+            coeff = coeff[:-1]
+
+        xyz_traj = np.zeros((len(r_vals), 6)) 
+        xyz_traj[:,4] = r_vals
+
+        if self.pair_symmetry == "shared":
+            #temp_U_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=self.bond_cutoff)
+            Upair = [np.zeros(len(r_vals))] 
+            for k in range(len(coeff)):
+                c_k = coeff[k]
+                u_k = self.U_funcs[1][k](*xyz_traj.T)
+                Upair[0] += c_k*u_k
+
+        elif self.pair_symmetry == "seq_sep":
+            #coord_idxs_by_seq_sep = self._generate_pairwise_idxs(bond_cutoff=self.bond_cutoff, sort_by_seq_sep=True)
+            n_pair_gauss = len(self.U_sym[1]) - 1
+
+            n_pots = self.n_atoms - self.bond_cutoff
+            Upair = []
+            for n in range(n_pots):
+                Utemp = np.zeros(len(r_vals))
+                c_idx_start = n*n_pair_gauss
+                Utemp += coeff[0]*self.U_funcs[1][0](*xyz_traj.T)
+                for k in range(n_pair_gauss):
+                    c_k = coeff[c_idx_start + k + 1]
+                    u_k = self.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
+                    Utemp += c_k*u_k
+                Upair.append(Utemp)
+
+        elif self.pair_symmetry == "unique":
+            #all_coord_idxs = self._generate_pairwise_idxs(bond_cutoff=self.bond_cutoff, sort_by_seq_sep=False)
+            n_pots = (self.n_atoms - self.bond_cutoff)*(self.n_atoms - self.bond_cutoff + 1)/2
+
+            n_pair_gauss = (len(self.U_sym[1]) - 1)/n_pots
+
+            Upair = []
+            for n in range(n_pots):
+                Utemp = np.zeros(len(r_vals))
+                c_idx_start = n*n_pair_gauss
+                Utemp += coeff[0]*self.U_funcs[1][0](*xyz_traj.T)
+                for k in range(n_pair_gauss):
+                    c_k = coeff[c_idx_start + k + 1]
+                    u_k = self.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
+                    Utemp += c_k*u_k
+                Upair.append(Utemp)
+        else:
+            raise ValueError("pair_symmetry must be set to calculate Upair")
+
+        return Upair
 
     def potential_U0(self, xyz_traj, cv_traj, sumterms=True):
         """Fixed potential energy term
@@ -1107,12 +1163,12 @@ class PolymerModel(FunctionLibrary):
         ----------
         xyz_traj : 
 
-        cv_traj : np.ndarray
+        cv_traj : np.array
             Collective variable trajectory.
         
         Returns
         -------
-        U0 : np.ndarray
+        U0 : np.array
             Potential 
         """
 
@@ -1147,7 +1203,7 @@ class PolymerModel(FunctionLibrary):
             
         Returns
         -------
-        grad_U0 : np.ndarray
+        grad_U0 : np.array
             Matrix of gradients
         """
 
@@ -1182,12 +1238,12 @@ class PolymerModel(FunctionLibrary):
         xyz_traj : 
             Cartesian coordinate trajectory.
 
-        cv_traj : np.ndarray
+        cv_traj : np.array
             Collective variable trajectory.
         
         Returns
         -------
-        U1 : np.ndarray
+        U1 : np.array
             Potential energy for each parameter
         """
 
@@ -1214,12 +1270,12 @@ class PolymerModel(FunctionLibrary):
         ----------
         xyz_traj : 
 
-        cv_traj : np.ndarray
+        cv_traj : np.array
             Collective variable trajectory.
         
         Returns
         -------
-        grad_x_U1 : np.ndarray
+        grad_x_U1 : np.array
             Gradient with respect to Cartesian coordinates
         """
 
