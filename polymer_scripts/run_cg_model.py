@@ -87,6 +87,58 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
 
     return cv_grid_ext, Ucv_ext
 
+def get_Upair_force(Ucg, coeff, r_vals):
+    """Create pairwise potentials as tabulated functions"""
+
+    N = Ucg.n_atoms
+    bcut = Ucg.bond_cutoff
+    Up_vals = Ucg.Upair_values(coeff, r_vals)
+    if len(Up_vals) > 1:
+        table_vals = np.zeros((len(Up_vals), len(r_vals)))
+        for i in range(len(Up_vals)):
+            table_vals[i,:] = Up_vals[i]
+
+        xvals = np.arange(len(Up_vals))
+        yvals = r_vals
+
+        Table_func = omm.Continuous2DFunction(len(xvals), len(yvals),
+            table_vals, xvals[0], xvals[-1], yvals[0], yvals[-1])
+
+        Up_force = omm.CustomCompoundBondForce(2, "Table(p_idx, distance(p1, p2))")
+        Up_force.addPerBondParameter("p_idx")
+        Up_force.addTabulatedFunction("Table", Table_func)
+    else:
+        Table_func = omm.Continuous1DFunction(Up_vals[0], r_vals[0], r_vals[-1])
+
+        Up_force = omm.CustomCompoundBondForce(2, "Table(distance(p1, p2))")
+        Up_force.addTabulatedFunction("Table", Table_func)
+
+    if Ucg.pair_symmetry == "shared":
+        # all pairs share same interaction
+        for i in range(N - bcut):
+            for j in range(i + bcut, N):
+                Up_force.addBond((i, j))
+
+    elif Ucg.pair_symmetry == "seq_sep":
+        # pairs with same sequence sep share same interaction
+        for i in range(N - bcut):
+            for j in range(i + bcut, N):
+                p_idx = np.abs(j - i)
+                Up_force.addBond([i, j], [p_idx])
+
+    elif Ucg.pair_symmetry == "unique":
+        # all pair have different interactions
+        p_idx = 0
+        for i in range(N - bcut):
+            for j in range(i + bcut, N):
+                Up_force.addBond([i, j], [p_idx])
+                p_idx += 1
+    else:
+        raise ValueError("pair_symmetry must be: shared, seq_sep, unique. Gave:" + str(Ucg.pair_symmetry))
+
+    return Up_force
+
+
 def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs):
     feature_funcs = {"dist":"distance(p{}, p{})", "invdist":"(1/distance(p{}, p{}))", 
             "angle":"angle(p{}, p{}, p{})", "dih":"dihedral(p{}, p{}, p{}, p{})"}
@@ -352,14 +404,8 @@ if __name__ == "__main__":
         plt.savefig(rundir + "/tab_Ucv_func.pdf")
         plt.savefig(rundir + "/tab_Ucv_func.png")
     else:
-        if pair_symmetry == "shared":
-            pass
-        elif pair_symmetry == "shared":
-            pass
-        elif pair_symmetry == "shared":
-            pass
-        else:
-            print("ERROR")
+        r_vals = np.linspace(0.1, 2, 300)
+        Up_force = get_Upair_force(Ucg, coeff, r_vals)
 
     ###################################################
     # Run production 
@@ -392,8 +438,7 @@ if __name__ == "__main__":
     if using_cv:
         system.addForce(Ucv_force)
     else:
-        # add pairwise potentials
-        pass
+        system.addForce(Up_force)
 
     if collision_rate == 0:
         # gamma = m/D ? does temperature enter?
