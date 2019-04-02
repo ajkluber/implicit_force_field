@@ -238,6 +238,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_steps', type=int, default=int(5e6), help='Number of steps.')
     parser.add_argument('--platform', type=str, default=None, help='Specify platform (CUDA, CPU).')
     parser.add_argument('--dry_run', action="store_true", help='Dry run. No simulation.')
+    parser.add_argument('--plot_Eterms', action="store_true", help='Save and plot each energy term.')
     args = parser.parse_args()
     
     n_beads = 25
@@ -272,6 +273,7 @@ if __name__ == "__main__":
     n_steps = args.n_steps
     platform = args.platform
     dry_run = args.dry_run
+    plot_Eterms = args.plot_Eterms
     temperature = T*unit.kelvin
 
     kb = 0.0083145
@@ -449,8 +451,10 @@ if __name__ == "__main__":
     ensemble = "NVT"
     firstframe_name = name + "_min_" + str(traj_idx) + ".pdb"
 
-    #save_E_groups = [0, 1, 2, 3, 4]
-    save_E_groups = []
+    if plot_Eterms:
+        save_E_groups = [0, 1, 2, 3, 4]
+    else:
+        save_E_groups = []
 
     if traj_idx == 1:
         prev_state_name = None
@@ -473,70 +477,76 @@ if __name__ == "__main__":
             fout.write("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
         print("{} steps took {} min".format(n_steps, (stoptime - starttime)/60.))
 
-    raise SystemExit
 
-    #Esim = np.loadtxt("c25_1.log", usecols=(1,), delimiter=",")
-    #Eterms = np.loadtxt("E_terms.dat")
-    Eterms = np.load("E_terms.npy")
-    Eex = Eterms[:,1]
-    Eb = Eterms[:,2]
-    Ea = Eterms[:,3]
-    Ecv = Eterms[:,5]
+    if plot_Eterms:
+        #Esim = np.loadtxt("c25_1.log", usecols=(1,), delimiter=",")
+        #Eterms = np.loadtxt("E_terms.dat")
+        Eterms = np.load("E_terms.npy")
+        Eex = Eterms[:,1]
+        Eb = Eterms[:,2]
+        Ea = Eterms[:,3]
+        E1 = Eterms[:,5]
 
-    traj = md.load("c25_traj_1.dcd", top="c25_noslv_min.pdb")
-    bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
-    angle_theta = md.compute_angles(traj, np.array([[i , i + 1, i + 2] for i in range(23) ]))
+        traj = md.load("c25_traj_1.dcd", top="c25_noslv_min.pdb")
+        bond_r = md.compute_distances(traj, np.array([[i , i + 1] for i in range(24) ]))
+        angle_theta = md.compute_angles(traj, np.array([[i , i + 1, i + 2] for i in range(23) ]))
 
-    pair_idxs = []
-    for i in range(n_beads - 1):
-        for j in range(i + 4, n_beads):
-            pair_idxs.append([i, j])
-    pair_idxs = np.array(pair_idxs)
-    rij = md.compute_distances(traj, pair_idxs)
+        pair_idxs = []
+        for i in range(n_beads - 1):
+            for j in range(i + 4, n_beads):
+                pair_idxs.append([i, j])
+        pair_idxs = np.array(pair_idxs)
+        rij = md.compute_distances(traj, pair_idxs)
 
-    Uex_md = np.sum(0.5*((0.373/rij)**12), axis=1)
-    Ub_md = np.sum(0.5*334720.0*((bond_r - 0.153)**2), axis=1)
-    Ua_md = np.sum(0.5*462.0*((angle_theta - 1.938)**2), axis=1)
+        Uex_md = np.sum(0.5*((0.373/rij)**12), axis=1)
+        Ub_md = np.sum(0.5*334720.0*((bond_r - 0.153)**2), axis=1)
+        Ua_md = np.sum(0.5*462.0*((angle_theta - 1.938)**2), axis=1)
 
-    xyz_traj = np.reshape(traj.xyz, (-1, 75))
-    cv_traj = Ucg.calculate_cv(xyz_traj)
+        xyz_traj = np.reshape(traj.xyz, (-1, 75))
+        cv_traj = Ucg.calculate_cv(xyz_traj)
 
-    U0 = Ucg.potential_U0(xyz_traj, cv_traj, sumterms=False)
-    #Ub, Ua, Uex = U0
-    Ub, Ua = U0
+        U0 = Ucg.potential_U0(xyz_traj, cv_traj, sumterms=False)
+        #Ub, Ua, Uex = U0
+        Ub, Ua = U0
 
-    U_k = Ucg.potential_U1(xyz_traj, cv_traj)
-    Uex = coeff[0]*Uex_md
-    Ucv_calc = np.einsum("k,tk->t", coeff[1:], U_k[:,1:])
+        U_k = Ucg.potential_U1(xyz_traj, cv_traj)
+        Uex = coeff[0]*Uex_md
+        if using_cv:
+            U1_calc = np.einsum("k,tk->t", coeff[1:], U_k[:,1:])
+            U1_label = "CV"
+        else:
+            U1_calc = np.einsum("k,tk->t", coeff, U_k)
+            U1_label = "Pair"
 
-    simE = [Eb, Ea, Eex, Ecv]
-    calcE = [Ub, Ua, Uex, Ucv_calc]
-    labels = ["Bond", "Angle", "Excl.", "CV"]
+        simE = [Eb, Ea, Eex, E1]
+        calcE = [Ub, Ua, Uex, U1_calc]
+        labels = ["Bond", "Angle", "Excl.", U1_label]
 
-    #((ax1, ax2), (ax3, ax4))
-    fig, axes = plt.subplots(2, 2, figsize=(12,12))
-    idx = 0 
-    for i in range(2):
-        for j in range(2):
-            ax = axes[i,j]
-            x = simE[idx]
-            y = calcE[idx]
-    
-            minx = min([ x.min(), y.min() ])
-            maxx = max([ x.max(), y.max() ])
-            ax.plot([minx, maxx], [minx, maxx], 'k')
-            ax.plot(x, y, 'b.')
-            ax.set_xlim(minx, maxx)
-            ax.set_ylim(minx, maxx)
-            ax.set_title(labels[idx])
+        #((ax1, ax2), (ax3, ax4))
+        fig, axes = plt.subplots(2, 2, figsize=(12,12))
+        idx = 0 
+        for i in range(2):
+            for j in range(2):
+                ax = axes[i,j]
+                x = simE[idx]
+                y = calcE[idx]
+        
+                minx = min([ x.min(), y.min() ])
+                maxx = max([ x.max(), y.max() ])
+                ax.plot([minx, maxx], [minx, maxx], 'k')
+                #ax.plot(x, y, 'b.')
+                ax.plot(x, y, 'ro')
+                ax.set_xlim(minx, maxx)
+                ax.set_ylim(minx, maxx)
+                ax.set_title(labels[idx])
 
-            if idx in [0, 2]:
-                ax.set_ylabel("Calculated")
+                if idx in [0, 2]:
+                    ax.set_ylabel("Calculated")
 
-            if idx in [2, 3]:
-                ax.set_xlabel("Simulation")
+                if idx in [2, 3]:
+                    ax.set_xlabel("Simulation")
 
-            idx += 1
+                idx += 1
 
-    fig.savefig("compare_Eterms.pdf")
-    fig.savefig("compare_Eterms.png")
+        fig.savefig("compare_Eterms.pdf")
+        fig.savefig("compare_Eterms.png")
