@@ -37,7 +37,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     msm_savedir = args.msm_savedir
     cg_method = args.cg_method
     M = args.psi_dims
@@ -49,9 +48,6 @@ if __name__ == "__main__":
     pair_symmetry = args.pair_symmetry
     bond_cutoff = args.bond_cutoff
     lin_pot = args.lin_pot
-    alpha_lims = args.alpha_lims
-    skip_trajs = args.skip_trajs
-    save_by_traj = args.save_by_traj
     fix_back = args.fix_back
     fix_exvol = args.fix_exvol
     recalc = args.recalc
@@ -143,30 +139,58 @@ if __name__ == "__main__":
     E = np.concatenate(all_E0) + np.concatenate(all_E1)
     CV = np.concatenate(all_cv)
 
+
     avgE, bin_edges, _ = bin1d(CV, E, statistic="mean", bins=40)
     stdE = np.zeros(len(avgE))
     for i in range(len(avgE)):
-        frames_in_bin = (CV > bin_edges[i]) and (CV <= bin_edges[i])
+        frames_in_bin = (CV > bin_edges[i]) & (CV <= bin_edges[i + 1])
         if np.sum(frames_in_bin) > 0:
             stdE[i] = np.sqrt(np.mean((E[frames_in_bin] - avgE[i])**2))
 
     mid_bin = 0.5*(bin_edges[:-1] + bin_edges[1:])
 
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
     os.chdir(savedir)
 
-    np.save("avgE.npy")
-    np.save("stdE.npy")
-    np.save("mid_bin.npy")
+    np.save("avgE.npy", avgE)
+    np.save("stdE.npy", stdE)
+    np.save("mid_bin.npy", mid_bin)
 
     print("plotting...")
     cwd = os.getcwd()
     plt.figure()
-    plt.title(cwd)
+    #plt.title(cwd)
     plt.plot(mid_bin, avgE)
-    plt.fill_between(mid_bin, avgE + stdE, y2=avgE - stdE, alpha=0.2)
+    #plt.fill_between(mid_bin, avgE + stdE, y2=avgE - stdE, alpha=0.2)
     plt.xlabel("Reference TIC $\psi_2$")
     plt.ylabel(r"$\langle E \rangle (\psi_2)$")
     plt.savefig("avgE_vs_orig_tic.pdf")
     plt.savefig("avgE_vs_orig_tic.png")
 
-    # 2. Calculate PMF(psi), <E>(psi), and S(psi)
+    n, _ = np.histogram(CV, bins=bin_edges)
+    pmf_CV = -(kb*T)*np.log(n.astype(float))
+    TS = avgE - pmf_CV
+
+    plt.figure()
+    plt.plot(mid_bin, pmf_CV - pmf_CV.min(), 'k', label=r"$F$")
+    plt.plot(mid_bin, avgE - avgE.min(), label=r"$\langle E \rangle$")
+    plt.plot(mid_bin, TS - avgE.min(), label=r"$TS = \langle E \rangle - F$")
+    plt.legend()
+    plt.savefig("pmf_E_S_vs_orig_tic.pdf")
+    plt.savefig("pmf_E_S_vs_orig_tic.png")
+
+
+    n, bins = np.histogram(E, bins=40)
+    E_mid_bin = 0.5*(bins[1:] + bins[:-1])
+    pmf_E = -(kb*T)*np.log(n.astype(float))
+    E_TS = E_mid_bin - pmf_E
+
+    plt.figure()
+    plt.plot(E_mid_bin, pmf_E - pmf_E.min(), 'k', label=r"$F(E) = -k_BT\ln(P(E))$")
+    plt.plot(E_mid_bin, E_mid_bin, '--', label=r"$E$")
+    plt.plot(E_mid_bin, E_TS, label=r"$TS = E - F(E)$")
+    plt.xlabel(r"$E$")
+    plt.legend()
+    plt.savefig("pmf_E_S_vs_E.pdf")
+    plt.savefig("pmf_E_S_vs_E.png")
