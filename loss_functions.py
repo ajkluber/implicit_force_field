@@ -70,52 +70,155 @@ class CrossValidatedLoss(object):
         self.cv_set_assignment = set_assignment
         self.cv_sets_are_assigned = True
 
+    def Xname_by_traj(self, run_idx, traj_idx, cv_set_idx):
+        return "{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, run_idx, traj_idx, self.suffix, cv_set_idx)
+
+    def dname_by_traj(self, run_idx, traj_idx, cv_set_idx):
+        return "{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, run_idx, traj_idx, self.suffix, cv_set_idx)
+
+    def frame_set_name_by_traj(self, run_idx, traj_idx):
+        return "{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, run_idx, traj_idx, self.suffix)
+
+    def Xname(self, cv_set_idx):
+        return "{}/X_{}_{}.npy".format(self.savedir, self.suffix, cv_set_idx)
+
+    def dname(self, cv_set_idx):
+        return "{}/d_{}_{}.npy".format(self.savedir, self.suffix, cv_set_idx)
+
+    def frame_set_name(self, traj_idx):
+        return "{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, traj_idx)
+
     def matrix_files_exist(self):
 
-        X_files_exist = np.all([ os.path.exists("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
-        d_files_exist = np.all([ os.path.exists("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ])
-        set_files_exist = np.all([ os.path.exists("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(len(self.trajnames)) ])
-        files_exist = X_files_exist and d_files_exist and set_files_exist
+        if self.save_by_traj:
+            X_files_exist = []
+            d_files_exist = []
+            set_files_exist = []
+            for i in range(len(self.trajnames)):
+                tname = trajnames[i]
+                idx1 = (os.path.dirname(tname)).split("_")[-1]
+                idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+                for n in range(self.n_cv_sets):
+                    X_files_exist.append(os.path.exists(self.Xname_by_traj(idx1, idx2, n + 1)))
+                    d_files_exist.append(os.path.exists(self.dname_by_traj(idx1, idx2, n + 1)))
+
+                set_files_exist.append(os.path.exists(self.frame_set_name_by_traj(idx1, idx2)))
+            files_exist = np.all(X_files_exist) and np.all(d_files_exist) and np.all(set_files_exist)
+        else:
+            X_files_exist = np.all([ os.path.exists(self.Xname(i + 1)) for i in range(self.n_cv_sets) ])
+            d_files_exist = np.all([ os.path.exists(self.dname(i + 1)) for i in range(self.n_cv_sets) ])
+            set_files_exist = np.all([ os.path.exists(self.frame_set_name(i + 1)) for i in range(len(self.trajnames)) ])
+            files_exist = X_files_exist and d_files_exist and set_files_exist
 
         return files_exist
 
     def _save_matrices(self): 
         for k in range(self.n_cv_sets):
-            np.save("{}/X_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.X_sets[k])
-            np.save("{}/d_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.d_sets[k])
+            np.save(self.Xname(k + 1), self.X_sets[k])
+            np.save(self.dname(k + 1), self.d_sets[k])
 
         for k in range(len(self.trajnames)):
-            np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, k + 1), self.cv_set_assignment[k])    
+            np.save(self.frame_set_name(k + 1), self.cv_set_assignment[k])    
 
         np.save("{}/X_{}.npy".format(self.savedir, self.suffix), self.X)
         np.save("{}/d_{}.npy".format(self.savedir, self.suffix), self.d)
 
-    def _load_matrices(self):
 
+    def _load_matrices(self):
         
+        print("Loading saved matrices...")
         if self.n_cv_sets is None:
             raise ValueErro("Need to define number of cross val sets in order to load them")
 
-        print("Loading saved matrices...")
-        self.X_sets = [ np.load("{}/X_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
-        self.d_sets = [ np.load("{}/d_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
-        #set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(self.n_cv_sets) ]
-        set_assignment = [ np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1)) for i in range(len(self.trajnames)) ]
+        if self.save_by_traj:
+            self.X_sets = [ [] for i in range(n_cv_sets) ]
+            self.d_sets = [ [] for i in range(n_cv_sets) ]
+            set_assignment = []
 
-        self.n_frames_in_set = []
-        for k in range(self.n_cv_sets):
-            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(self.trajnames)) ]))
-        #self.total_n_frames = np.sum([ set_assignment[i].shape[0] for i in range(self.n_cv_sets) ])
-        self.total_n_frames = np.sum(self.n_frames_in_set)
-        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
+            if self.suffix == "FM":
+                for i in range(len(self.trajnames)):
+                    tname = self.trajnames[i]
+                    idx1 = (os.path.dirname(tname)).split("_")[-1]
+                    idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
 
-        if self.n_cv_sets > 1:
-            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
-            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+                    set_assignment.append(np.load(self.frame_set_name_by_traj(idx1, idx2)))
+                    for n in range(self.n_cv_sets):
+                        Xtemp = np.load(self.Xname_by_traj(idx1, idx2, n + 1))
+                        dtemp = np.load(self.dname_by_traj(idx1, idx2, n + 1))
+
+                        if i == 0:
+                            self.X_sets[n] = Xtemp
+                            self.d_sets[n] = dtemp
+                        else:
+                            self.X_sets[n] = np.concatenate([X_sets[n], Xtemp], axis=0)
+                            self.d_sets[n] = np.concatenate([d_sets[n], dtemp], axis=0)
+
+            elif self.suffix == "EG":
+                # averaged
+                X_by_traj = [ [] for i in range(self.n_cv_sets) ]
+                d_by_traj = [ [] for i in range(self.n_cv_sets) ]
+
+                cv_frames_by_traj = [ [] for i in range(self.n_cv_sets) ]
+                cv_frames_by_traj = np.zeros((len(self.trajnames), self.n_cv_sets), float)
+                for i in range(len(self.trajnames)):
+                    tname = trajnames[i]
+                    idx1 = (os.path.dirname(tname)).split("_")[-1]
+                    idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+
+                    frm_traj = np.load(self.frame_set_name_by_traj(idx1, idx2))
+
+                    for n in range(self.n_cv_sets): 
+                        cv_frames_by_traj[i, n].append(np.sum(frm_traj == n))
+
+                    set_assignment.append(frm_traj)
+
+                self.n_frames_in_set = np.sum(cv_frames_by_traj, axis=0) 
+
+                for i in range(len(self.trajnames)):
+                    tname = trajnames[i]
+                    idx1 = (os.path.dirname(tname)).split("_")[-1]
+                    idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+
+                    for n in range(self.n_cv_sets):
+                        Xtemp = np.load(self.Xname_by_traj(idx1, idx2, n + 1))
+                        dtemp = np.load(self.dname_by_traj(idx1, idx2, n + 1))
+
+                        if i == 0:
+                            self.X_sets[n] = Xtemp
+                            self.d_sets[n] = dtemp
+                        else:
+                            w_for_set = cv_frames_by_traj[i, n]/self.n_frames_in_set[n]
+                            self.X_sets[n] += w_for_set*Xtemp
+                            self.d_sets[n] += w_for_set*dtemp
+
+                self.total_n_frames = np.sum(self.n_frames_in_set)
+                self.set_weights = [ self.n_frames_in_set[n]/float(self.total_n_frames) for n in range(self.n_cv_sets) ] 
+
         else:
-            self.X = self.X_sets[0]
-            self.d = self.d_sets[0]
+            self.X_sets = []
+            self.d_sets = []
+            for n in range(self.n_cv_sets):
+               self.X_sets.append(np.load(self.Xname(n + 1)))
+               self.d_sets.append(np.load(self.dname(n + 1)))
 
+            set_assignment = []
+            for i in range(len(self.trajnames)):
+                set_assignment.append(np.load(self.frame_set_name(i + 1)))
+
+            self.n_frames_in_set = []
+            for k in range(self.n_cv_sets):
+                self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(self.trajnames)) ]))
+            self.total_n_frames = np.sum(self.n_frames_in_set)
+            self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
+
+            if self.n_cv_sets > 1:
+                self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+                self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            else:
+                self.X = self.X_sets[0]
+                self.d = self.d_sets[0]
+
+        self.cv_set_assignment = set_assignment
         self.matrices_estimated = True
         self.cv_sets_are_assigned = True
         self._training_and_validation_matrices()
@@ -129,16 +232,28 @@ class CrossValidatedLoss(object):
             frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
             #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
 
-            train_X = []
-            train_d = []
-            for j in range(self.n_cv_sets):
-                w_j = self.n_frames_in_set[j]/float(frame_subtotal)
-                if j != i:
-                    train_X.append(w_j*self.X_sets[j])
-                    train_d.append(w_j*self.d_sets[j])
+            if self.save_by_traj and self.suffix = "FM":
+                # force-matching matrices are created by QR decomp. Should be
+                # concatenated not averaged.
+                train_X = []
+                train_d = []
+                for j in range(self.n_cv_sets):
+                    if j != i:
+                        train_X.append(self.X_sets[j])
+                        train_d.append(self.d_sets[j])
+                train_X = np.concatenate(train_X, axis=0)
+                train_d = np.concatenate(train_d, axis=0)
+            else:
+                train_X = []
+                train_d = []
+                for j in range(self.n_cv_sets):
+                    w_j = self.n_frames_in_set[j]/float(frame_subtotal)
+                    if j != i:
+                        train_X.append(w_j*self.X_sets[j])
+                        train_d.append(w_j*self.d_sets[j])
 
-            train_X = np.sum(np.array(train_X), axis=0)
-            train_d = np.sum(np.array(train_d), axis=0)
+                train_X = np.sum(np.array(train_X), axis=0)
+                train_d = np.sum(np.array(train_d), axis=0)
 
             self.X_train_val.append([ train_X, self.X_sets[i]])
             self.d_train_val.append([ train_d, self.d_sets[i]])
@@ -354,10 +469,6 @@ class LinearSpectralLoss(CrossValidatedLoss):
         else:
             n_trajs = len(self.trajnames)
 
-        save_X_str = lambda num1, num2, num3: "{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
-        save_d_str = lambda num1, num2, num3: "{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
-        save_frm_str = lambda num1, num2: "{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, num1, num2, self.suffix)
-
         count = 0
         N_prev = np.zeros(self.n_cv_sets, float)
         for n in range(len(self.trajnames)):
@@ -370,9 +481,9 @@ class LinearSpectralLoss(CrossValidatedLoss):
                 tname = self.trajnames[n]
                 idx1 = (os.path.dirname(tname)).split("_")[-1]
                 idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-                files_out = [ save_X_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
-                files_out += [ save_d_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
-                files_out.append(save_frm_str(idx1, idx2))
+                files_out = [ self.Xname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out += [ self.dname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out.append(self.frame_set_name_by_traj(idx1, idx2))
                 files_out_exist = [ os.path.exists(fname) for fname in files_out ]
                 if np.all(files_out_exist) and not self.recalc:
                     continue
@@ -496,9 +607,9 @@ class LinearSpectralLoss(CrossValidatedLoss):
             if self.save_by_traj:
                 # save
                 for k in range(self.n_cv_sets):
-                    np.save(save_X_str(idx1, idx2, k + 1), X[k])
-                    np.save(save_d_str(idx1, idx2, k + 1), d[k])
-                np.save(save_frm_str(idx1, idx2), self.cv_set_assignment[n])
+                    np.save(self.Xname_by_traj(idx1, idx2, k + 1), X[k])
+                    np.save(self.dname_by_traj(idx1, idx2, k + 1), d[k])
+                np.save(self.frame_set_name_by_traj(idx1, idx2), self.cv_set_assignment[n])
 
                 N_prev = np.zeros(self.n_cv_sets, float)
                 d = np.zeros((self.n_cv_sets, P), float)
@@ -855,10 +966,6 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
         else:
             n_trajs = len(self.trajnames)
 
-        save_X_str = lambda num1, num2, num3: "{}/run_{}_{}_X_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
-        save_d_str = lambda num1, num2, num3: "{}/run_{}_{}_d_{}_{}.npy".format(self.savedir, num1, num2, self.suffix, num3)
-        save_frm_str = lambda num1, num2: "{}/run_{}_{}_frame_set_{}.npy".format(self.savedir, num1, num2, self.suffix)
-
         count = 0
         for n in range(len(self.trajnames)):
             if n in include_trajs:
@@ -870,9 +977,9 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
                 tname = self.trajnames[n]
                 idx1 = (os.path.dirname(tname)).split("_")[-1]
                 idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
-                files_out = [ save_X_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
-                files_out += [ save_d_str(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
-                files_out.append(save_frm_str(idx1, idx2))
+                files_out = [ self.Xname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out += [ self.dname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out.append(self.frame_set_name_by_traj(idx1, idx2))
                 files_out_exist = [ os.path.exists(fname) for fname in files_out ]
                 if np.all(files_out_exist) and not self.recalc:
                     continue
@@ -977,9 +1084,9 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             if self.save_by_traj:
                 # save matrices for this traj alone
                 for k in range(self.n_cv_sets):
-                    np.save(save_X_str(idx1, idx2, k + 1), A_b_set[str(k)][0])
-                    np.save(save_d_str(idx1, idx2, k + 1), A_b_set[str(k)][1])
-                np.save(save_frm_str(idx1, idx2), self.cv_set_assignment[n])
+                    np.save(self.Xname_by_traj(idx1, idx2, k + 1), A_b_set[str(k)][0])
+                    np.save(self.dname_by_traj(idx1, idx2, k + 1), A_b_set[str(k)][1])
+                np.save(self.frame_set_name_by_traj(idx1, idx2), self.cv_set_assignment[n])
 
                 A_b_set = {}
 
