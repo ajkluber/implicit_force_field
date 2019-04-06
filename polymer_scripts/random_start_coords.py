@@ -1,5 +1,6 @@
 import os
 import glob
+import shutil
 import numpy as np
 
 import matplotlib as mpl
@@ -9,6 +10,7 @@ mpl.rcParams['mathtext.rm'] = 'serif'
 import matplotlib.pyplot as plt
 
 import simtk.unit as unit
+import simtk.openmm as omm
 import simtk.openmm.app as app
 
 import mdtraj as md
@@ -16,10 +18,12 @@ import mdtraj as md
 
 import implicit_force_field.polymer_scripts.util as util
 
-def sample_starting_configurations(n_samples, bin_file="psi1_mid_bin.npy",
+def sample_starting_configurations(msm_savedir, n_samples, bin_file="psi1_mid_bin.npy",
         hist_file="psi1_n.npy", plot=False, sample_by_dist=False):
     """Sample starting configuations using the distribution"""
 
+    cwd = os.getcwd()
+    os.chdir(msm_savedir)
     # the cumulative distribution
     mid_bin = np.load(bin_file)
     hist_vals = np.load(hist_file)
@@ -57,7 +61,7 @@ def sample_starting_configurations(n_samples, bin_file="psi1_mid_bin.npy",
     weights = [ n_frames_traj[i]/float(np.sum(n_frames_traj)) for i in range(len(n_frames_traj)) ]
     C_traj_weights = np.concatenate([ np.array([0]), np.cumsum(weights) ])
 
-    n_samples = 100
+    #n_samples = 100
     samp_vals = []
     samp_traj_idxs = []
     for i in range(n_samples):
@@ -95,22 +99,34 @@ def sample_starting_configurations(n_samples, bin_file="psi1_mid_bin.npy",
                         found_frame = True
                     else:
                         break
+    os.chdir(cwd)
+    os.chdir("..")
 
     topfile = glob.glob("run_*/c25_min_cent.pdb")[0]
 
     ini_xyz = []
+    ini_idxs = []
     for i in range(len(samp_traj_idxs)):
         tic_traj_idx, frame_idx = samp_traj_idxs[i]
         run_idx, traj_idx = traj_idxs[tic_traj_idx]
 
+        ini_idxs.append([run_idx, traj_idx, frame_idx])
+
         tname = "run_{}/c25_traj_cent_{}.dcd".format(run_idx, traj_idx)
         frame = md.load(tname, top=topfile)[tic_traj_idx]
-        ini_xyz.append(frame.xyz)
+        ini_xyz.append(frame.xyz[0])
 
-    return ini_xyz 
+        if i == (n_samples - 1):
+            print("grabbing: {}/{}".format(i + 1, n_samples))
+        else:
+            print("grabbing: {}/{}".format(i + 1, n_samples), end="\r")
+
+    os.chdir(cwd)
+
+    return ini_xyz, ini_idxs
 
 
-def save_coords(saveas, xyz_ply):
+def save_coords(saveas, xyz_ply, box_edge_nm):
     # create polymer topology
     topology = app.Topology()
     chain = topology.addChain()
@@ -126,7 +142,7 @@ def save_coords(saveas, xyz_ply):
 
     positions = unit.Quantity(xyz_ply, unit.nanometer)
 
-    topology.setUnitCellDimensions(box_edge.value_in_unit(unit.nanometer)*omm.Vec3(1, 1, 1))
+    topology.setUnitCellDimensions(box_edge_nm*omm.Vec3(1, 1, 1))
 
     pdb = app.PDBFile("dum.pdb")
     with open(saveas, "w") as fout:
@@ -136,29 +152,41 @@ def save_coords(saveas, xyz_ply):
 if __name__ == "__main__":
     msm_savedir = "../msm_dists"
 
-    n_runs = 10
+    n_runs = 100
     run_idxs = np.arange(1, n_runs + 1)
+
+    #box_edge = 5.9576
+    cwd = os.getcwd()
+    os.chdir("..")
+    topfile = glob.glob("run_*/c25_min_cent.pdb")[0]
+    with open(topfile, "r") as fin:
+        for line in fin.readlines():
+            if line.startswith("CRYST1"):
+                box_edge_nm = float(line[6:15])/10.
+    os.chdir(cwd)
 
     mass_ply = 37*unit.amu
     if "PL" not in app.element.Element._elements_by_symbol:
         app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
 
     print("sampling starting configurations...")
-    cwd = os.getcwd()
-    os.chdir(msm_savedir)
-    ini_xyz = sample_starting_configurations(n_runs)
-    os.chdir(cwd)
+    ini_xyz, ini_idxs = sample_starting_configurations(msm_savedir, n_runs)
 
     print("saving...")
     for i in range(len(run_idxs)):
         rundir = "run_" + str(run_idxs[i])
+        if i < (len(run_idxs) - 1):
+            print(rundir, end="\r")
+        else:
+            print(rundir)
         if not os.path.exists(rundir):
             os.mkdir(rundir)
 
         os.chdir(rundir)
-        with open("dum.pdb", "w") as fout:
-            fout.write(" ")
-        save_coords("c25_noslv_min.pdb", ini_xyz[i])
+        np.save("ini_struct_idxs.npy", np.array(ini_idxs[i]))
+
+        shutil.copy("../../dum.pdb", "dum.pdb")
+        save_coords("c25_noslv_min.pdb", ini_xyz[i], box_edge_nm)
+        os.remove("dum.pdb")
         os.chdir("..")
 
-    
