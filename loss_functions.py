@@ -51,7 +51,7 @@ class CrossValidatedLoss(object):
 
         """
 
-        set_assignment = []
+        self.cv_set_assignment = []
         traj_n_frames = []
         for n in range(len(self.trajnames)):
             length = 0
@@ -59,15 +59,14 @@ class CrossValidatedLoss(object):
                 length += chunk.n_frames
             traj_n_frames.append(length)
 
-            set_assignment.append(np.random.randint(low=0, high=self.n_cv_sets, size=length))
+            self.cv_set_assignment.append(np.random.randint(low=0, high=self.n_cv_sets, size=length))
         self.total_n_frames = sum(traj_n_frames)
 
         self.n_frames_in_set = []
         for k in range(self.n_cv_sets):
-            self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(set_assignment)) ]))
+            self.n_frames_in_set.append(np.sum([ np.sum(self.cv_set_assignment[i] == k) for i in range(len(self.cv_set_assignment)) ]))
         self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
 
-        self.cv_set_assignment = set_assignment
         self.cv_sets_are_assigned = True
 
     def Xname_by_traj(self, run_idx, traj_idx, cv_set_idx):
@@ -130,18 +129,21 @@ class CrossValidatedLoss(object):
         if self.n_cv_sets is None:
             raise ValueErro("Need to define number of cross val sets in order to load them")
 
+        self.cv_set_assignment = []
+
         if self.save_by_traj:
             self.X_sets = [ [] for i in range(n_cv_sets) ]
             self.d_sets = [ [] for i in range(n_cv_sets) ]
-            set_assignment = []
 
             if self.suffix == "FM":
+                # force-matching is done by QR decomposition so matrices for 
+                # each trajectory need to be concatenated
                 for i in range(len(self.trajnames)):
                     tname = self.trajnames[i]
                     idx1 = (os.path.dirname(tname)).split("_")[-1]
                     idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
 
-                    set_assignment.append(np.load(self.frame_set_name_by_traj(idx1, idx2)))
+                    self.cv_set_assignment.append(np.load(self.frame_set_name_by_traj(idx1, idx2)))
                     for n in range(self.n_cv_sets):
                         Xtemp = np.load(self.Xname_by_traj(idx1, idx2, n + 1))
                         dtemp = np.load(self.dname_by_traj(idx1, idx2, n + 1))
@@ -154,7 +156,8 @@ class CrossValidatedLoss(object):
                             self.d_sets[n] = np.concatenate([d_sets[n], dtemp], axis=0)
 
             elif self.suffix == "EG":
-                # averaged
+                # eigenpair matrices for each traj can be summed together with
+                # weights
                 X_by_traj = [ [] for i in range(self.n_cv_sets) ]
                 d_by_traj = [ [] for i in range(self.n_cv_sets) ]
 
@@ -170,9 +173,11 @@ class CrossValidatedLoss(object):
                     for n in range(self.n_cv_sets): 
                         cv_frames_by_traj[i, n].append(np.sum(frm_traj == n))
 
-                    set_assignment.append(frm_traj)
+                    self.cv_set_assignment.append(frm_traj)
 
                 self.n_frames_in_set = np.sum(cv_frames_by_traj, axis=0) 
+
+                #TODO: check this works
 
                 for i in range(len(self.trajnames)):
                     tname = trajnames[i]
@@ -187,7 +192,7 @@ class CrossValidatedLoss(object):
                             self.X_sets[n] = Xtemp
                             self.d_sets[n] = dtemp
                         else:
-                            w_for_set = cv_frames_by_traj[i, n]/self.n_frames_in_set[n]
+                            w_for_set = cv_frames_by_traj[i, n]/float(self.n_frames_in_set[n])
                             self.X_sets[n] += w_for_set*Xtemp
                             self.d_sets[n] += w_for_set*dtemp
 
@@ -201,13 +206,12 @@ class CrossValidatedLoss(object):
                self.X_sets.append(np.load(self.Xname(n + 1)))
                self.d_sets.append(np.load(self.dname(n + 1)))
 
-            set_assignment = []
             for i in range(len(self.trajnames)):
-                set_assignment.append(np.load(self.frame_set_name(i + 1)))
+                self.cv_set_assignment.append(np.load(self.frame_set_name(i + 1)))
 
             self.n_frames_in_set = []
             for k in range(self.n_cv_sets):
-                self.n_frames_in_set.append(np.sum([ np.sum(set_assignment[i] == k) for i in range(len(self.trajnames)) ]))
+                self.n_frames_in_set.append(np.sum([ np.sum(self.cv_set_assignment[i] == k) for i in range(len(self.trajnames)) ]))
             self.total_n_frames = np.sum(self.n_frames_in_set)
             self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
 
@@ -218,7 +222,6 @@ class CrossValidatedLoss(object):
                 self.X = self.X_sets[0]
                 self.d = self.d_sets[0]
 
-        self.cv_set_assignment = set_assignment
         self.matrices_estimated = True
         self.cv_sets_are_assigned = True
         self._training_and_validation_matrices()
@@ -232,7 +235,7 @@ class CrossValidatedLoss(object):
             frame_subtotal = self.total_n_frames - self.n_frames_in_set[i]
             #frame_subtotal = np.sum([ n_frames_in_set[j] for j in range(self.n_cv_sets) if j != i ])
 
-            if self.save_by_traj and self.suffix = "FM":
+            if self.save_by_traj and self.suffix == "FM":
                 # force-matching matrices are created by QR decomp. Should be
                 # concatenated not averaged.
                 train_X = []
@@ -376,6 +379,193 @@ class CrossValidatedLoss(object):
 
         coeffs, train_mse, valid_mse = self._solve_regularized(alphas, X_train_val, d_train_val, X, d, D)
         return coeffs, train_mse, valid_mse
+
+class OneDimSpectralLoss(object):
+
+    def __init__(self, model, kappa, psi_trajs, x_trajs):
+        self.model = model
+        self.beta_kappa = model.beta*kappa
+        self.psi_trajs = psi_trajs
+        self.x_trajs = x_trajs
+        self.P = model.n_test_funcs
+        self.n_trajs = len(x_trajs)
+
+    def eval_loss(self, coeff):
+
+        psi_Lf = np.zeros(P, float)
+        psi_f = np.zeros(P, float)
+        N_prev = 0
+        for i in range(self.n_trajs):
+            x = self.x_trajs[i]
+            psi = self.psi_trajs[i]
+            N_curr = x.shape[0]
+
+            # <psi, Lf>  = <psi, (-a dF + da)*df + a*d2f >
+            # beta*kappa*<psi, f>
+            a, da = self.model.eval_a(x, coeff)
+            dU1 = self.model.eval_dU1(x, coeff)
+            f, df, d2f = self.model.eval_f(x)
+
+            Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
+            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
+            curr_psi_f = np.einsum("t,tp->p", psi, f)
+
+            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
+            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
+
+            N_prev += N_curr
+
+        return  np.sum((psi_Lf + self.beta_kappa*psi_f)**2)
+
+class LinearDiffusionLoss(CrossValidatedLoss):
+
+    def __init__(self, topfile, trajnames, savedir, **kwargs):
+        """Creates matrices for minimizing the linear spectral loss equations
+        
+        Parameters
+        ----------
+        savedir : str
+            Where matrices should be saved.
+            
+        n_cv_sets : opt.
+            Number of k-fold cross validation sets to use.
+            
+        recalc : bool
+            Recalculated 
+
+        """
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, **kwargs)
+
+        self.suffix = "EGdiff"
+        self.matrices_estimated = False
+
+        if self.matrix_files_exist() and not self.recalc:
+            self._load_matrices()
+
+    def calc_matrices(self, Ucg, psinames, ti_file, M=1, coll_var_names=None, verbose=True, include_trajs=[]):
+        """Calculate eigenpair matrices
+       
+        Parameters
+        ----------
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        psinames : list, str
+            Filenames for 
+            
+        ti_file : str
+            Filename for timescales
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        coll_var_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        """
+
+        P = Ucg.n_test_funcs
+        R = len(Ucg.cv_a_funcs)
+        
+        if Ucg.using_cv and not Ucg.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(psinames) != len(self.trajnames):
+            raise ValueError("Need eigenvector for every trajectory!")
+
+        if len(include_trajs) == 0:
+            include_trajs = np.arange(len(self.trajnames))
+
+        n_trajs = len(include_trajs)
+
+        kappa = 1./np.load(ti_file)[:M]
+
+        d = np.zeros((self.n_cv_sets, M*P), float)
+        X = np.zeros((self.n_cv_sets, M*P, R), float)
+        
+        count = 0
+        N_prev = np.zeros(self.n_cv_sets, float)
+        for n in range(len(self.trajnames)):
+            if n in include_trajs:
+                count += 1
+            else:
+                continue
+
+            if n == len(self.trajnames) - 1:
+                print("scalar product traj: {:>5d}/{:<5d} DONE".format(count, n_trajs))
+            else:
+                print("scalar product traj: {:>5d}/{:<5d}".format(count, n_trajs), end="\r")
+            sys.stdout.flush()
+
+            # load eigenvectors
+            psi_traj = np.array([ np.load(temp_psiname) for temp_psiname in psinames[n] ]).T
+
+            if len(cv_names) > 0:
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in cv_names[n] ]).T
+            else:
+                cv_traj = None
+
+            start_idx = 0
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=1000):
+                N_chunk = chunk.n_frames
+
+                psi_chunk = psi_traj[start_idx:start_idx + N_chunk,:]
+
+                if cv_traj is None:
+                    cv_chunk = Ucg.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, Ucg.n_dof))
+
+                # calculate test function values, gradient, and Laplacian
+                grad_psi = Ucg._cv_cartesian_Jacobian(xyz_traj)
+                test_f = Ucg.test_functions(xyz_traj, cv_chunk)
+                grad_f = Ucg.test_funcs_gradient(xyz_traj, cv_chunk)
+                a_func = Ucg.noise_functions(cv_chunk)
+
+                for k in range(self.n_cv_sets):   
+                    frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
+
+                    if np.any(frames_in_this_set):
+                        N_curr_set = np.sum(frames_in_this_set)
+
+                        # average subset of frames for set k
+                        psi_subset = psi_chunk[frames_in_this_set]
+                        dpsi_subset = grad_psi[frames_in_this_set]
+                        f_subset = test_f[frames_in_this_set] 
+                        df_subset = grad_f[frames_in_this_set]
+                        a_subset = a_func[frames_in_this_set]
+
+                        # calculate terms
+                        curr_d = np.einsum("m,tm,tp->mp", -kappa, psi_subset, f_subset).reshape(M*P)
+                        curr_X = np.einsum("tr,tmd,tdp->mpr", a_subset, dpsi_subset, df_subset).reshape((M*P, R))
+
+                        X[k,:] = (curr_X + N_prev[k]*X[k,:])/(N_prev[k] + N_curr_set)
+                        d[k,:] = (curr_d + N_prev[k]*d[k,:])/(N_prev[k] + N_curr_set)
+
+                        N_prev[k] += float(N_curr_set)
+
+                start_idx += N_chunk
+
+        self.X_sets = X 
+        self.d_sets = d
+        if self.n_cv_sets > 1:
+            self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+        else:
+            self.X = self.X_sets[0]
+            self.d = self.d_sets[0]
+
+        self.matrices_estimated = True
+        self._save_matrices()
+        self._training_and_validation_matrices()
+
 
 class LinearSpectralLoss(CrossValidatedLoss):
 
@@ -1103,3 +1293,190 @@ class LinearForceMatchingLoss(CrossValidatedLoss):
             self.matrices_estimated = True
             self._save_matrices()
             self._training_and_validation_matrices()
+
+class LinearProjectedForceMatchingLoss(CrossValidatedLoss):
+
+    def __init__(self, topfile, trajnames, savedir, **kwargs):
+        """Creates matrices for minimizing the linear spectral loss equations
+        
+        Parameters
+        ----------
+        savedir : str
+            Where matrices should be saved.
+            
+        n_cv_sets : opt.
+            Number of k-fold cross validation sets to use.
+            
+        recalc : bool
+            Recalculated 
+
+        """
+        CrossValidatedLoss.__init__(self, topfile, trajnames, savedir, **kwargs)
+
+        self.suffix = "pFM"
+        self.matrices_estimated = False
+
+        if self.matrix_files_exist() and not self.recalc:
+            self._load_matrices()
+
+    def calc_matrices(self, Ucg, forcenames, coll_var_names=None, verbose=True, include_trajs=[], chunksize=1000):
+        """Calculate force-matching matrices 
+       
+        Parameters
+        ----------
+        trajnames : list, str
+            Trajectory filenames
+
+        topfile : str
+            Filename for topology (pdb)
+
+        forcenames : list, str
+            Filenames for 
+            
+        ti_file : str
+            Filename for timescales
+
+        M : int (default=1)
+            Number of timescales to keep in eigenfunction expansion.
+        
+        coll_var_names : list, str (opt)
+            Collective variable rilenames if pre-calculated. Will calculate
+            collective variables on the fly if not given. 
+
+        Description
+        -----------
+        Using running QR decomposition to calculate.
+
+        """
+
+        raise NotImplementedError
+
+        self.Ucg = Ucg
+
+        if self.n_cv_sets is None:
+            self.n_cv_sets = 1
+        else:
+            if self.n_cv_sets > 1 and not self.cv_sets_are_assigned:
+                self.assign_crossval_sets()
+
+        n_params = Ucg.n_tot_params
+        P = Ucg.n_test_funcs
+        max_rows = chunksize*Ucg.n_dof
+        #A_b_set = {}
+
+        if Ucg.using_cv and not Ucg.cv_defined:
+            raise ValueError("Collective variables are not defined!")
+
+        if len(forcenames) != len(self.trajnames):
+            raise ValueError("Need forces for every trajectory!")
+
+        if len(include_trajs) > 0:
+            n_trajs = len(include_trajs)
+        else:
+            n_trajs = len(self.trajnames)
+
+        count = 0
+        N_prev = np.zeros(self.n_cv_sets, float)
+        for n in range(len(self.trajnames)):
+            if n in include_trajs:
+                count += 1
+            else:
+                continue
+
+            if self.save_by_traj:
+                tname = self.trajnames[n]
+                idx1 = (os.path.dirname(tname)).split("_")[-1]
+                idx2 = (os.path.basename(tname)).split(".dcd")[0].split("_")[-1]
+                files_out = [ self.Xname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out += [ self.dname_by_traj(idx1, idx2, k + 1) for k in range(self.n_cv_sets) ]
+                files_out.append(self.frame_set_name_by_traj(idx1, idx2))
+                files_out_exist = [ os.path.exists(fname) for fname in files_out ]
+                if np.all(files_out_exist) and not self.recalc:
+                    continue
+
+            if verbose:
+                if count == n_trajs:
+                    print("force matching traj: {:>5d}/{:<5d} DONE".format(count, n_trajs))
+                else:
+                    print("force matching traj: {:>5d}/{:<5d}".format(count, n_trajs), end="\r")
+                sys.stdout.flush()
+
+            # load force from simulation 
+            force_traj = np.loadtxt(forcenames[n])
+
+            if len(coll_var_names) > 0:
+                # load collective variable if given
+                cv_traj = np.array([ np.load(temp_cvname) for temp_cvname in coll_var_names[n] ]).T
+            else:
+                cv_traj = None
+
+            # calculate matrix for trajectory
+            start_idx = 0
+            for chunk in md.iterload(self.trajnames[n], top=self.topfile, chunk=chunksize):
+                N_chunk = chunk.n_frames
+                n_rows = N_chunk*Ucg.n_dof
+
+                f_target_chunk = force_traj[start_idx:start_idx + N_chunk,:Ucg.n_dof]
+
+                if cv_traj is None:
+                    cv_chunk = Ucg.calculate_cv(chunk)
+                else:
+                    cv_chunk = cv_traj[start_idx:start_idx + N_chunk,:]
+
+                # cartesian coordinates unraveled
+                xyz_traj = np.reshape(chunk.xyz, (N_chunk, Ucg.n_dof))
+
+                # calculate gradient of fixed and parametric potential terms
+                U1_force = -Ucg.gradient_U1(xyz_traj, cv_chunk)
+
+                if Ucg.using_U0:
+                    # subtract fixed force from right hand side
+                    U0_force = -Ucg.gradient_U0(xyz_traj, cv_chunk)
+                    f_target_chunk -= U0_force
+
+                grad_f = test_funcs_gradient(xyz_traj, cv_traj)
+
+                dot_gU1_gf = np.einsum("tdr,tdp->trp", U1_force, grad_f)
+                dot_Fmd_gf = np.einsum("td,tdp->tp", f_target_chunk, grad_f)
+
+                if self.n_cv_sets == 1: 
+
+                    curr_X = np.sum(dot_gU1_gf, axis=0)
+
+                else:
+                    for k in range(self.n_cv_sets):   
+                        frames_in_this_set = self.cv_set_assignment[n][start_idx:start_idx + N_chunk] == k
+                        n_frames_set = np.sum(frames_in_this_set)
+
+                        if n_frames_set > 0:
+                            N_prev[k] += n_frames_set 
+
+                            # average over these frames
+
+
+                start_idx += N_chunk
+
+            if self.save_by_traj:
+                pass
+            #    # save matrices for this traj alone
+            #    for k in range(self.n_cv_sets):
+            #        np.save(self.Xname_by_traj(idx1, idx2, k + 1), A_b_set[str(k)][0])
+            #        np.save(self.dname_by_traj(idx1, idx2, k + 1), A_b_set[str(k)][1])
+            #    np.save(self.frame_set_name_by_traj(idx1, idx2), self.cv_set_assignment[n])
+
+            #    A_b_set = {}
+
+        if not self.save_by_traj:
+            pass
+            #if self.n_cv_sets > 1:
+            #    self.X_sets = [ A_b_set[str(k)][0] for k in range(self.n_cv_sets) ]
+            #    self.d_sets = [ A_b_set[str(k)][1] for k in range(self.n_cv_sets) ]
+            #    self.X = np.sum([ self.set_weights[j]*self.X_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            #    self.d = np.sum([ self.set_weights[j]*self.d_sets[j] for j in range(self.n_cv_sets) ], axis=0)
+            #else:
+            #    self.X = A
+            #    self.d = b
+
+            #self.matrices_estimated = True
+            #self._save_matrices()
+            #self._training_and_validation_matrices()
