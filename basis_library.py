@@ -476,7 +476,7 @@ class FunctionLibrary(object):
 class OneDimensionalModel(FunctionLibrary):
     # TODO: Simpler support for low-dimension systems
 
-    def __init__(self, n_atoms, beta, using_cv=False, periodic_box_dims=[]):
+    def __init__(self, n_atoms, beta, const_a, fixed_a, a_c=None, using_cv=False, periodic_box_dims=[]):
         """One-dimensional model
         
         Potential forms, test functions, and their derivatives.
@@ -497,15 +497,29 @@ class OneDimensionalModel(FunctionLibrary):
         self.box_dims = periodic_box_dims
         self.beta = beta
         self.using_cv = using_cv
+        self.const_a = const_a
+        self.fixed_a = fixed_a
+
+        if self.fixed_a:
+            if a_c is None:
+                raise ValueError("If fixed_a=True must provide a_c")
+            self.a_c = a_c
+
 
         # symbolic variable
         self.x_sym = sympy.symbols("x")
         self.one_half = sympy.Rational(1,2)
 
+        # the energy is expanded in basis functions
+        # has two terms U = [U_0, U_1]
+        # U_0 is a fixed term
+        # U_1 is a parametric term
+        self.U_sym = [[],[]]             # functional forms, symbolic
+        self.U_funcs = [[],[]]           # functional forms, lambdified
+        self.dU_funcs = [[],[]]           # functional forms, lambdified
+        self.U_scale_factors = [[],[]]   # scale factor of each form
+
         # the drift is expanded in basis functions
-        # has two terms b = [b_0, b_1]
-        # b_0 is a fixed term
-        # b_1 is a parametric term
         self.b_sym = [[],[]]             # functional forms, symbolic
         self.b_funcs = [[],[]]           # functional forms, lambdified
         self.d2b_funcs = [[],[]]           # functional forms, lambdified
@@ -514,6 +528,7 @@ class OneDimensionalModel(FunctionLibrary):
         # the noise is expanded in basis functions 
         self.a_sym = [[],[]]             # functional forms, symbolic
         self.a_funcs = [[],[]]           # functional forms, lambdified
+        self.da_funcs = [[],[]]           # functional forms, lambdified
         self.d2a_funcs = [[],[]]           # functional forms, lambdified
         self.a_scale_factors = [[],[]]   # scale factor of each form
 
@@ -558,13 +573,17 @@ class OneDimensionalModel(FunctionLibrary):
             self.CV = LinearCollectiveVariable(self, n_cv_dim, feature_types, feature_atm_idxs, feature_coeff, feature_mean)
         self.cv_defined = True
 
-    @property
-    def n_noise_params(self):
-        return len(self.a_funcs[1])
 
     @property
     def n_drift_params(self):
         return len(self.b_funcs[1])
+
+    @property
+    def n_noise_params(self):
+        if self.const_a:
+            return 1
+        else:
+            return len(self.a_funcs[1])
 
     @property
     def n_pot_params(self):
@@ -574,6 +593,18 @@ class OneDimensionalModel(FunctionLibrary):
     def n_test_funcs(self):
         return len(self.f_funcs)
 
+    def add_linear_potential(self, scale_factor=1, fixed=False):
+        fixd = int(not fixed) # 0 for fixed, 1 for free
+
+        U_sym = scale_factor*self.x_sym
+        U_lamb = sympy.lambdify(self.x_sym, U_sym, modules="numpy")
+        dU_lamb = sympy.lambdify(self.x_sym, U_sym.diff(self.x_sym, 1), modules="numpy")
+
+        self.U_sym[fixd].append(U_sym)
+        self.U_funcs[fixd].append(U_lamb)
+        self.dU_funcs[fixd].append(dU_lamb)
+        self.U_scale_factors[fixd].append(scale_factor)
+
     def add_Gaussian_potential_basis(self, r0, w, scale_factor=1, fixed=False):
         """Assign a Gaussian well a each position"""
         
@@ -582,7 +613,7 @@ class OneDimensionalModel(FunctionLibrary):
             # gaussian well at position r0_nm[m]
             U_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
             U_lamb = sympy.lambdify(self.x_sym, U_sym, modules="numpy")
-            dU_lamb = sympy.lambdify(self.x_sym, U_sym.diff(self.x_sym, 2), modules="numpy")
+            dU_lamb = sympy.lambdify(self.x_sym, U_sym.diff(self.x_sym, 1), modules="numpy")
             self.U_sym[fixd].append(U_sym)
             self.U_funcs[fixd].append(U_lamb)
             self.dU_funcs[fixd].append(dU_lamb)
@@ -602,6 +633,27 @@ class OneDimensionalModel(FunctionLibrary):
             self.d2b_funcs[fixd].append(d2b_lamb)
             self.b_scale_factors[fixd].append(scale_factor)
 
+    def add_linear_noise_term(self, scale_factor=1, fixed=False):
+        fixd = int(not fixed) # 0 for fixed, 1 for free
+
+        a_sym = scale_factor
+        a_lamb = lambda x: scale_factor*np.ones(x.shape[0])
+        da_lamb = lambda x: scale_factor*np.zeros(x.shape[0])
+
+        self.a_sym[fixd].append(a_sym)
+        self.a_funcs[fixd].append(a_lamb)
+        self.da_funcs[fixd].append(da_lamb)
+        self.a_scale_factors[fixd].append(scale_factor)
+
+        a_sym = scale_factor*self.x_sym
+        a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
+        da_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 1), modules="numpy")
+
+        self.a_sym[fixd].append(a_sym)
+        self.a_funcs[fixd].append(a_lamb)
+        self.da_funcs[fixd].append(da_lamb)
+        self.a_scale_factors[fixd].append(scale_factor)
+
     def add_Gaussian_noise_basis(self, r0, w, scale_factor=1, fixed=False):
         """Assign a Gaussian well a each position"""
         
@@ -610,9 +662,11 @@ class OneDimensionalModel(FunctionLibrary):
             # gaussian well at position r0_nm[m]
             a_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
             a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
+            da_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 1), modules="numpy")
             d2a_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 2), modules="numpy")
             self.a_sym[fixd].append(a_sym)
             self.a_funcs[fixd].append(a_lamb)
+            self.da_funcs[fixd].append(da_lamb)
             self.d2a_funcs[fixd].append(d2a_lamb)
             self.a_scale_factors[fixd].append(scale_factor)
 
@@ -623,7 +677,7 @@ class OneDimensionalModel(FunctionLibrary):
             # gaussian well at position r0_nm[m]
             f_sym = scale_factor*sympy.exp(-self.one_half*((self.x_sym - r0[m])/w[m])**2)
             f_lamb = sympy.lambdify(self.x_sym, f_sym, modules="numpy")
-            df_func = sympy.lambdify(self.x_sym, f_sym.diff(self.x_sym), modules="numpy") 
+            df_func = sympy.lambdify(self.x_sym, f_sym.diff(self.x_sym, 1), modules="numpy") 
             d2f_func = sympy.lambdify(self.x_sym, f_sym.diff(self.x_sym, 2), modules="numpy") 
 
             self.f_sym.append(f_sym)
@@ -686,27 +740,51 @@ class OneDimensionalModel(FunctionLibrary):
     #########################################################
     # EVALUATE FORCE ON TRAJECTORY
     #########################################################
-    def eval_dU1(self, x_traj, coeff):
-
-        dU1 = np.zeros(x_traj.shape[0], float)
-        for i in range(self.n_pot_params):
-            dU1 += coeff[i]*self.dU_funcs[1][i](x_traj)
-        return dU1
-
     def eval_a(self, x_traj, coeff):
 
-        a_func = np.zeros(x_traj.shape[0], float)
-        da_func = np.zeros(x_traj.shape[0], float)
+        a = np.zeros(x_traj.shape[0], float)
+
+        if len(self.a_sym[0]) > 0:
+            for i in range(len(self.a_sym[0])):
+                a += self.a_funcs[0][i](x_traj)
+
         for i in range(self.n_noise_params):
-            a_func += coeff[self.n_pot_params + i]*self.a_funcs[1][i](x_traj)
-            da_func += coeff[self.n_pot_params + i]*self.da_funcs[1][i](x_traj)
+            a += coeff[self.n_pot_params + i]*self.a_funcs[1][i](x_traj)
+        return a
+
+    def eval_U(self, x_traj, coeff):
+
+        U = np.zeros(x_traj.shape[0], float)
+
+        if len(self.U_sym[0]) > 0:
+            for i in range(len(self.U_sym[0])):
+                U += self.U_funcs[0][i](x_traj)
+
+        for i in range(self.n_pot_params):
+            U += coeff[i]*self.U_funcs[1][i](x_traj)
+        return U
+
+    def eval_dU1_basis(self, x_traj):
+
+        dU1 = np.zeros((x_traj.shape[0], self.n_pot_params), float)
+        for i in range(self.n_pot_params):
+            dU1[:,i] = self.dU_funcs[1][i](x_traj)
+        return dU1
+
+    def eval_a_basis(self, x_traj):
+
+        a_func = np.zeros((x_traj.shape[0], self.n_noise_params), float)
+        da_func = np.zeros((x_traj.shape[0], self.n_noise_params), float)
+        for i in range(self.n_noise_params):
+            a_func[:,i] = self.a_funcs[1][i](x_traj)
+            da_func[:,i] = self.da_funcs[1][i](x_traj)
         return a_func, da_func
 
     def eval_f(self, x_traj):
         
-        f_func = np.zeros((x_traj.shape[0], self.n_test_funcs) float)
-        df_func = np.zeros((x_traj.shape[0], self.n_test_funcs) float)
-        d2f_func = np.zeros((x_traj.shape[0], self.n_test_funcs) float)
+        f_func = np.zeros((x_traj.shape[0], self.n_test_funcs), float)
+        df_func = np.zeros((x_traj.shape[0], self.n_test_funcs), float)
+        d2f_func = np.zeros((x_traj.shape[0], self.n_test_funcs), float)
         for i in range(self.n_test_funcs):
             f_func[:,i] = self.f_funcs[i](x_traj)
             df_func[:,i] = self.df_funcs[i](x_traj)
