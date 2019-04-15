@@ -429,7 +429,7 @@ class OneDimSpectralLoss(object):
             print("loading matrices...")
             self._load_matrices()
         else:
-            #self.assign_crossval_sets()
+            self.assign_crossval_sets()
             self.calc_matrices()
 
     def assign_crossval_sets(self):
@@ -525,6 +525,7 @@ class OneDimSpectralLoss(object):
         return np.linalg.lstsq(psi_Lf.T, -psi_f)[0]
 
     def _matrix_elements_general_a(self):
+        """Calculate spectral loss matrix elements over trajectories"""
 
         psi_a_dU_df = np.zeros((self.R_a, self.R_U, self.P), float)
         psi_da_df = np.zeros((self.R_a, self.P), float)
@@ -797,128 +798,99 @@ class OneDimSpectralLoss(object):
 
         return 0.5*np.sum(vec_p**2)
 
-        #psi_Lf = np.zeros(self.P, float)
-        #psi_f = np.zeros(self.P, float)
-        #N_prev = 0
-        #for i in range(self.n_trajs):
-        #    x = self.x_trajs[i]
-        #    psi = self.psi_trajs[i]
-        #    N_curr = x.shape[0]
-        #    
-        #    # evaluate force, noise, and test functions on trajectory
-        #    a_basis, da_basis = self.model.eval_a(x)
-        #    dU1_basis = self.model.eval_dU1(x)
-        #    f, df, d2f = self.model.eval_f(x)
+    #def _eval_grad_loss_general_a(self, coeff):
+    #    # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
 
-        #    a = np.einsum("r,tr->t", coeff[self.R_U:], a_basis)
-        #    da = np.einsum("r,tr->t", coeff[self.R_U:], da_basis)
-        #    dU1 = np.einsum("r,tr->t", coeff[:self.R_U], dU1_basis)
+    #    raise NotImplementedError
 
-        #    Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
+    #    psi_Lf = np.zeros(self.P, float)
+    #    psi_f = np.zeros(self.P, float)
+    #    psi_dLf = np.zeros((self.R, self.P), float)
+    #    N_prev = 0
+    #    for i in range(self.n_trajs):
+    #        x = self.x_trajs[i]
+    #        psi = self.psi_trajs[i]
+    #        N_curr = x.shape[0]
+    #        
+    #        # evaulate forces, noise, and test functions over trajectory
+    #        a_basis, da_basis = self.model.eval_a(x)
+    #        dU1_basis = self.model.eval_dU1(x)
+    #        f, df, d2f = self.model.eval_f(x)
 
-        #    # inner product with eigenvector
-        #    curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-        #    curr_psi_f = np.einsum("t,tp->p", psi, f)
+    #        a = np.einsum("r,tr->t", coeff[self.R_U:], a_basis)
+    #        da = np.einsum("r,tr->t", coeff[self.R_U:], da_basis)
+    #        dU1 = np.einsum("r,tr->t", coeff[:self.R_U], dU1_basis)
 
-        #    # running average
-        #    psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-        #    psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
+    #        Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
 
-        #    N_prev += N_curr
+    #        grad_Lf_1 = np.einsum("t,tr,tp->trp", a, -dU1_basis, df) 
+    #        grad_Lf_2 = np.einsum("tr,tp->trp", (np.einsum("tr,t->tr", a_basis, -dU1) + da_basis), df)
+    #        grad_Lf_2 += np.einsum("tr,tp->trp", da_basis, d2f)
+    #        grad_Lf = np.concatenate([grad_Lf_1, grad_Lf_2], axis=1)
 
-        #return 0.5*np.sum((psi_Lf + self.beta_kappa*psi_f)**2)
+    #        # inner product with eigenvector
+    #        curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
+    #        curr_psi_f = np.einsum("t,tp->p", psi, f)
+    #        curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
 
-    def _eval_grad_loss_general_a(self, coeff):
-        # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
+    #        # running average
+    #        psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
+    #        psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
+    #        psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
 
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        psi_dLf = np.zeros((self.R, self.P), float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            # evaulate forces, noise, and test functions over trajectory
-            a_basis, da_basis = self.model.eval_a(x)
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
+    #        N_prev += N_curr
 
-            a = np.einsum("r,tr->t", coeff[self.R_U:], a_basis)
-            da = np.einsum("r,tr->t", coeff[self.R_U:], da_basis)
-            dU1 = np.einsum("r,tr->t", coeff[:self.R_U], dU1_basis)
+    #    Grad_Loss = np.einsum("p,rp->r", psi_Lf + self.beta_kappa*psi_f, psi_dLf)
+    #    return Grad_Loss
 
-            Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
+    #def _eval_hess_loss_general_a(self, coeff):
+    #    # Hess_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, d2Lf_dck_dck'> + <psi, dLf_dck>*<psi, dLf_dck'>
 
-            grad_Lf_1 = np.einsum("t,tr,tp->trp", a, -dU1_basis, df) 
-            grad_Lf_2 = np.einsum("tr,tp->trp", (np.einsum("tr,t->tr", a_basis, -dU1) + da_basis), df)
-            grad_Lf_2 += np.einsum("tr,tp->trp", da_basis, d2f)
-            grad_Lf = np.concatenate([grad_Lf_1, grad_Lf_2], axis=1)
+    #    psi_Lf = np.zeros(self.P, float)
+    #    psi_f = np.zeros(self.P, float)
+    #    psi_dLf = np.zeros((self.R, self.P), float)
+    #    psi_d2Lf = np.zeros((self.R_U, self.R_a, self.P), float)
+    #    N_prev = 0
+    #    for i in range(self.n_trajs):
+    #        x = self.x_trajs[i]
+    #        psi = self.psi_trajs[i]
+    #        N_curr = x.shape[0]
+    #        
+    #        a_basis, da_basis = self.model.eval_a(x)
+    #        dU1_basis = self.model.eval_dU1(x)
+    #        f, df, d2f = self.model.eval_f(x)
 
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-            curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
+    #        # evaulate forces, noise, and test functions over trajectory
+    #        a = np.einsum("r,tr->t", coeff[self.R_U:], a_basis)
+    #        da = np.einsum("r,tr->t", coeff[self.R_U:], da_basis)
+    #        dU1 = np.einsum("r,tr->t", coeff[:self.R_U], dU1_basis)
 
-            # running average
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-            psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
+    #        Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
 
-            N_prev += N_curr
+    #        grad_Lf_1 = np.einsum("t,tr,tp->trp", a, -dU1_basis, df) 
+    #        grad_Lf_2 = np.einsum("tr,tp->trp", (np.einsum("tr,t->tr", a_basis, -dU1) + da_basis), df)
+    #        grad_Lf_2 += np.einsum("tr,tp->trp", da_basis, d2f)
+    #        grad_Lf = np.concatenate([grad_Lf_1, grad_Lf_2], axis=1)
 
-        Grad_Loss = np.einsum("p,rp->r", psi_Lf + self.beta_kappa*psi_f, psi_dLf)
-        return Grad_Loss
+    #        # inner product with eigenvector
+    #        curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
+    #        curr_psi_f = np.einsum("t,tp->p", psi, f)
+    #        curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
+    #        curr_psi_grad2L = np.einsum("t,tn,tm,tp->nmp", psi, -dU1_basis, a_basis, df)
 
-    def _eval_hess_loss_general_a(self, coeff):
-        # Hess_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, d2Lf_dck_dck'> + <psi, dLf_dck>*<psi, dLf_dck'>
+    #        psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
+    #        psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
+    #        psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
+    #        psi_d2Lf = (curr_psi_grad2L + N_prev*psi_d2Lf)/float(N_prev + N_curr)
 
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        psi_dLf = np.zeros((self.R, self.P), float)
-        psi_d2Lf = np.zeros((self.R_U, self.R_a, self.P), float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            a_basis, da_basis = self.model.eval_a(x)
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
+    #        N_prev += N_curr
 
-            # evaulate forces, noise, and test functions over trajectory
-            a = np.einsum("r,tr->t", coeff[self.R_U:], a_basis)
-            da = np.einsum("r,tr->t", coeff[self.R_U:], da_basis)
-            dU1 = np.einsum("r,tr->t", coeff[:self.R_U], dU1_basis)
+    #    Hess_Loss = np.einsum("np,mp->nm", psi_dLf, psi_dLf)
 
-            Lf = np.einsum("t,tp->tp", (-a*dU1 + da), df) + np.einsum("t,tp->tp", a, d2f)
-
-            grad_Lf_1 = np.einsum("t,tr,tp->trp", a, -dU1_basis, df) 
-            grad_Lf_2 = np.einsum("tr,tp->trp", (np.einsum("tr,t->tr", a_basis, -dU1) + da_basis), df)
-            grad_Lf_2 += np.einsum("tr,tp->trp", da_basis, d2f)
-            grad_Lf = np.concatenate([grad_Lf_1, grad_Lf_2], axis=1)
-
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-            curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
-            curr_psi_grad2L = np.einsum("t,tn,tm,tp->nmp", psi, -dU1_basis, a_basis, df)
-
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-            psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
-            psi_d2Lf = (curr_psi_grad2L + N_prev*psi_d2Lf)/float(N_prev + N_curr)
-
-            N_prev += N_curr
-
-        Hess_Loss = np.einsum("np,mp->nm", psi_dLf, psi_dLf)
-
-        prod1 = np.einsum("p,nmp->nm", psi_Lf + self.beta_kappa*psi_f, psi_d2Lf)
-        Hess_Loss[:self.R_U, self.R_U:] = prod1
-        Hess_Loss[self.R_U:, :self.R_U] = prod1.T
-        return Hess_Loss
+    #    prod1 = np.einsum("p,nmp->nm", psi_Lf + self.beta_kappa*psi_f, psi_d2Lf)
+    #    Hess_Loss[:self.R_U, self.R_U:] = prod1
+    #    Hess_Loss[self.R_U:, :self.R_U] = prod1.T
+    #    return Hess_Loss
 
 class LinearDiffusionLoss(CrossValidatedLoss):
 
