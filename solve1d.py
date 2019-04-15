@@ -29,6 +29,23 @@ def eval_a(Ucg, xdata, coeff):
 
     return a
 
+def plot_U_a_solution(Ucg, coeff, psi_pmf, saveas):
+    U_soln = Ucg.eval_U(xdata, coeff)
+    U_soln -= U_soln.min()
+    a_soln = eval_a(Ucg, xdata, coeff)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    ax1.plot(xdata, U_soln, lw=2, label=r"EG soln")
+    ax1.plot(xdata, psi_pmf, 'k--', lw=2, label="PMF")
+    ax1.legend()
+    ax1.set_xlabel(r"$\psi_2$")
+    ax1.set_ylabel(r"$U(\psi_2)$ ($k_B$T)")
+
+    ax2.plot(xdata, 1000*a_soln, lw=2)
+    ax2.set_xlabel(r"$\psi_2$")
+    ax2.set_ylabel(r"$a(\psi_2)$ x1000")
+    fig.savefig(saveas + ".pdf")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("slv_method", type=str)
@@ -45,6 +62,14 @@ if __name__ == "__main__":
     fixed_a = True
     a_c = 0.005
 
+    file_fixed_a_guess = "EG_coeff_fixed_a_guess.npy"
+    file_const_a_guess = "EG_coeff_const_a_guess.npy"
+    file_var_a_guess = "EG_coeff_var_a_{}_1.npy".format(slv_method)
+
+    slv_opts = {"maxiter":1000,  "disp":True}
+    #slv_opts = {"disp":True}
+    #tol = 1e-10
+
     kappa = 1/np.load("tica_ti_ps.npy")[0]
 
     psinames = glob.glob("run_*_TIC_1.npy")
@@ -59,6 +84,7 @@ if __name__ == "__main__":
     r0_test = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_test_funcs)
     w_test = 2*np.abs(r0_test[1] - r0_test[0])*np.ones(len(r0_test), float)
     r0_test = r0_test.reshape((-1, 1))
+    xdata = r0_test[:,0]
 
     print("creating models...")
     Ucg = iff.basis_library.OneDimensionalModel(1, beta, False, False)
@@ -70,6 +96,44 @@ if __name__ == "__main__":
     Ucg.add_Gaussian_test_functions(r0_test, w_test)
 
     Loss = loss.OneDimSpectralLoss(Ucg, kappa, psi_trajs, psi_trajs)
+
+    c0_3 = np.load(file_var_a_guess)
+    #alphas = (1e-7, 1e-4)
+
+    print("optimizing...")
+    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method=slv_method, options=slv_opts)
+
+    opt_coeff = np.copy(opt_soln.x)
+    opt_coeff[Loss.R_U:] = np.log(1 + np.exp(opt_coeff[Loss.R_U:]))
+
+    restart_coeff = opt_soln.x
+
+    dx = xdata[1] - xdata[0]
+    bin_edges = np.concatenate([ xdata - 0.5*dx, np.array([xdata[-1] + dx]) ])
+    mid_bin = 0.5*(bin_edges[1:] + bin_edges[:-1])
+
+    psi_n = np.zeros(len(bin_edges) - 1)
+
+    for i in range(len(psi_trajs)):
+        n, _ = np.histogram(psi_trajs[i], bins=bin_edges)
+        psi_n += n
+
+    Ntot = float(np.sum(psi_n))
+    psi_n /= Ntot
+    psi_pmf = -np.log(psi_n)
+    psi_pmf -= psi_pmf.min()
+
+    plot_U_a_solution(Ucg, opt_coeff, psi_pmf, "EG_U_var_a_test_CG")
+
+    #alpha_U = np.logspace(-10, 4, 100)
+    #alpha_a = np.logspace(-10, 4, 100)
+    #all_coeffs = []
+    #for i in range(len(alpha_U)):
+    #    coeffs_1 = []
+    #    for j in range(len(alpha_a)):
+    #        coeff_sln, diff_cU, diff_ca = Loss._solve_general_a(c0_3, (alpha_U[i], alpha_a[j]), n_iters=10)
+    #        coeffs_alpha.append(coeff_sln)        
+
 
     raise SystemExit
 
@@ -95,13 +159,7 @@ if __name__ == "__main__":
     if const_a:
         c0[-1] = a_c
 
-    slv_opts = {"maxiter":1000,  "disp":True}
-    #slv_opts = {"disp":True}
-    #tol = 1e-10
-    xdata = r0_test[:,0]
 
-    file_fixed_a_guess = "EG_coeff_fixed_a_guess.npy"
-    file_const_a_guess = "EG_coeff_const_a_guess.npy"
 
     if not os.path.exists(file_const_a_guess):
         print("minimizing loss function with fixed a...")
@@ -133,7 +191,6 @@ if __name__ == "__main__":
     #iter = 1
     #vara_name = lambda meth, iter: "EG_coeff_var_a_{}_{}.npy".format(meth, iter)
     #while os.path.exists(
-    file_var_a_guess = "EG_coeff_var_a_{}.npy".format(slv_method)
 
     # basis set with position-dependent diffusion coefficient
     Ucg = iff.basis_library.OneDimensionalModel(1, beta, False, False)

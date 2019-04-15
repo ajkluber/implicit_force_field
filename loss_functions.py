@@ -426,6 +426,7 @@ class OneDimSpectralLoss(object):
 
         self.matrices_estimated = False
         if self.matrix_files_exist() and not self.recalc:
+            print("loading matrices...")
             self._load_matrices()
         else:
             #self.assign_crossval_sets()
@@ -532,6 +533,7 @@ class OneDimSpectralLoss(object):
         N_prev = 0
         for i in range(self.n_trajs):
             print("calculating matrix elements ({}/{})".format(i + 1, self.n_trajs), end="\r")
+            sys.stdout.flush()
             x = self.x_trajs[i]
             psi = self.psi_trajs[i]
             N_curr = x.shape[0]
@@ -556,13 +558,55 @@ class OneDimSpectralLoss(object):
             N_prev += N_curr
 
         print("calculating matrix elements ({}/{}) DONE".format(i + 1, self.n_trajs))
+        sys.stdout.flush()
         self.psi_a_dU_df = psi_a_dU_df
         self.psi_da_df = psi_da_df
-        self.psi_a_df2 = psi_a_d2f
+        self.psi_a_d2f = psi_a_d2f
         self.psi_f = self.beta_kappa*psi_f
 
         self.matrices_estimated = True
         self._save_matrices()
+
+    def _solve_general_a(self, coeff0, alphas, n_iters=10):
+
+        alpha_U, alpha_a = alphas
+        I_U = np.identity(self.R_U)
+        I_a = np.identity(self.R_a)
+
+        prev_cU = coeff0[:self.R_U]
+        prev_ca = coeff0[self.R_U:]
+
+        print("solving...")
+        diff_cU = []
+        diff_ca = []
+        for i in range(n_iters):
+            # for many iterations solve
+            print(" {}/{}".format(i + 1, n_iters), end="\r")
+            A_U = np.einsum("n,nmp->mp", prev_ca, self.psi_a_dU_df).T
+            b_U = -(np.einsum("n,np->p", prev_ca, self.psi_da_df + self.psi_a_d2f) + self.psi_f)
+
+            Areg_U = np.dot(A_U.T, A_U) + alpha_U*I_U
+            breg_U = np.dot(A_U.T, b_U)
+            new_cU = np.linalg.lstsq(Areg_U, breg_U)[0]
+
+            A_a = (np.einsum("nmp,m->np", self.psi_a_dU_df, new_cU) + self.psi_da_df + self.psi_a_d2f).T
+            b_a = -self.psi_f
+
+            Areg_a = np.dot(A_a.T, A_a) + alpha_a*I_a
+            breg_a = np.dot(A_a.T, b_a)
+            new_ca = np.linalg.lstsq(Areg_a, breg_a)[0]
+
+            diff_cU.append(np.sum((new_cU - prev_cU)**2))
+            diff_ca.append(np.sum((new_ca - prev_ca)**2))
+
+            prev_cU = np.copy(new_cU)
+            prev_ca = np.copy(new_ca)
+
+        coeff = np.concatenate([new_cU, new_ca])
+        # calculate cross-validation score with final coefficients
+        print(" {}/{} DONE".format(i + 1, n_iters))
+
+        return coeff, diff_cU, diff_ca
 
     def _eval_grad_loss_fixed_a(self, coeff):
         # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
@@ -727,18 +771,31 @@ class OneDimSpectralLoss(object):
 
 
     def _eval_loss_general_a(self, coeff):
-        # Loss = (1/2)sum_j (<psi, Lf> + beta*kappa*<psi, f>)^2
-        # where
-        #       <psi, Lf>  = <psi, (-a dF + da)*df + a*d2f >
+        """Loss function for variable diffusion function
+        
+        Enforces that diffusion function is positive"""
 
-        # Hess_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, d2Lf_dck_dck'> + <psi, dLf_dck>*<psi, dLf_dck'>
+        pos_ca = np.log(1 + np.exp(coeff[self.R_U:]))
 
-        Vec_p = np.einsum("n,nmp,m->p", coeff[self.R_U:], self.psi_a_dU_df, coeff[:self.R_U]) 
-        Vec_p += np.einsum("n,np->p", coeff[self.R_U:], self.psi_da_df)
-        Vec_p += np.einsum("n,np->p", coeff[self.R_U:], self.psi_a_d2f)
-        Vec_p += self.psi_f
+        vec_p = np.einsum("n,nmp,m->p", pos_ca, self.psi_a_dU_df, coeff[:self.R_U]) 
+        vec_p += np.einsum("n,np->p",  pos_ca, self.psi_da_df)
+        vec_p += np.einsum("n,np->p", pos_ca, self.psi_a_d2f)
+        vec_p += self.psi_f
 
-        return 0.5*np.sum(Vec_p**2)
+        return 0.5*np.sum(vec_p**2)
+
+    def _eval_grad_loss_general_a(self, coeff):
+
+        raise NotImplementedError
+    
+        grad_ca_pos = np.exp(coeff[self.R_U:])/(1 + np.exp(coeff[self.R_U:]))
+
+        vec_p = np.einsum("n,nmp,m->p", coeff[self.R_U:], self.psi_a_dU_df, coeff[:self.R_U]) 
+        vec_p += np.einsum("n,np->p", coeff[self.R_U:], self.psi_da_df)
+        vec_p += np.einsum("n,np->p", coeff[self.R_U:], self.psi_a_d2f)
+        vec_p += self.psi_f
+
+        return 0.5*np.sum(vec_p**2)
 
         #psi_Lf = np.zeros(self.P, float)
         #psi_f = np.zeros(self.P, float)
