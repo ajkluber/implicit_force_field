@@ -609,6 +609,13 @@ class OneDimSpectralLoss(object):
         """Solve for coefficients and calculate cross-validation score"""
         sqrt_k = np.sqrt(float(self.n_cv_sets))
 
+        weight_without_k = np.zeros((self.n_cv_sets, self.n_cv_sets))
+        for i in range(self.n_cv_sets):
+            n_frm_i = self.n_frames_in_set[i]
+            for j in range(self.n_cv_sets):
+                if j != i:
+                    weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i))
+
         all_coeffs = []
         all_avg_cv_scores = []
         all_std_cv_scores = []
@@ -631,12 +638,13 @@ class OneDimSpectralLoss(object):
                     opt_soln = minimize(self.eval_loss_with_regularization, coeff0, method=method, args=(k, alpha_U, alpha_a))
 
                     # cross validation score across other test sets
-                    cv_k = []
+                    cv_k = 0
                     for kprime in range(self.n_cv_sets):
                         if kprime != k:
                             loss_k = self.eval_loss(opt_soln.x, kprime) 
-                            cv_k.append(self.set_weights[kprime]*loss_k)
-                    avg_cv[k] = np.mean(cv_k)
+                            
+                            cv_k += weight_without_k[k, kprime]*loss_k
+                    avg_cv[k] = cv_k
                     coeff0 = np.copy(opt_soln.x)
 
                 temp_coeffs.append(opt_soln.x)
