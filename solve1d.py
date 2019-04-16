@@ -101,7 +101,18 @@ if __name__ == "__main__":
     #alphas = (1e-7, 1e-4)
 
     print("optimizing...")
-    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method=slv_method, options=slv_opts)
+    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0, 1e-11, 1e-11))
+
+    alpha_U = np.logspace(-10, 4, 10)
+    alpha_a = np.logspace(-10, 4, 10)
+    all_coeffs, all_avg_cv, all_std_cv = Loss.solve(opt_soln.x, alpha_U, alpha_a)
+
+    np.save("EG1d_coeffs.npy", all_coeffs)
+    np.save("EG1d_avg_cv.npy", all_avg_cv)
+    np.save("EG1d_std_cv.npy", all_std_cv)
+
+    #raise Systm
+    raise SystemExit
 
     opt_coeff = np.copy(opt_soln.x)
     opt_coeff[Loss.R_U:] = np.log(1 + np.exp(opt_coeff[Loss.R_U:]))
@@ -125,8 +136,6 @@ if __name__ == "__main__":
 
     plot_U_a_solution(Ucg, opt_coeff, psi_pmf, "EG_U_var_a_test_CG")
 
-    #alpha_U = np.logspace(-10, 4, 100)
-    #alpha_a = np.logspace(-10, 4, 100)
     #all_coeffs = []
     #for i in range(len(alpha_U)):
     #    coeffs_1 = []
