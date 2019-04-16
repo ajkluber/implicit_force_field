@@ -418,8 +418,8 @@ class OneDimSpectralLoss(object):
             else:
                 self.calc_matrices = self._matrix_elements_general_a
                 self.eval_loss = self._eval_loss_general_a
-                self.eval_grad_loss = self._eval_grad_loss_general_a
-                self.eval_hess_loss = self._eval_hess_loss_general_a
+                #self.eval_grad_loss = self._eval_grad_loss_general_a
+                #self.eval_hess_loss = self._eval_hess_loss_general_a
                 self.R_a = model.n_noise_params
 
         self.R = self.R_U + self.R_a
@@ -434,7 +434,6 @@ class OneDimSpectralLoss(object):
 
     def assign_crossval_sets(self):
         """Randomly assign frames to training and validation sets"""
-        raise NotImplementedError
 
         self.cv_set_assignment = []
         traj_n_frames = []
@@ -527,11 +526,13 @@ class OneDimSpectralLoss(object):
     def _matrix_elements_general_a(self):
         """Calculate spectral loss matrix elements over trajectories"""
 
-        psi_a_dU_df = np.zeros((self.R_a, self.R_U, self.P), float)
-        psi_da_df = np.zeros((self.R_a, self.P), float)
-        psi_a_d2f = np.zeros((self.R_a, self.P), float)
+        psi_a_dU_df = np.zeros((self.n_cv_sets, self.R_a, self.R_U, self.P), float)
+        psi_da_df = np.zeros((self.n_cv_sets, self.R_a, self.P), float)
+        psi_a_d2f = np.zeros((self.n_cv_sets, self.R_a, self.P), float)
         psi_f = np.zeros(self.P, float)
-        N_prev = 0
+
+        N_prev = np.zeros(self.n_cv_sets, float)
+
         for i in range(self.n_trajs):
             print("calculating matrix elements ({}/{})".format(i + 1, self.n_trajs), end="\r")
             sys.stdout.flush()
@@ -544,19 +545,34 @@ class OneDimSpectralLoss(object):
             dU1_basis = self.model.eval_dU1_basis(x)
             f, df, d2f = self.model.eval_f(x)
 
-            # inner products with eigenvector
-            curr_psi_a_dU_df = np.einsum("tn,tm,tp->nmp", a_basis, -dU1_basis, df)
-            curr_psi_da_df = np.einsum("tn,tp->np", da_basis, df)
-            curr_psi_a_d2f = np.einsum("tn,tp->np", a_basis, d2f)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
+            # average over different cross validation sets
+            for k in range(self.n_cv_sets):
+                frames_in_this_set = self.cv_set_assignment[n] == k
+                N_curr_set = np.sum(frames_in_this_set)
 
-            # running average
-            psi_a_dU_df = (curr_psi_a_dU_df + N_prev*psi_a_dU_df)/float(N_prev + N_curr)
-            psi_da_df = (curr_psi_da_df + N_prev*psi_da_df)/float(N_prev + N_curr)
-            psi_a_d2f = (curr_psi_a_d2f + N_prev*psi_a_d2f)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
+                if N_curr_set > 0:
+                    psi_subset = psi[frames_in_this_set]
+                    a_subset = a_basis[frames_in_this_set]
+                    da_subset = da_basis[frames_in_this_set]
+                    dU1_subset = -dU1_basis[frames_in_this_set]
 
-            N_prev += N_curr
+                    f_subset = f[frames_in_this_set]
+                    df_subset = df[frames_in_this_set]
+                    d2f_subset = d2f[frames_in_this_set]
+
+                    # inner products with eigenvector
+                    curr_psi_a_dU_df = np.einsum("tn,tm,tp->nmp", a_subset, dU1_subset, df_subset)
+                    curr_psi_da_df = np.einsum("tn,tp->np", da_subset, df_subset)
+                    curr_psi_a_d2f = np.einsum("tn,tp->np", a_subset, d2f_subset)
+                    curr_psi_f = np.einsum("t,tp->p", psi_subset, f_subset)
+
+                    # running average
+                    psi_a_dU_df[k] = (curr_psi_a_dU_df + N_prev[k]*psi_a_dU_df)/float(N_prev[k] + N_curr_set)
+                    psi_da_df[k] = (curr_psi_da_df + N_prev[k]*psi_da_df)/float(N_prev[k] + N_curr_set)
+                    psi_a_d2f[k] = (curr_psi_a_d2f + N_prev[k]*psi_a_d2f)/float(N_prev[k] + N_curr_set)
+                    psi_f[k] = (curr_psi_f + N_prev[k]*psi_f)/float(N_prev[k] + N_curr_set)
+
+                    N_prev[k] += N_curr_set
 
         print("calculating matrix elements ({}/{}) DONE".format(i + 1, self.n_trajs))
         sys.stdout.flush()
@@ -567,6 +583,52 @@ class OneDimSpectralLoss(object):
 
         self.matrices_estimated = True
         self._save_matrices()
+
+    def solve(self, coeff0, rdg_alpha_U, rdg_alpha_a, method="CG"):
+        """Solve for coefficients and calculate cross-validation score"""
+        sqrt_k = np.sqrt(float(self.n_cv_sets))
+
+        all_coeffs = []
+        all_avg_cv_scores = []
+        all_std_cv_scores = []
+        print("solving with cross-validation...")
+        for i in range(len(rdg_alpha_U)):
+            alpha_U = rdg_alpha_U[i]
+            temp_coeffs = []
+            temp_avg_cv = []
+            temp_std_cv = []
+
+            for j in range(len(rdg_alpha_U)):
+                alpha_a = rdg_alpha_a[j]
+
+                print("  {:>4d}/{:<4d}    {:>4d}/{:<4d}".format(i + 1, len(rdg_alpha_U), j + 1, len(rdg_alpha_a)), end="\r")
+                sys.stdout.flush()
+
+                # for each value of the reg params have the mean and std dev of loss over
+                avg_cv = np.zeros(self.n_cv_sets)
+                for k in range(self.n_cv_sets):
+                    opt_soln = minimize(self.eval_loss, coeff0, method=method, args=(k, alpha_U, alpha_a))
+
+                    # cross validation score across other test sets
+                    cv_k = []
+                    for kprime in range(self.n_cv_sets):
+                        if kprime != k:
+                            loss_k = self.eval_loss(opt_soln.x, kprime, alpha_U, alpha_a) 
+                            cv_k.append(self.set_weights[kprime]*loss_k)
+                    avg_cv[k] = np.mean(cv_k)
+                    coeff0 = np.copy(opt_soln.x)
+
+                temp_avg_cv.append(np.mean(avg_cv))
+                temp_std_cv.append(np.std(avg_cv)/sqrt_k)
+
+            all_coeffs.append(temp_coeffs)
+            all_avg_cv_scores.append(temp_avg_cv)
+            all_std_cv_scores.append(temp_std_cv)
+
+        print("  {:>4d}/{:<4d}    {:>4d}/{:<4d}  DONE".format(i + 1, len(rdg_alpha_U), j + 1, len(rdg_alpha_a)))
+        sys.stdout.flush()
+
+        return np.array(all_coeffs), np.array(all_avg_cv_scores), np.array(all_std_cv_scores)
 
     def _solve_general_a(self, coeff0, alphas, n_iters=10):
 
@@ -771,19 +833,22 @@ class OneDimSpectralLoss(object):
         return Hess_Loss
 
 
-    def _eval_loss_general_a(self, coeff):
+    def _eval_loss_general_a(self, coeff, k, alpha_U, alpha_a):
         """Loss function for variable diffusion function
         
         Enforces that diffusion function is positive"""
 
         pos_ca = np.log(1 + np.exp(coeff[self.R_U:]))
 
-        vec_p = np.einsum("n,nmp,m->p", pos_ca, self.psi_a_dU_df, coeff[:self.R_U]) 
-        vec_p += np.einsum("n,np->p",  pos_ca, self.psi_da_df)
-        vec_p += np.einsum("n,np->p", pos_ca, self.psi_a_d2f)
-        vec_p += self.psi_f
+        vec_p = np.einsum("n,nmp,m->p", pos_ca, self.psi_a_dU_df[k], coeff[:self.R_U]) 
+        vec_p += np.einsum("n,np->p",  pos_ca, self.psi_da_df[k])
+        vec_p += np.einsum("n,np->p", pos_ca, self.psi_a_d2f[k])
+        vec_p += self.psi_f[k]
+        spectral_loss = 0.5*np.sum(vec_p**2)
 
-        return 0.5*np.sum(vec_p**2)
+        ridge_loss = alpha_U*np.sum(coeff[:self.R_U]**2) + alpha_a*np.sum(pos_ca**2)
+
+        return spectral_loss + ridge_loss
 
     def _eval_grad_loss_general_a(self, coeff):
 
