@@ -417,6 +417,7 @@ class OneDimSpectralLoss(object):
                 self.R_a = 1
             else:
                 self.calc_matrices = self._matrix_elements_general_a
+                self.eval_loss_reg = self._eval_loss_general_a_with_regularization
                 self.eval_loss = self._eval_loss_general_a
                 #self.eval_grad_loss = self._eval_grad_loss_general_a
                 #self.eval_hess_loss = self._eval_hess_loss_general_a
@@ -473,7 +474,24 @@ class OneDimSpectralLoss(object):
             self.psi_da_df = np.load("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix))
             self.psi_a_d2f = np.load("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix))
             self.psi_f = np.load("{}/psi_f_{}.npy".format(self.savedir, self.suffix))
-            self.matrices_estimated = True
+
+        self.cv_set_assignment = []
+        traj_n_frames = []
+        for i in range(len(self.x_trajs)):
+            frm_set = np.load("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1))
+            self.cv_set_assignment.append(frm_set)
+            traj_n_frames.append(frm_set.shape[0])
+
+        self.total_n_frames = sum(traj_n_frames)
+
+        self.n_frames_in_set = []
+        for k in range(self.n_cv_sets):
+            self.n_frames_in_set.append(np.sum([ np.sum(self.cv_set_assignment[i] == k) for i in range(len(self.cv_set_assignment)) ]))
+        self.set_weights = [ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ]
+
+        self.cv_sets_are_assigned = True
+
+        self.matrices_estimated = True
 
     def _save_matrices(self):
 
@@ -485,6 +503,9 @@ class OneDimSpectralLoss(object):
             np.save("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix), self.psi_da_df)
             np.save("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix), self.psi_a_d2f)
             np.save("{}/psi_f_{}.npy".format(self.savedir, self.suffix), self.psi_f)
+
+            for i in range(len(self.cv_set_assignment)):
+                np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1), self.cv_set_assignment[i])
 
     def minimize_fixed_a_loss(self):
 
@@ -529,7 +550,7 @@ class OneDimSpectralLoss(object):
         psi_a_dU_df = np.zeros((self.n_cv_sets, self.R_a, self.R_U, self.P), float)
         psi_da_df = np.zeros((self.n_cv_sets, self.R_a, self.P), float)
         psi_a_d2f = np.zeros((self.n_cv_sets, self.R_a, self.P), float)
-        psi_f = np.zeros(self.P, float)
+        psi_f = np.zeros((self.n_cv_sets, self.P), float)
 
         N_prev = np.zeros(self.n_cv_sets, float)
 
@@ -547,7 +568,7 @@ class OneDimSpectralLoss(object):
 
             # average over different cross validation sets
             for k in range(self.n_cv_sets):
-                frames_in_this_set = self.cv_set_assignment[n] == k
+                frames_in_this_set = self.cv_set_assignment[i] == k
                 N_curr_set = np.sum(frames_in_this_set)
 
                 if N_curr_set > 0:
@@ -567,10 +588,10 @@ class OneDimSpectralLoss(object):
                     curr_psi_f = np.einsum("t,tp->p", psi_subset, f_subset)
 
                     # running average
-                    psi_a_dU_df[k] = (curr_psi_a_dU_df + N_prev[k]*psi_a_dU_df)/float(N_prev[k] + N_curr_set)
-                    psi_da_df[k] = (curr_psi_da_df + N_prev[k]*psi_da_df)/float(N_prev[k] + N_curr_set)
-                    psi_a_d2f[k] = (curr_psi_a_d2f + N_prev[k]*psi_a_d2f)/float(N_prev[k] + N_curr_set)
-                    psi_f[k] = (curr_psi_f + N_prev[k]*psi_f)/float(N_prev[k] + N_curr_set)
+                    psi_a_dU_df[k] = (curr_psi_a_dU_df + N_prev[k]*psi_a_dU_df[k])/float(N_prev[k] + N_curr_set)
+                    psi_da_df[k] = (curr_psi_da_df + N_prev[k]*psi_da_df[k])/float(N_prev[k] + N_curr_set)
+                    psi_a_d2f[k] = (curr_psi_a_d2f + N_prev[k]*psi_a_d2f[k])/float(N_prev[k] + N_curr_set)
+                    psi_f[k] = (curr_psi_f + N_prev[k]*psi_f[k])/float(N_prev[k] + N_curr_set)
 
                     N_prev[k] += N_curr_set
 
@@ -607,17 +628,18 @@ class OneDimSpectralLoss(object):
                 # for each value of the reg params have the mean and std dev of loss over
                 avg_cv = np.zeros(self.n_cv_sets)
                 for k in range(self.n_cv_sets):
-                    opt_soln = minimize(self.eval_loss, coeff0, method=method, args=(k, alpha_U, alpha_a))
+                    opt_soln = minimize(self.eval_loss_with_regularization, coeff0, method=method, args=(k, alpha_U, alpha_a))
 
                     # cross validation score across other test sets
                     cv_k = []
                     for kprime in range(self.n_cv_sets):
                         if kprime != k:
-                            loss_k = self.eval_loss(opt_soln.x, kprime, alpha_U, alpha_a) 
+                            loss_k = self.eval_loss(opt_soln.x, kprime) 
                             cv_k.append(self.set_weights[kprime]*loss_k)
                     avg_cv[k] = np.mean(cv_k)
                     coeff0 = np.copy(opt_soln.x)
 
+                temp_coeffs.append(opt_soln.x)
                 temp_avg_cv.append(np.mean(avg_cv))
                 temp_std_cv.append(np.std(avg_cv)/sqrt_k)
 
@@ -832,8 +854,7 @@ class OneDimSpectralLoss(object):
         Hess_Loss[:-1, -1] = prod1
         return Hess_Loss
 
-
-    def _eval_loss_general_a(self, coeff, k, alpha_U, alpha_a):
+    def _eval_loss_general_a(self, coeff, k):
         """Loss function for variable diffusion function
         
         Enforces that diffusion function is positive"""
@@ -846,6 +867,15 @@ class OneDimSpectralLoss(object):
         vec_p += self.psi_f[k]
         spectral_loss = 0.5*np.sum(vec_p**2)
 
+        return spectral_loss
+
+    def _eval_loss_general_a_with_regularization(self, coeff, k, alpha_U, alpha_a):
+        """Loss function for variable diffusion function
+        
+        Enforces that diffusion function is positive"""
+
+        pos_ca = np.log(1 + np.exp(coeff[self.R_U:]))
+        spectral_loss = self._eval_loss_general_a(coeff, k)
         ridge_loss = alpha_U*np.sum(coeff[:self.R_U]**2) + alpha_a*np.sum(pos_ca**2)
 
         return spectral_loss + ridge_loss
