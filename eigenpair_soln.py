@@ -274,7 +274,7 @@ if __name__ == "__main__":
     using_D2 = False
     n_cross_val_sets = 5
 
-    cg_savedir = util.test_Ucg_dirname(cg_method, M, using_U0, fix_back,
+    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
             fix_exvol, bond_cutoff, using_cv,
             n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
             a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
