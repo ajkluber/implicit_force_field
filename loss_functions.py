@@ -614,7 +614,7 @@ class OneDimSpectralLoss(object):
             n_frm_i = self.n_frames_in_set[i]
             for j in range(self.n_cv_sets):
                 if j != i:
-                    weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i))
+                    weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i)
 
         all_coeffs = []
         all_avg_cv_scores = []
@@ -626,7 +626,7 @@ class OneDimSpectralLoss(object):
             temp_avg_cv = []
             temp_std_cv = []
 
-            for j in range(len(rdg_alpha_U)):
+            for j in range(len(rdg_alpha_a)):
                 alpha_a = rdg_alpha_a[j]
 
                 print("  {:>4d}/{:<4d}    {:>4d}/{:<4d}".format(i + 1, len(rdg_alpha_U), j + 1, len(rdg_alpha_a)), end="\r")
@@ -635,7 +635,7 @@ class OneDimSpectralLoss(object):
                 # for each value of the reg params have the mean and std dev of loss over
                 avg_cv = np.zeros(self.n_cv_sets)
                 for k in range(self.n_cv_sets):
-                    opt_soln = minimize(self.eval_loss_with_regularization, coeff0, method=method, args=(k, alpha_U, alpha_a))
+                    opt_soln = minimize(self.eval_loss_reg, coeff0, method=method, args=(k, alpha_U, alpha_a))
 
                     # cross validation score across other test sets
                     cv_k = 0

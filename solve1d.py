@@ -98,26 +98,43 @@ if __name__ == "__main__":
     Loss = loss.OneDimSpectralLoss(Ucg, kappa, psi_trajs, psi_trajs)
 
     c0_3 = np.load(file_var_a_guess)
-    #alphas = (1e-7, 1e-4)
 
-    print("optimizing...")
-    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0, 1e-11, 1e-11))
+    alpha_U = np.array([0])
+    alpha_a = np.logspace(-10, 7, 30)
 
-    alpha_U = np.logspace(-10, 4, 10)
-    alpha_a = np.logspace(-10, 4, 10)
+    #print("optimizing...")
+    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0))
     all_coeffs, all_avg_cv, all_std_cv = Loss.solve(opt_soln.x, alpha_U, alpha_a)
 
     np.save("EG1d_coeffs.npy", all_coeffs)
     np.save("EG1d_avg_cv.npy", all_avg_cv)
     np.save("EG1d_std_cv.npy", all_std_cv)
 
-    #raise Systm
-    raise SystemExit
+    X, Y = np.meshgrid(alpha_U, alpha_a)
 
-    opt_coeff = np.copy(opt_soln.x)
+    all_coeffs = np.load("EG1d_coeffs.npy")
+    all_avg_cv = np.load("EG1d_avg_cv.npy")
+    all_std_cv = np.load("EG1d_std_cv.npy")
+
+    #plt.figure()
+    #plt.pcolormesh(X, Y, np.log10(all_avg_cv))
+    #plt.semilogx()
+    #plt.semilogy()
+    #plt.colorbar()
+    #plt.savefig("EG1d_cross_val_countour.pdf")
+
+    plt.figure()
+    plt.plot(alpha_a, all_avg_cv[0])
+    plt.semilogx()
+    plt.semilogy()
+    plt.savefig("EG1d_cross_val_vs_alpha_a.pdf")
+
+    #opt_coeff = np.copy(opt_soln.x)
+    opt_coeff = all_coeffs[0,0]
+    opt_coeff = all_coeffs[0,-10]
     opt_coeff[Loss.R_U:] = np.log(1 + np.exp(opt_coeff[Loss.R_U:]))
 
-    restart_coeff = opt_soln.x
+    #restart_coeff = opt_soln.x
 
     dx = xdata[1] - xdata[0]
     bin_edges = np.concatenate([ xdata - 0.5*dx, np.array([xdata[-1] + dx]) ])
@@ -134,7 +151,9 @@ if __name__ == "__main__":
     psi_pmf = -np.log(psi_n)
     psi_pmf -= psi_pmf.min()
 
-    plot_U_a_solution(Ucg, opt_coeff, psi_pmf, "EG_U_var_a_test_CG")
+    plot_U_a_solution(Ucg, opt_coeff, psi_pmf, "EG1d_crossval_U_var_a")
+
+    raise SystemExit
 
     #all_coeffs = []
     #for i in range(len(alpha_U)):
