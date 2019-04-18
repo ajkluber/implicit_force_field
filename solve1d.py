@@ -29,13 +29,46 @@ def eval_a(Ucg, xdata, coeff):
 
     return a
 
-def plot_U_a_solution(Ucg, coeff, psi_pmf, saveas):
+def plot_solution(Ucg, coeff, psi_pmf, saveas):
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    #coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(coeff[Ucg.n_pot_params:]))
+
     U_soln = Ucg.eval_U(xdata, coeff)
     U_soln -= U_soln.min()
     a_soln = eval_a(Ucg, xdata, coeff)
 
+    ax1.plot(xdata, U_soln, lw=2)
+
+    ax1.plot(xdata, psi_pmf, 'k--', lw=2, label="PMF")
+    ax1.legend()
+    ax1.set_xlabel(r"$\psi_2$")
+    ax1.set_ylabel(r"$U(\psi_2)$ ($k_B$T)")
+
+    ax2.plot(xdata, 1000*a_soln, lw=2)
+    ax2.set_xlabel(r"$\psi_2$")
+    ax2.set_ylabel(r"$a(\psi_2)$ x1000")
+    fig.savefig(saveas + ".pdf")
+
+def plot_U_a_solution(Ucg, coeff_idxs, psi_pmf, alpha_U, alpha_a, saveas):
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    ax1.plot(xdata, U_soln, lw=2, label=r"EG soln")
+
+    for i in range(len(coeff_idxs)):
+    #for i in range(len(alpha_U)):
+        idx1, idx2 = coeff_idxs[i]
+        coeff = all_coeffs[idx1, idx2]
+        #coeff = all_coeffs[
+
+        coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(coeff[Ucg.n_pot_params:]))
+
+        U_soln = Ucg.eval_U(xdata, coeff)
+        U_soln -= U_soln.min()
+        a_soln = eval_a(Ucg, xdata, coeff)
+
+        ax1.plot(xdata, U_soln, lw=2, label=r"$\alpha_U = {:.1e}$  $\alpha_a = {:.1e}$".format(alpha_U[idx1], alpha_a[idx2]))
+
     ax1.plot(xdata, psi_pmf, 'k--', lw=2, label="PMF")
     ax1.legend()
     ax1.set_xlabel(r"$\psi_2$")
@@ -51,6 +84,8 @@ if __name__ == "__main__":
     parser.add_argument("slv_method", type=str)
     args = parser.parse_args()
     slv_method = args.slv_method
+
+    print(" ".join(sys.argv))
 
     T = 300.
     kb = 0.0083145
@@ -76,6 +111,7 @@ if __name__ == "__main__":
     #psi_trajs = [ np.concatenate([ np.load(x) for x in psinames ]) ]
     psi_trajs = [ np.load(x) for x in psinames ]
 
+
     temp_cv_r0 = np.load("psi1_mid_bin.npy")[1:-1]
     r0_basis = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_basis_funcs)
     w_basis = 2*np.abs(r0_basis[1] - r0_basis[0])*np.ones(len(r0_basis), float)
@@ -88,53 +124,12 @@ if __name__ == "__main__":
 
     print("creating models...")
     Ucg = iff.basis_library.OneDimensionalModel(1, beta, False, False)
-    Ucg.add_linear_noise_term()
+    Ucg.add_constant_noise_term()
     Ucg.add_Gaussian_noise_basis(r0_basis, w_basis)
 
     Ucg.add_linear_potential()
     Ucg.add_Gaussian_potential_basis(r0_basis, w_basis)
     Ucg.add_Gaussian_test_functions(r0_test, w_test)
-
-    Loss = loss.OneDimSpectralLoss(Ucg, kappa, psi_trajs, psi_trajs)
-
-    c0_3 = np.load(file_var_a_guess)
-
-    alpha_U = np.array([0])
-    alpha_a = np.logspace(-10, 7, 30)
-
-    #print("optimizing...")
-    opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0))
-    all_coeffs, all_avg_cv, all_std_cv = Loss.solve(opt_soln.x, alpha_U, alpha_a)
-
-    np.save("EG1d_coeffs.npy", all_coeffs)
-    np.save("EG1d_avg_cv.npy", all_avg_cv)
-    np.save("EG1d_std_cv.npy", all_std_cv)
-
-    X, Y = np.meshgrid(alpha_U, alpha_a)
-
-    all_coeffs = np.load("EG1d_coeffs.npy")
-    all_avg_cv = np.load("EG1d_avg_cv.npy")
-    all_std_cv = np.load("EG1d_std_cv.npy")
-
-    #plt.figure()
-    #plt.pcolormesh(X, Y, np.log10(all_avg_cv))
-    #plt.semilogx()
-    #plt.semilogy()
-    #plt.colorbar()
-    #plt.savefig("EG1d_cross_val_countour.pdf")
-
-    plt.figure()
-    plt.plot(alpha_a, all_avg_cv[0])
-    plt.semilogx()
-    plt.semilogy()
-    plt.savefig("EG1d_cross_val_vs_alpha_a.pdf")
-
-    #opt_coeff = np.copy(opt_soln.x)
-    opt_coeff = all_coeffs[0,0]
-    opt_coeff = all_coeffs[0,-10]
-    opt_coeff[Loss.R_U:] = np.log(1 + np.exp(opt_coeff[Loss.R_U:]))
-
-    #restart_coeff = opt_soln.x
 
     dx = xdata[1] - xdata[0]
     bin_edges = np.concatenate([ xdata - 0.5*dx, np.array([xdata[-1] + dx]) ])
@@ -151,7 +146,76 @@ if __name__ == "__main__":
     psi_pmf = -np.log(psi_n)
     psi_pmf -= psi_pmf.min()
 
-    plot_U_a_solution(Ucg, opt_coeff, psi_pmf, "EG1d_crossval_U_var_a")
+    Loss = loss.OneDimSpectralLoss(Ucg, kappa, psi_trajs, psi_trajs, softplus_coeff_a=True)
+
+
+    #c0_3 = np.load(file_var_a_guess)
+    c0_2 = np.zeros(Ucg.n_pot_params + Ucg.n_noise_params)
+    c0_2[:Ucg.n_pot_params] = np.load(file_fixed_a_guess)
+    c0_2[Ucg.n_pot_params] = -5
+    c0_2[Ucg.n_pot_params + 1:] = -10
+    #c0_2[:Ucg.n_pot_params + 1] = np.load(file_const_a_guess)
+    c0_3 = np.copy(c0_2)
+
+    #alpha_U = np.logspace(-10, -4, 5)
+    #alpha_a = np.logspace(-10, -4, 5)
+
+    alpha_U = np.array([1e-8])
+    alpha_a = np.array([1e-8])
+
+    raise SystemExit
+
+    print("optimizing...")
+    #opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0))
+    #popt = opt_soln.x
+    #popt[Ucg.n_pot_params:] = np.log(1 + np.exp(popt[Ucg.n_pot_params:]))
+    #plot_solution(Ucg, popt, psi_pmf, "test_EG1d_U_var_a_U")
+
+    #############################################################
+    # CROSS VALIDATE RIDGE REGREGRESSION PARAMETERS 
+    #############################################################
+    all_coeffs, all_avg_cv, all_std_cv = Loss.solve(c0_3, alpha_U, alpha_a)
+
+    raise SystemExit
+    all_coeffs, all_avg_cv, all_std_cv = Loss.solve(c0_3, alpha_U, alpha_a)
+
+    np.save("EG1d_coeffs.npy", all_coeffs)
+    np.save("EG1d_alpha_U.npy", alpha_U)
+    np.save("EG1d_alpha_a.npy", alpha_a)
+    np.save("EG1d_avg_cv.npy", all_avg_cv)
+    np.save("EG1d_std_cv.npy", all_std_cv)
+
+    X, Y = np.meshgrid(alpha_U, alpha_a)
+
+    #all_coeffs = np.load("EG1d_coeffs.npy")
+    #alpha_U = np.load("EG1d_alpha_U.npy")
+    #alpha_a = np.load("EG1d_alpha_a.npy")
+    #all_avg_cv = np.load("EG1d_avg_cv.npy")
+    #all_std_cv = np.load("EG1d_std_cv.npy")
+
+    plt.figure()
+    plt.pcolormesh(X, Y, np.log10(all_avg_cv))
+    plt.semilogx()
+    plt.semilogy()
+    plt.colorbar()
+    plt.savefig("EG1d_cross_val_countour.pdf")
+
+    #plt.figure()
+    #plt.plot(alpha_a, all_avg_cv[0])
+    #plt.semilogx()
+    #plt.semilogy()
+    #plt.savefig("EG1d_cross_val_vs_alpha_a.pdf")
+     
+    #opt_coeff = np.copy(opt_soln.x)
+    #opt_coeff = all_coeffs[0,0]
+    #opt_coeff = all_coeffs[0,-10]
+    #opt_coeff[Loss.R_U:] = np.log(1 + np.exp(opt_coeff[Loss.R_U:]))
+
+    raise SystemExit
+
+    #plot_idxs = [[2,2], [int(len(alpha_U)/2), int(len(alpha_a)/2)], [-1, -1]]
+    plot_idxs = [[2,2], [int(len(alpha_U)/2), int(len(alpha_a)/2)], [-1, -1]]
+    plot_U_a_solution(Ucg, plot_idxs, psi_pmf, alpha_U, alpha_a, "EG1d_crossval_U_var_a")
 
     raise SystemExit
 
@@ -222,7 +286,7 @@ if __name__ == "__main__":
 
     # basis set with position-dependent diffusion coefficient
     Ucg = iff.basis_library.OneDimensionalModel(1, beta, False, False)
-    Ucg.add_linear_noise_term()
+    Ucg.add_constant_noise_term()
     Ucg.add_Gaussian_noise_basis(r0_basis, w_basis)
 
     Ucg.add_linear_potential()
