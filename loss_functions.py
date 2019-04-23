@@ -6,6 +6,7 @@ import scipy.linalg as scl
 
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
+import scipy.optimize
 import scipy.linalg
 
 import mdtraj as md
@@ -383,7 +384,7 @@ class CrossValidatedLoss(object):
 class OneDimSpectralLoss(object):
 
     def __init__(self, model, kappa, psi_trajs, x_trajs, savedir=".",
-            n_cv_sets=5, recalc=False, softplus_coeff_a=False):
+            n_cv_sets=5, recalc=False, suffix="EG1d", softplus_coeff_a=False):
         # indices of coefficients that are to remain positive. Will apply
         # softplus functions
 
@@ -392,14 +393,13 @@ class OneDimSpectralLoss(object):
         self.cv_sets_are_assigned = False
         self.recalc = recalc
         self.softplus_coeff_a = softplus_coeff_a  
-        self.save_by_traj = False
+        self.suffix = suffix
 
         self.model = model
         self.const_a = model.const_a
         self.fixed_a = model.fixed_a
         self.beta_kappa = model.beta*kappa
 
-        self.suffix = "EG1d"
 
         self.psi_trajs = psi_trajs
         self.x_trajs = x_trajs
@@ -417,7 +417,7 @@ class OneDimSpectralLoss(object):
             if self.const_a:
                 self.eval_loss = self._eval_loss_const_a
                 self.eval_grad_loss = self._eval_grad_loss_const_a
-                self.eval_hess_loss = self._eval_hess_loss_const_a
+                #self.eval_hess_loss = self._eval_hess_loss_const_a
                 self.R_a = 1
             else:
                 self.calc_matrices = self._matrix_elements_general_a
@@ -453,32 +453,42 @@ class OneDimSpectralLoss(object):
             self.n_frames_in_set.append(np.sum([ np.sum(self.cv_set_assignment[i] == k) for i in range(len(self.cv_set_assignment)) ]))
         self.set_weights = np.array([ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ])
 
+        self.weight_without_k = np.zeros((self.n_cv_sets, self.n_cv_sets))
+        for i in range(self.n_cv_sets):
+            n_frm_i = self.n_frames_in_set[i]
+            for j in range(self.n_cv_sets):
+                if j != i:
+                    self.weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i)
+
         self.cv_sets_are_assigned = True
 
     def matrix_files_exist(self):
-
-        if self.const_a:
-            if self.fixed_a:
-                pass
-            raise NotImplementedError
-        else:
-            fnames = ["psi_a_dU_df", "psi_da_df", "psi_a_d2f", "psi_f"]
-
+        """Check if files exist"""
+        fnames = ["psi_a_dU_df", "psi_da_df", "psi_a_d2f", "psi_f"]
         files_exist = np.all([ os.path.exists("{}/{}_{}.npy".format(self.savedir, fname, self.suffix)) for fname in fnames ])
         return files_exist
 
     def _load_matrices(self):
+        """Load matrix elements from file"""
+
+        psi_a_dU_df = np.load("{}/psi_a_dU_df_{}.npy".format(self.savedir, self.suffix))
+        psi_da_df = np.load("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix))
+        psi_a_d2f = np.load("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix))
+        psi_f = np.load("{}/psi_f_{}.npy".format(self.savedir, self.suffix))
 
         if self.const_a:
-            if self.fixed_a:
-                pass
-            raise NotImplementedError
+            # only keep constant noise terms
+            self.psi_a_dU_df = psi_a_dU_df[:,0,:,:]
+            self.psi_da_df = np.zeros(psi_da_df.shape)
+            self.psi_a_d2f = psi_a_d2f[:,0,:] 
+            self.psi_f = psi_f
         else:
-            self.psi_a_dU_df = np.load("{}/psi_a_dU_df_{}.npy".format(self.savedir, self.suffix))
-            self.psi_da_df = np.load("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix))
-            self.psi_a_d2f = np.load("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix))
-            self.psi_f = np.load("{}/psi_f_{}.npy".format(self.savedir, self.suffix))
+            self.psi_a_dU_df = psi_a_dU_df
+            self.psi_da_df = psi_da_df
+            self.psi_a_d2f = psi_a_d2f
+            self.psi_f = psi_f
 
+        # load assignments for cross validation folds/sets
         self.cv_set_assignment = []
         traj_n_frames = []
         for i in range(len(self.x_trajs)):
@@ -493,60 +503,25 @@ class OneDimSpectralLoss(object):
             self.n_frames_in_set.append(np.sum([ np.sum(self.cv_set_assignment[i] == k) for i in range(len(self.cv_set_assignment)) ]))
         self.set_weights = np.array([ (self.n_frames_in_set[j]/float(self.total_n_frames)) for j in range(self.n_cv_sets) ])
 
-        self.cv_sets_are_assigned = True
+        self.weight_without_k = np.zeros((self.n_cv_sets, self.n_cv_sets))
+        for i in range(self.n_cv_sets):
+            n_frm_i = self.n_frames_in_set[i]
+            for j in range(self.n_cv_sets):
+                if j != i:
+                    self.weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i)
 
+        self.cv_sets_are_assigned = True
         self.matrices_estimated = True
 
     def _save_matrices(self):
 
-        if self.const_a:
-            if self.fixed_a:
-                pass
-        else:
-            np.save("{}/psi_a_dU_df_{}.npy".format(self.savedir, self.suffix), self.psi_a_dU_df)
-            np.save("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix), self.psi_da_df)
-            np.save("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix), self.psi_a_d2f)
-            np.save("{}/psi_f_{}.npy".format(self.savedir, self.suffix), self.psi_f)
+        np.save("{}/psi_a_dU_df_{}.npy".format(self.savedir, self.suffix), self.psi_a_dU_df)
+        np.save("{}/psi_da_df_{}.npy".format(self.savedir, self.suffix), self.psi_da_df)
+        np.save("{}/psi_a_d2f_{}.npy".format(self.savedir, self.suffix), self.psi_a_d2f)
+        np.save("{}/psi_f_{}.npy".format(self.savedir, self.suffix), self.psi_f)
 
-            for i in range(len(self.cv_set_assignment)):
-                np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1), self.cv_set_assignment[i])
-
-    def minimize_fixed_a_loss(self):
-
-        #X = np.zeros((self.P, self.R), float)
-        #d = np.zeros(self.P, float)
-
-        if not self.fixed_a:
-            raise ValueError("Can't minimize")
-
-        psi_Lf = np.zeros((self.R, self.P), float)
-        psi_f = np.zeros(self.P, float)
-        N_prev = 0
-        One = np.ones(self.R)
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            # evaluate force, noise, and test functions on trajectory
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
-
-            #dU1 = np.einsum("r,tr->t", coeff, dU1_basis)
-
-            Lf = np.einsum("tr,tp->trp", -self.a_c*dU1_basis, df) + self.a_c*np.einsum("r,tp->trp", One, d2f)
-
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,trp->rp", psi, Lf)
-            curr_psi_f = self.beta_kappa*np.einsum("t,tp->p", psi, f)
-
-            # running average
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-
-            N_prev += N_curr
-
-        return np.linalg.lstsq(psi_Lf.T, -psi_f)[0]
+        for i in range(len(self.cv_set_assignment)):
+            np.save("{}/frame_set_{}_{}.npy".format(self.savedir, self.suffix, i + 1), self.cv_set_assignment[i])
 
     def _matrix_elements_general_a(self):
         """Calculate spectral loss matrix elements over trajectories"""
@@ -609,16 +584,91 @@ class OneDimSpectralLoss(object):
         self.matrices_estimated = True
         self._save_matrices()
 
+    ########################################################################
+    # MINIMIZE LOSS
+    ########################################################################
+    def _solve_fixed_a(self, a_c, alphas):
+        """Solve for potential parameters when diffusion cefficient is fixed"""
+
+        X = np.einsum("w,wmp->mp", self.set_weights, self.psi_a_dU_df) 
+        d = -np.einsum("w,wp->p", self.set_weights, self.psi_f)/a_c
+        d += -np.einsum("w,wp->p", self.set_weights, self.psi_a_d2f)
+
+        return np.linalg.lstsq(X.T, d, rcond=1e-10)[0]
+
+    def _solve_fixed_a(self, a_c):
+        """Solve for potential parameters when diffusion cefficient is fixed"""
+
+        X = np.einsum("w,wmp->mp", self.set_weights, self.psi_a_dU_df) 
+        d = -np.einsum("w,wp->p", self.set_weights, self.psi_f)/a_c
+        d += -np.einsum("w,wp->p", self.set_weights, self.psi_a_d2f)
+
+        return np.linalg.lstsq(X.T, d, rcond=1e-10)[0]
+        #return scipy.optimize.lsq_linear(X, d)
+
+    def _solve_const_a_linear(self, alphas):
+        """Solve for potential parameters when diffusion cefficient is fixed"""
+        sqrt_k = np.sqrt(float(self.n_cv_sets))
+
+        X_train_val = []
+        d_train_val = []
+        for k in range(self.n_cv_sets):
+            # const diff
+            train_X_1 = np.einsum("w,wmp->mp", self.weight_without_k[k], self.psi_a_dU_df) 
+            train_X_2 = np.einsum("w,wp->p", self.weight_without_k[k], self.psi_f) 
+            train_X = np.concatenate([train_X_1, train_X_2[np.newaxis,:]])
+            train_d = -np.einsum("w,wp->p", self.weight_without_k[k], self.psi_a_d2f)
+
+            valid_X = np.concatenate([ self.psi_a_dU_df[k,:,:], (self.psi_f[k])[np.newaxis,:]], axis=0)
+            valid_d = -self.psi_a_d2f[k]
+
+            X_train_val.append([ train_X, valid_X ])
+            d_train_val.append([ np.dot(train_X, train_d), valid_d ])
+
+        X_1 = np.einsum("w,wmp->mp", self.set_weights, self.psi_a_dU_df) 
+        X_2 = np.einsum("w,wp->p", self.set_weights, self.psi_f)
+        X = np.concatenate([X_1, X_2[np.newaxis,:]], axis=0)
+        d = -np.einsum("w,wp->p", self.set_weights, self.psi_a_d2f)
+        d_reg = np.dot(X, d)
+
+        I = np.identity(X.shape[0])
+
+        all_coeffs = []
+        all_train_mse = []
+        all_valid_mse = []
+        for i in range(len(alphas)):
+            print("{}/{}".format(i + 1, len(alphas)), end="\r")
+            sys.stdout.flush()
+            alpha = alphas[i]
+
+            trn_mse_folds = []
+            val_mse_folds = []
+            for k in range(self.n_cv_sets):
+                X_train, X_valid = X_train_val[k]
+                d_train_reg, d_valid = d_train_val[k]
+
+                X_reg_k = np.dot(X_train, X_train.T) + alpha*I
+                coeff = np.linalg.lstsq(X_reg_k, d_train_reg, rcond=1e-10)[0]
+                
+                train_mse = np.mean((np.dot(X_reg_k, coeff) - d_train_reg)**2)
+                valid_mse = np.mean((np.dot(X_valid.T, coeff) - d_valid)**2)
+
+                trn_mse_folds.append(train_mse)
+                val_mse_folds.append(valid_mse)
+
+            X_reg = np.dot(X, X.T) + alpha*I
+            all_coeffs.append(np.linalg.lstsq(X_reg, d_reg, rcond=1e-10)[0])
+
+            all_train_mse.append([ np.mean(trn_mse_folds), np.std(trn_mse_folds)/sqrt_k ])
+            all_valid_mse.append([ np.mean(val_mse_folds), np.std(val_mse_folds)/sqrt_k ])
+        print("{}/{} DONE".format(i + 1, len(alphas)), end="\r")
+        sys.stdout.flush()
+
+        return np.array(all_coeffs), np.array(all_train_mse), np.array(all_valid_mse)
+
     def solve(self, coeff0, rdg_alpha_U, rdg_alpha_a, method="CG"):
         """Solve for coefficients and calculate cross-validation score"""
         sqrt_k = np.sqrt(float(self.n_cv_sets))
-
-        weight_without_k = np.zeros((self.n_cv_sets, self.n_cv_sets))
-        for i in range(self.n_cv_sets):
-            n_frm_i = self.n_frames_in_set[i]
-            for j in range(self.n_cv_sets):
-                if j != i:
-                    weight_without_k[i,j] = self.n_frames_in_set[j]/float(self.total_n_frames - n_frm_i)
 
         all_coeffs = []
         all_avg_cv_scores = []
@@ -647,7 +697,7 @@ class OneDimSpectralLoss(object):
                         if kprime != k:
                             loss_k = self.eval_loss(opt_soln.x, kprime) 
                             
-                            cv_k += weight_without_k[k, kprime]*loss_k
+                            cv_k += self.weight_without_k[k, kprime]*loss_k
                     avg_cv[k] = cv_k
                     #coeff0 = np.copy(opt_soln.x)
 
@@ -705,166 +755,89 @@ class OneDimSpectralLoss(object):
 
         return coeff, diff_cU, diff_ca
 
-    def _eval_grad_loss_fixed_a(self, coeff):
-        # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
-
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        psi_dLf = np.zeros((self.R, self.P), float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            # evaulate forces, noise, and test functions over trajectory
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
-
-            dU1 = np.einsum("r,tr->t", coeff, dU1_basis)
-
-            Lf = np.einsum("t,tp->tp", -self.a_c*dU1, df) + self.a_c*d2f
-
-            grad_Lf = np.einsum("tr,tp->trp", -self.a_c*dU1_basis, df) 
-
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-            curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
-
-            # running average
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-            psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
-
-            N_prev += N_curr
-
-        Grad_Loss = np.einsum("p,rp->r", psi_Lf + self.beta_kappa*psi_f, psi_dLf)
-        return Grad_Loss
-
-    def _eval_loss_const_a(self, coeff):
+    def _solve_loss_const_a(self, coeff, k):
         # Loss = (1/2)sum_j (<psi, Lf> + beta*kappa*<psi, f>)^2
         # where
         #       <psi, Lf>  = <psi, (-a dF + da)*df + a*d2f >
 
         # Hess_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, d2Lf_dck_dck'> + <psi, dLf_dck>*<psi, dLf_dck'>
 
-        a_c = coeff[-1]
+        coeff_U = coeff[:-1]
+        if self.softplus_coeff_a:
+            a_c = np.log(1 + np.exp(coeff[-1]))
+        else:
+            a_c = coeff[-1]
 
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            # evaluate force, noise, and test functions on trajectory
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
+        if k == -1:
+            # loss for all data
+            Sum_j = np.einsum("w,wmp,m->p", self.set_weights, a_c*self.psi_a_dU_df, coeff_U) 
+            Sum_j += np.einsum("w,wp->p", self.set_weights, a_c*self.psi_a_d2f)
+            Sum_j += np.einsum("w,wp->p", self.set_weights, self.psi_f)
+        else:
+            # loss for set k
+            Sum_j = np.einsum("mp,m->p", a_c*self.psi_a_dU_df[k], coeff_U) 
+            Sum_j += a_c*self.psi_a_d2f[k]
+            Sum_j += self.psi_f[k]
 
-            dU1 = np.einsum("r,tr->t", coeff[:-1], dU1_basis)
+        return 0.5*np.sum(Sum_j**2)
 
-            Lf = np.einsum("t,tp->tp", -a_c*dU1, df) + a_c*d2f
+    def _eval_loss_const_a(self, coeff, k):
+        # Loss = (1/2)sum_j (<psi, Lf> + beta*kappa*<psi, f>)^2
+        # where
+        #       <psi, Lf>  = <psi, (-a dF + da)*df + a*d2f >
 
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-
-            # running average
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-
-            N_prev += N_curr
-
-        return 0.5*np.sum((psi_Lf + self.beta_kappa*psi_f)**2)
-
-    def _eval_grad_loss_const_a(self, coeff):
-        # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
-
-        a_c = coeff[-1]
-
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        psi_dLf = np.zeros((self.R, self.P), float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            # evaulate forces, noise, and test functions over trajectory
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
-
-            dU1 = np.einsum("r,tr->t", coeff[:-1], dU1_basis)
-
-            Lf = np.einsum("t,tp->tp", -a_c*dU1, df) + a_c*d2f
-
-            grad_Lf = np.zeros((N_curr, self.R, self.P), float)
-            grad_Lf[:,:-1,:] = np.einsum("tr,tp->trp", -a_c*dU1_basis, df) 
-            grad_Lf[:,-1,:] = np.einsum("t,tp->tp", -dU1, df) + d2f
-
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-            curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
-
-            # running average
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-            psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
-
-            N_prev += N_curr
-
-        Grad_Loss = np.einsum("p,rp->r", psi_Lf + self.beta_kappa*psi_f, psi_dLf)
-        return Grad_Loss
-
-    def _eval_hess_loss_const_a(self, coeff):
         # Hess_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, d2Lf_dck_dck'> + <psi, dLf_dck>*<psi, dLf_dck'>
 
-        a_c = coeff[-1]
+        coeff_U = coeff[:-1]
+        if self.softplus_coeff_a:
+            a_c = np.log(1 + np.exp(coeff[-1]))
+        else:
+            a_c = coeff[-1]
 
-        psi_Lf = np.zeros(self.P, float)
-        psi_f = np.zeros(self.P, float)
-        psi_dLf = np.zeros((self.R, self.P), float)
-        psi_d2Lf = np.zeros((self.R_U, self.P), float)
-        N_prev = 0
-        for i in range(self.n_trajs):
-            x = self.x_trajs[i]
-            psi = self.psi_trajs[i]
-            N_curr = x.shape[0]
-            
-            dU1_basis = self.model.eval_dU1(x)
-            f, df, d2f = self.model.eval_f(x)
+        if k == -1:
+            # loss for all data
+            Sum_j = np.einsum("w,wmp,m->p", self.set_weights, a_c*self.psi_a_dU_df, coeff_U) 
+            Sum_j += np.einsum("w,wp->p", self.set_weights, a_c*self.psi_a_d2f)
+            Sum_j += np.einsum("w,wp->p", self.set_weights, self.psi_f)
+        else:
+            # loss for set k
+            Sum_j = np.einsum("mp,m->p", a_c*self.psi_a_dU_df[k], coeff_U) 
+            Sum_j += a_c*self.psi_a_d2f[k]
+            Sum_j += self.psi_f[k]
 
-            dU1 = np.einsum("r,tr->t", coeff[:-1], dU1_basis)
+        return 0.5*np.sum(Sum_j**2)
 
-            Lf = np.einsum("t,tp->tp", -a_c*dU1, df) + a_c*d2f
+    def _eval_grad_loss_const_a(self, coeff, dummy):
+        # Grad_Loss = sum_j (<psi, Lf> + beta*kappa*<psi, f>)*<psi, dLf_dck>
 
-            grad_Lf = np.zeros((N_curr, self.R, self.P), float)
-            grad_Lf[:,:-1,:] = np.einsum("tr,tp->trp", -a_c*dU1_basis, df) 
-            grad_Lf[:,-1,:] = np.einsum("t,tp->tp", -dU1, df) + d2f
+        coeff_U = coeff[:-1]
+        if self.softplus_coeff_a:
+            a_c = np.log(1 + np.exp(coeff[-1]))
+            grad_a_c = np.exp(coeff[-1])/(1 + np.exp(coeff[-1]))
+        else:
+            a_c = coeff[-1]
 
-            # inner product with eigenvector
-            curr_psi_Lf = np.einsum("t,tp->p", psi, Lf)
-            curr_psi_f = np.einsum("t,tp->p", psi, f)
-            curr_psi_gradL = np.einsum("t,trp->rp", psi, grad_Lf)
-            curr_psi_grad2L = np.einsum("t,tr,tp->rp", psi, -dU1_basis, df)
+        Sum_j = np.einsum("w,wmp,m->p", self.set_weights, a_c*self.psi_a_dU_df, coeff_U) 
+        Sum_j += np.einsum("w,wp->p", self.set_weights, a_c*self.psi_a_d2f)
+        Sum_j += np.einsum("w,wp->p", self.set_weights, self.psi_f)
 
-            psi_Lf = (curr_psi_Lf + N_prev*psi_Lf)/float(N_prev + N_curr)
-            psi_f = (curr_psi_f + N_prev*psi_f)/float(N_prev + N_curr)
-            psi_dLf = (curr_psi_gradL + N_prev*psi_dLf)/float(N_prev + N_curr)
-            psi_d2Lf = (curr_psi_grad2L + N_prev*psi_d2Lf)/float(N_prev + N_curr)
+        grad_sum_j_coeff_U = np.einsum("w,wmp->mp", self.set_weights, a_c*self.psi_a_dU_df) 
 
-            N_prev += N_curr
+        grad_sum_j_coeff_a = np.einsum("w,wmp,m->p", self.set_weights, self.psi_a_dU_df, coeff_U) 
+        grad_sum_j_coeff_a += np.einsum("w,wp->p", self.set_weights, self.psi_a_d2f)
 
-        Hess_Loss = np.einsum("np,mp->nm", psi_dLf, psi_dLf)
+        if self.softplus_coeff_a:
+            grad_coeff_a = np.array([grad_a_c*np.sum(Sum_j*grad_sum_j_coeff_a)])
+        else:
+            grad_coeff_a = np.array([np.sum(Sum_j*grad_sum_j_coeff_a)])
 
-        prod1 = np.einsum("p,rp->r", psi_Lf + self.beta_kappa*psi_f, psi_d2Lf)
-        Hess_Loss[-1, :-1] = prod1
-        Hess_Loss[:-1, -1] = prod1
-        return Hess_Loss
+        grad_coeff_U = np.einsum("p,mp->m", Sum_j, grad_sum_j_coeff_U)
+        grad_loss = np.concatenate([grad_coeff_U, grad_coeff_a])
+
+        return grad_loss
+
+    def _eval_hess_loss_const_a(self, coeff, dummy):
+        raise NotImplementedError
 
     def _eval_loss_general_a(self, coeff, k):
         """Loss function for variable diffusion function
@@ -880,7 +853,7 @@ class OneDimSpectralLoss(object):
             Sum_j = np.einsum("w,n,wnmp,m->p", self.set_weights, coeff_a, self.psi_a_dU_df, coeff_U) 
             Sum_j += np.einsum("w,n,wnp->p", self.set_weights, coeff_a, self.psi_da_df)
             Sum_j += np.einsum("w,n,wnp->p", self.set_weights, coeff_a, self.psi_a_d2f)
-            Sum_j += np.einsum("w,wp->p",self.psi_f)
+            Sum_j += np.einsum("w,wp->p", self.set_weights, self.psi_f)
         else:
             # loss for set k
             Sum_j = np.einsum("n,nmp,m->p", coeff_a, self.psi_a_dU_df[k], coeff_U) 
@@ -901,7 +874,9 @@ class OneDimSpectralLoss(object):
 
         return spectral_loss + ridge_loss
 
-    def _eval_grad_loss_general_a(self, coeff):
+    #def _eval_grad_loss_general_a_coeff_a(self, coeff_a, coeff_U):
+
+    def _eval_grad_loss_general_a(self, coeff, dummy):
 
         coeff_U = coeff[:self.R_U]
         if self.softplus_coeff_a:
@@ -931,7 +906,7 @@ class OneDimSpectralLoss(object):
 
         return grad_loss
 
-    def _eval_hess_loss_general_a(self, coeff):
+    def _eval_hess_loss_general_a(self, coeff, dummy):
 
         coeff_U = coeff[:self.R_U]
         if self.softplus_coeff_a:
@@ -945,9 +920,10 @@ class OneDimSpectralLoss(object):
         Sum_j += np.einsum("w,n,wnp->p", self.set_weights, coeff_a, self.psi_a_d2f)
         Sum_j += np.einsum("w,wp->p", self.set_weights, self.psi_f)
 
-        hess_loss = np.zeros((self.R_U, self.R_a), float)
+        n_params = self.R_U + self.R_a
+        hess_loss = np.zeros((n_params, n_params), float)
 
-        hess_loss[:self.R_U, self.R_U:] = np.einsum("p,nmp->nm", Sum_j, self.psi_a_dU_df)
+        hess_loss[:self.R_U, self.R_U:] = np.einsum("w,p,wnmp->nm", self.set_weights, Sum_j, self.psi_a_dU_df)
 
         grad_sum_j_coeff_U = np.einsum("w,n,wnmp->mp", self.set_weights, coeff_a, self.psi_a_dU_df) 
 
@@ -962,11 +938,10 @@ class OneDimSpectralLoss(object):
         hess_loss[:self.R_U, :self.R_U] += np.einsum("mp,np->nm", grad_sum_j_coeff_a, grad_sum_j_coeff_a)
 
         if self.softplus_coeff_a:
-            hess_loss[self.R_U:, :] = np.einsum("n,mn->mn", grad_coeff_a, hess_loss[self.R_U:, :])
+            hess_loss[self.R_U:, :] = np.einsum("n,nm->nm", grad_coeff_a, hess_loss[self.R_U:, :])
             hess_loss[:, self.R_U:] = np.einsum("n,mn->mn", grad_coeff_a, hess_loss[:, self.R_U:])
 
         return hess_loss
-
 
 class LinearDiffusionLoss(CrossValidatedLoss):
 
