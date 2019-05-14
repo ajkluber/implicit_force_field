@@ -597,8 +597,8 @@ class OneDimensionalModel(FunctionLibrary):
         fixd = int(not fixed) # 0 for fixed, 1 for free
 
         U_sym = scale_factor*self.x_sym
-        U_lamb = sympy.lambdify(self.x_sym, U_sym, modules="numpy")
-        dU_lamb = sympy.lambdify(self.x_sym, U_sym.diff(self.x_sym, 1), modules="numpy")
+        U_lamb = lambda x: scale_factor*x
+        dU_lamb = lambda x: scale_factor*np.ones(x.shape[0])
 
         self.U_sym[fixd].append(U_sym)
         self.U_funcs[fixd].append(U_lamb)
@@ -633,7 +633,7 @@ class OneDimensionalModel(FunctionLibrary):
             self.d2b_funcs[fixd].append(d2b_lamb)
             self.b_scale_factors[fixd].append(scale_factor)
 
-    def add_linear_noise_term(self, scale_factor=1, fixed=False):
+    def add_constant_noise_term(self, scale_factor=1, fixed=False):
         fixd = int(not fixed) # 0 for fixed, 1 for free
 
         a_sym = scale_factor
@@ -645,14 +645,14 @@ class OneDimensionalModel(FunctionLibrary):
         self.da_funcs[fixd].append(da_lamb)
         self.a_scale_factors[fixd].append(scale_factor)
 
-        a_sym = scale_factor*self.x_sym
-        a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
-        da_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 1), modules="numpy")
+        #a_sym = scale_factor*self.x_sym
+        #a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
+        #da_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 1), modules="numpy")
 
-        self.a_sym[fixd].append(a_sym)
-        self.a_funcs[fixd].append(a_lamb)
-        self.da_funcs[fixd].append(da_lamb)
-        self.a_scale_factors[fixd].append(scale_factor)
+        #self.a_sym[fixd].append(a_sym)
+        #self.a_funcs[fixd].append(a_lamb)
+        #self.da_funcs[fixd].append(da_lamb)
+        #self.a_scale_factors[fixd].append(scale_factor)
 
     def add_Gaussian_noise_basis(self, r0, w, scale_factor=1, fixed=False):
         """Assign a Gaussian well a each position"""
@@ -664,6 +664,7 @@ class OneDimensionalModel(FunctionLibrary):
             a_lamb = sympy.lambdify(self.x_sym, a_sym, modules="numpy")
             da_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 1), modules="numpy")
             d2a_lamb = sympy.lambdify(self.x_sym, a_sym.diff(self.x_sym, 2), modules="numpy")
+
             self.a_sym[fixd].append(a_sym)
             self.a_funcs[fixd].append(a_lamb)
             self.da_funcs[fixd].append(da_lamb)
