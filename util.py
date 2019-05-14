@@ -200,6 +200,8 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_list, alpha_list, sigma_star, n
 
     if Ucg.pair_symmetry == "shared":
         fig1 = plt.figure()
+        #Upair = Ucg.Upair_values(coeff_star, r_vals)
+
         Upair = np.zeros(len(r_vals))
         for i in range(len(coeff_star)):
             Upair += coeff_star[i]*Ucg.U_funcs[1][i](*xyz_traj.T)
@@ -366,41 +368,41 @@ def plot_Upair_for_best_sigma(Ucg, r_vals, coeff_list, alpha_list, sigma_star, n
                         ax.set_xlabel(r"$r_{ij}$ (nm)")
         fig1.suptitle(title, fontsize=18)
 
-        #for s in range(len(seps)):
-        #    sep = seps[s]
-        #    n_pairs_sep = N - sep
-        #    ncols = int(np.ceil(np.sqrt(n_pairs_sep)))
-        #    fig2, axes = plt.subplots(ncols, ncols, figsize=(4*ncols, 4*ncols)) 
-        #    for i in range(n_pairs_sep):
-        #        j = i + sep
-        #        c_idx_start = pair_idxs_to_c_start[(i,j)]
+        for s in range(len(seps)):
+            sep = seps[s]
+            n_pairs_sep = N - sep
+            ncols = int(np.ceil(np.sqrt(n_pairs_sep)))
+            fig2, axes = plt.subplots(ncols, ncols, figsize=(4*ncols, 4*ncols)) 
+            for i in range(n_pairs_sep):
+                j = i + sep
+                c_idx_start = pair_idxs_to_c_start[(i,j)]
 
-        #        if n_pairs_sep > 1:
-        #            ax_i = int(np.floor(i / float(ncols)))
-        #            ax_j = int(i % ncols)
-        #            ax = axes[ax_i, ax_j]
-        #        else:
-        #            ax = axes
+                if n_pairs_sep > 1:
+                    ax_i = int(np.floor(i / float(ncols)))
+                    ax_j = int(i % ncols)
+                    ax = axes[ax_i, ax_j]
+                else:
+                    ax = axes
 
-        #        Upair = np.zeros(len(r_vals))
-        #        Upair += coeff_star[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
-        #        for k in range(n_pair_gauss):
-        #            c_k = coeff_star[c_idx_start + k + 1]
-        #            Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
+                Upair = np.zeros(len(r_vals))
+                Upair += coeff_star[0]*Ucg.U_funcs[1][0](*xyz_traj.T)
+                for k in range(n_pair_gauss):
+                    c_k = coeff_star[c_idx_start + k + 1]
+                    Upair += c_k*Ucg.U_funcs[1][c_idx_start + k + 1](*xyz_traj.T)
 
-        #        ax.plot(r_vals, Upair, 'k', lw=3)
+                ax.plot(r_vals, Upair, 'k', lw=3)
 
-        #        ax.annotate(r"$({:d}, {:d})$".format(i + 1, j + 1), fontsize=16,
-        #                xy=(0,0), xytext=(0.55, 0.7), bbox={"facecolor":"w", "alpha":1, "edgecolor":"k"},
-        #                xycoords="axes fraction", textcoords="axes fraction")
+                ax.annotate(r"$({:d}, {:d})$".format(i + 1, j + 1), fontsize=16,
+                        xy=(0,0), xytext=(0.55, 0.7), bbox={"facecolor":"w", "alpha":1, "edgecolor":"k"},
+                        xycoords="axes fraction", textcoords="axes fraction")
 
-        #        if not ylims is None:
-        #            ax.set_ylim(*ylims)
-        #        ax.set_xlim(*xlims)
-        #    fig2.suptitle(r"$|i - j| ={:d}$".format(sep))
-        #    fig2.savefig("{}Upair_unique_{}.pdf".format(prefix, sep))
-        #    fig2.savefig("{}Upair_unique_{}.png".format(prefix, sep))
-        #    plt.close(fig2)
+                if not ylims is None:
+                    ax.set_ylim(*ylims)
+                ax.set_xlim(*xlims)
+            fig2.suptitle(r"$|i - j| ={:d}$".format(sep))
+            fig2.savefig("{}Upair_unique_{}.pdf".format(prefix, sep))
+            fig2.savefig("{}Upair_unique_{}.png".format(prefix, sep))
+            plt.close(fig2)
 
         for s in range(len(seps)):
             sep = seps[s]
