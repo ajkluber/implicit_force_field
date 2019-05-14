@@ -29,24 +29,34 @@ def eval_a(Ucg, xdata, coeff):
 
     return a
 
-def plot_solution(Ucg, coeff, psi_pmf, saveas):
+def plot_solution(Ucg, coeffs, psi_pmf, saveas, logy=True, ylim=None):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
     #coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(coeff[Ucg.n_pot_params:]))
+    for i in range(len(coeffs)):
+        coeff = coeffs[i]
 
-    U_soln = Ucg.eval_U(xdata, coeff)
-    U_soln -= U_soln.min()
-    a_soln = eval_a(Ucg, xdata, coeff)
+        U_soln = Ucg.eval_U(xdata, coeff)
+        U_soln -= U_soln.min()
+        ax1.plot(xdata, U_soln, lw=2)
 
-    ax1.plot(xdata, U_soln, lw=2)
+        if Ucg.const_a:
+            a_soln = coeff[-1]*np.ones(len(xdata))
+        else:
+            a_soln = eval_a(Ucg, xdata, coeff)
+
+        ax2.plot(xdata, 1000*a_soln, lw=2)
 
     ax1.plot(xdata, psi_pmf, 'k--', lw=2, label="PMF")
-    ax1.legend()
+    #ax1.legend()
+    if not ylim is None:
+        ax1.set_ylim(*ylim)
     ax1.set_xlabel(r"$\psi_2$")
     ax1.set_ylabel(r"$U(\psi_2)$ ($k_B$T)")
 
-    ax2.plot(xdata, 1000*a_soln, lw=2)
+    if logy:
+        ax2.semilogy()
     ax2.set_xlabel(r"$\psi_2$")
     ax2.set_ylabel(r"$a(\psi_2)$ x1000")
     fig.savefig(saveas + ".pdf")
@@ -101,8 +111,8 @@ if __name__ == "__main__":
     file_const_a_guess = "EG_coeff_const_a_guess.npy"
     file_var_a_guess = "EG_coeff_var_a_{}_1.npy".format(slv_method)
 
-    slv_opts = {"maxiter":1000,  "disp":True}
-    #slv_opts = {"disp":True}
+    #slv_opts = {"maxiter":1000,  "disp":True}
+    slv_opts = {"disp":True}
     #tol = 1e-10
 
     kappa = 1/np.load("tica_ti_ps.npy")[0]
@@ -111,18 +121,29 @@ if __name__ == "__main__":
     #psi_trajs = [ np.concatenate([ np.load(x) for x in psinames ]) ]
     psi_trajs = [ np.load(x) for x in psinames ]
 
-
     temp_cv_r0 = np.load("psi1_mid_bin.npy")[1:-1]
     r0_basis = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_basis_funcs)
     w_basis = 2*np.abs(r0_basis[1] - r0_basis[0])*np.ones(len(r0_basis), float)
-    r0_basis = r0_basis.reshape((-1, 1))
+    #r0_basis = r0_basis.reshape((-1, 1))
 
     r0_test = np.linspace(temp_cv_r0.min(), temp_cv_r0.max(), n_test_funcs)
     w_test = 2*np.abs(r0_test[1] - r0_test[0])*np.ones(len(r0_test), float)
-    r0_test = r0_test.reshape((-1, 1))
-    xdata = r0_test[:,0]
+    #r0_test = r0_test.reshape((-1, 1))
+    #xdata = r0_test[:,0]
+    xdata = r0_test
 
     print("creating models...")
+    Ucg_fixa = iff.basis_library.OneDimensionalModel(1, beta, True, True, a_c=a_c)
+    Ucg_fixa.add_linear_potential()
+    Ucg_fixa.add_Gaussian_potential_basis(r0_basis, w_basis)
+    Ucg_fixa.add_Gaussian_test_functions(r0_test, w_test)
+
+    Ucg_const_a = iff.basis_library.OneDimensionalModel(1, beta, True, False)
+    Ucg_const_a.add_linear_potential()
+    Ucg_const_a.add_Gaussian_potential_basis(r0_basis, w_basis)
+    Ucg_const_a.add_Gaussian_test_functions(r0_test, w_test)
+    Ucg_const_a.add_constant_noise_term()
+
     Ucg = iff.basis_library.OneDimensionalModel(1, beta, False, False)
     Ucg.add_constant_noise_term()
     Ucg.add_Gaussian_noise_basis(r0_basis, w_basis)
@@ -136,7 +157,6 @@ if __name__ == "__main__":
     mid_bin = 0.5*(bin_edges[1:] + bin_edges[:-1])
 
     psi_n = np.zeros(len(bin_edges) - 1)
-
     for i in range(len(psi_trajs)):
         n, _ = np.histogram(psi_trajs[i], bins=bin_edges)
         psi_n += n
@@ -146,30 +166,189 @@ if __name__ == "__main__":
     psi_pmf = -np.log(psi_n)
     psi_pmf -= psi_pmf.min()
 
+    #Loss_fixa = loss.OneDimSpectralLoss(Ucg_fixa, kappa, psi_trajs, psi_trajs)
+    #c_fixa = Loss_fixa._solve_fixed_a(a_c)
+
+    #Usln_fixa = Ucg_fixa.eval_U(xdata, c_fixa)
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    #ax1.plot(xdata, Usln_fixa)
+    #ax2.plot(xdata, a_c*np.ones(len(xdata)))
+    #fig.savefig("temp_EG1d_U_fixed_a.pdf")
+
+
+    ######################################################
+    # SOLVE FOR CONSTANT DIFF COEFFICIENT LINEARLY
+    ######################################################
+    #Loss_const_a = loss.OneDimSpectralLoss(Ucg_const_a, kappa, psi_trajs, psi_trajs, softplus_coeff_a=True)
+
+    #rdg_alphas = np.logspace(-18, 1, 100)
+    #all_coeffs, train_mse, valid_mse = Loss_const_a._solve_const_a_linear(rdg_alphas)
+
+    #opt_idx = np.argmin(valid_mse[:,0])
+
+    #plt.figure()
+    #ln1 = plt.plot(rdg_alphas, valid_mse[:,0])[0]
+    #plt.fill_between(rdg_alphas, valid_mse[:,0] + valid_mse[:,1], valid_mse[:,0] - valid_mse[:,1], alpha=0.3, color=ln1.get_color())
+    #plt.axvline(rdg_alphas[opt_idx], ls='--', color='k')
+    #plt.semilogx()
+    #plt.semilogy()
+    #plt.xlabel(r"Regularization $\alpha$")
+    #plt.ylabel("Validation MSE")
+    #plt.savefig("EG1d_const_a_valid_mse.pdf")
+
+    ## plot cross-validated solution. 
+    #opt_coeff = all_coeffs[opt_idx]
+    #const_a = 1/opt_coeff[-1]
+
+    #Usln_const_a = Ucg_const_a.eval_U(xdata, opt_coeff[:-1])
+    #Usln_const_a -= Usln_const_a.min()
+
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    #ax1.plot(xdata, Usln_const_a, label=r"Spectral-matching")
+    #ax1.plot(xdata, psi_pmf, 'k--', label=r"$-\ln P(\psi_2)$")
+    #ax1.set_xlabel(r"$\psi_2$")
+    #ax1.set_ylabel(r"Potential (k$_B$T)")
+    #ax1.set_title("Cross-valid linear solution")
+
+    #ax2.plot(xdata, 100*const_a*np.ones(len(xdata)))
+    #ax2.set_xlabel(r"$\psi_2$")
+    #ax2.set_ylabel(r"$a(\psi_2)$ x100")
+
+    #fig.savefig("EG1d_U_const_a_cross_val.pdf")
+
+    #save_coeff = np.copy(opt_coeff)
+    #save_coeff[-1] = 1/opt_coeff[-1]
+    #np.save(file_const_a_guess, save_coeff)
+
+    ######################################################
+    # SOLVE FOR POS-DEPENDENT DIFFUSION NON-LINEARLY
+    ######################################################
+    opt_coeff_const_a = np.load(file_const_a_guess) # use constant diffusion as initial guess
+
+    c0_general = np.zeros(Ucg.n_pot_params + Ucg.n_noise_params)
+    c0_general[:Ucg.n_pot_params] = opt_coeff_const_a[:-1]
+    c0_general[Ucg.n_pot_params] = np.log(np.exp(opt_coeff_const_a[-1]) - 1)
+    c0_general[Ucg.n_pot_params + 1:] = -100
+
     Loss = loss.OneDimSpectralLoss(Ucg, kappa, psi_trajs, psi_trajs, softplus_coeff_a=True)
 
+    #opt_result = scipy.optimize.minimize(Loss.eval_loss, c0_general, method="CG", jac=Loss.eval_grad_loss, options=slv_opts, args=(-1))
 
-    #c0_3 = np.load(file_var_a_guess)
-    c0_2 = np.zeros(Ucg.n_pot_params + Ucg.n_noise_params)
-    c0_2[:Ucg.n_pot_params] = np.load(file_fixed_a_guess)
-    c0_2[Ucg.n_pot_params] = -5
-    c0_2[Ucg.n_pot_params + 1:] = -10
-    #c0_2[:Ucg.n_pot_params + 1] = np.load(file_const_a_guess)
-    c0_3 = np.copy(c0_2)
+    #opt_coeff = np.copy(opt_result.x)
+    #opt_coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(opt_result.x[Ucg.n_pot_params:]))
 
-    #alpha_U = np.logspace(-10, -4, 5)
-    #alpha_a = np.logspace(-10, -4, 5)
+    ##file_gen_a_soln = "EG_coeff_general_a_soln_from_const_guess.npy"
+    ##np.save(file_gen_a_soln, opt_coeff)
 
-    alpha_U = np.array([1e-8])
-    alpha_a = np.array([1e-8])
+    #Usln = Ucg.eval_U(xdata, opt_coeff)
+    #Usln -= Usln.min()
+
+    #Asln = Ucg.eval_a(xdata, opt_coeff)
+
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    #ax1.plot(xdata, Usln, label=r"Spectral-matching")
+    #ax1.plot(xdata, psi_pmf, 'k--', label=r"$-\ln P(\psi_2)$")
+    #ax1.set_xlabel(r"$\psi_2$")
+    #ax1.set_ylabel(r"Potential (k$_B$T)")
+    ##ax1.set_title("Cross-valid linear solution")
+
+    #ax2.plot(xdata, 100*Asln)
+    #ax2.set_xlabel(r"$\psi_2$")
+    #ax2.set_ylabel(r"$a(\psi_2)$ x100")
+    #fig.savefig("temp_EG1d_U_general_a.pdf")
+
+    #####################################################
+    # PERTURBED
+    #####################################################
+    pert_idx = 5
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    pert_coeffs = []
+    for i in range(10):
+        cstart = np.copy(c0_general)
+        # 1 to 3. All too large
+        #cstart[Ucg.n_pot_params + 1:] = 9*np.random.uniform(size=(Ucg.n_noise_params - 1)) - 10
+        #cstart[Ucg.n_pot_params + 1:] = 5*np.random.uniform(size=(Ucg.n_noise_params - 1)) - 12
+        #cstart[Ucg.n_pot_params + 1:] = 8*np.random.uniform(size=(Ucg.n_noise_params - 1)) - 20
+
+        # number 4
+        #cstart[Ucg.n_pot_params:] = -10
+        #cstart[Ucg.n_pot_params + 1:] = 8*np.random.uniform(size=(Ucg.n_noise_params - 1)) - 20
+
+        cstart[Ucg.n_pot_params:] = -20
+        cstart[Ucg.n_pot_params + 1:] = 4*np.random.uniform(size=(Ucg.n_noise_params - 1)) - 20
+
+        opt_result = scipy.optimize.minimize(Loss.eval_loss, cstart, method="CG", jac=Loss.eval_grad_loss, options=slv_opts, args=(-1))
+        sys.stdout.flush()
+
+        opt_coeff = np.copy(opt_result.x)
+        opt_coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(opt_result.x[Ucg.n_pot_params:]))
+
+        pert_coeffs.append([cstart, opt_coeff])
+
+        Usln = Ucg.eval_U(xdata, opt_coeff)
+        Usln -= Usln.min()
+        ax1.plot(xdata, Usln, label=r"Spectral-matching")
+
+        Asln = Ucg.eval_a(xdata, opt_coeff)
+        ax2.plot(xdata, 100*Asln)
+
+    #np.save("EG1d_perturbed_general_solutions.npy", np.array(pert_coeffs))
+    np.save("EG1d_perturbed_general_solutions_{}.npy".format(pert_idx), np.array(pert_coeffs))
+
+    ax1.plot(xdata, psi_pmf, 'k--', label=r"$-\ln P(\psi_2)$")
+    ax1.set_xlabel(r"$\psi_2$")
+    ax1.set_ylabel(r"Potential (k$_B$T)")
+
+    ax2.semilogy()
+    ax2.set_xlabel(r"$\psi_2$")
+    ax2.set_ylabel(r"$a(\psi_2)$ x100")
+    #fig.savefig("temp_EG1d_U_general_a_perturbed.pdf")
+    fig.savefig("temp_EG1d_U_general_a_perturbed_{}.pdf".format(pert_idx))
+
+    #pert_coeffs = np.load("EG1d_perturbed_general_solutions.npy")
+    pert_coeffs = np.load("EG1d_perturbed_general_solutions_{}.npy".format(pert_idx))
+
+    fig, axes = plt.subplots(len(pert_coeffs), 2, figsize=(10, 4*len(pert_coeffs)))
+    print("plotting solutions...")
+    for i in range(len(pert_coeffs)):
+        start_coeff1, opt_coeff = pert_coeffs[i]
+        ax1, ax2 = axes[i]
+
+        Usln = Ucg.eval_U(xdata, opt_coeff)
+        Usln -= Usln.min()
+        ax1.plot(xdata, Usln, label=r"Spectral-matching")
+
+        Asln = Ucg.eval_a(xdata, opt_coeff)
+        ax2.plot(xdata, 100*Asln)
+
+        start_coeff = np.copy(start_coeff1)
+        start_coeff[Ucg.n_pot_params:] = np.log(1 + np.exp(start_coeff1[Ucg.n_pot_params:]))
+
+        Usrt = Ucg.eval_U(xdata, start_coeff)
+        Usrt -= Usrt.min()
+        ax1.plot(xdata, Usrt, label=r"Spectral-matching")
+
+        Asrt = Ucg.eval_a(xdata, start_coeff)
+        ax2.plot(xdata, 100*Asrt)
+
+        ax1.plot(xdata, psi_pmf, 'k--', label=r"$-\ln P(\psi_2)$")
+        ax1.set_ylabel(r"Potential (k$_B$T)")
+
+        #ax2.semilogy()
+        ax2.set_ylabel(r"$a(\psi_2)$ x100")
+
+    ax1.set_xlabel(r"$\psi_2$")
+    ax2.set_xlabel(r"$\psi_2$")
+    #fig.savefig("EG1d_perturbed_general_a_solutions.pdf")
+    fig.savefig("EG1d_perturbed_general_a_solutions_{}.pdf".format(pert_idx))
 
     raise SystemExit
 
-    print("optimizing...")
-    #opt_soln = scipy.optimize.minimize(Loss.eval_loss, c0_3, method="CG", args=(0))
-    #popt = opt_soln.x
-    #popt[Ucg.n_pot_params:] = np.log(1 + np.exp(popt[Ucg.n_pot_params:]))
-    #plot_solution(Ucg, popt, psi_pmf, "test_EG1d_U_var_a_U")
+
+
+
+
 
     #############################################################
     # CROSS VALIDATE RIDGE REGREGRESSION PARAMETERS 
@@ -230,10 +409,6 @@ if __name__ == "__main__":
     raise SystemExit
 
     # basis set with constant, but variable diffusion coefficient
-    Ucg_const_a = iff.basis_library.OneDimensionalModel(1, beta, True, False)
-    Ucg_const_a.add_linear_potential()
-    Ucg_const_a.add_Gaussian_potential_basis(r0_basis, w_basis)
-    Ucg_const_a.add_Gaussian_test_functions(r0_test, w_test)
 
     # basis set with fixed diffusion coefficient
     Ucg_fixa = iff.basis_library.OneDimensionalModel(1, beta, True, True, a_c=a_c)
@@ -250,7 +425,6 @@ if __name__ == "__main__":
     c0 += 0.1*np.random.uniform(size=len(c0))
     if const_a:
         c0[-1] = a_c
-
 
 
     if not os.path.exists(file_const_a_guess):
