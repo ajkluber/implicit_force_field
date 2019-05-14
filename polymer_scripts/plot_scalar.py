@@ -24,7 +24,9 @@ def plot_scalar():
     kappa = 1./np.load("../msm_dists/tica_ti_ps.npy")[0]
 
     import scipy.optimize
-    popt, pcov = scipy.optimize.curve_fit(lambda x, m, b: m*x + b, psi_Gen_fj, -kappa*psi_fj, p0=(1,0))
+    xdata = -kappa*psi_fj
+    ydata = psi_Gen_fj
+    popt, pcov = scipy.optimize.curve_fit(lambda x, m, b: m*x + b, xdata, ydata, p0=(1,0))
 
     #plt.figure()
     #plt.plot(x, temp_Gen)
@@ -39,27 +41,30 @@ def plot_scalar():
     #plt.savefig("scalar_2.pdf")
     #plt.savefig("scalar_2.png")
 
-    x_Lfj = np.linspace(psi_Gen_fj.min(), psi_Gen_fj.max(), 100)
+    scale = 1000 
 
-    crr = np.corrcoef(psi_Gen_fj, -kappa*psi_fj)[0,1]
+    x_fit = np.linspace(xdata.min(), xdata.max(), 100)
+    y_fit = popt[0]*x_fit + popt[1]
+
+    crr = np.corrcoef(xdata, ydata)[0,1]
     plt.figure()
-    plt.plot(1000*psi_Gen_fj, -1000*kappa*psi_fj, 'o') 
+    plt.plot(scale*xdata, scale*ydata, 'o') 
     plt.annotate(r"$\rho = {:.3f}$".format(crr), xy=(0,0), xytext=(0.1, 0.5),
             xycoords="axes fraction", textcoords="axes fraction", fontsize=18)
-    plt.plot(1000*x_Lfj, 1000*(popt[0]*x_Lfj + popt[1]), color="k",
-            ls="--", label=r"$y = {:.3f} x + {:.3f}$".format(popt[0], 1000*popt[1]))
+    plt.plot(scale*x_fit, scale*y_fit, color="k",
+            ls="--", label=r"$y = {:.3f} x + {:.3f}$".format(popt[0], scale*popt[1]))
     plt.legend()
             
-    plt.xlabel(r"$\langle \psi_1 | \mathcal{L} f_j \rangle$ x1000")
-    plt.ylabel(r"$-\kappa_1\langle \psi_1 | f_j \rangle$ x1000")
+    plt.xlabel(r"$-\kappa_1\langle \psi_1 | f_j \rangle$ x" + str(scale))
+    plt.ylabel(r"$\langle \psi_1 | \mathcal{L} f_j \rangle$ x" + str(scale))
     plt.savefig("scatter_psi_Gen_fj_vs_psi_fj.pdf")
     plt.savefig("scatter_psi_Gen_fj_vs_psi_fj.png")
 
     plt.figure()
-    plt.plot(x, -1000*kappa*psi_fj, 'ko', label=r"$\langle \psi_1 | f_j \rangle$") 
-    plt.plot(x, 1000*psi_Gen_fj, 'ro', label=r"$\langle \psi_1 | \mathcal{L} f_j \rangle$") 
+    plt.plot(x, -scale*kappa*psi_fj, 'ko', label=r"$-\kappa_1\langle \psi_1 | f_j \rangle$") 
+    plt.plot(x, scale*psi_Gen_fj, 'ro', label=r"$\langle \psi_1 | \mathcal{L} f_j \rangle$") 
     plt.xlabel(r"$f_j$ center")
-    plt.ylabel(r"x1000")
+    plt.ylabel(r"x" + str(scale))
     plt.legend()
     #plt.ylabel(r"$\langle \psi_1 | f_j \rangle$")
     plt.savefig("scalar_psi_Gen_fj.pdf")

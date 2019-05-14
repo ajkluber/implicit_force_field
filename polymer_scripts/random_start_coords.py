@@ -18,8 +18,9 @@ import mdtraj as md
 
 import implicit_force_field.polymer_scripts.util as util
 
-def sample_starting_configurations(msm_savedir, n_samples, bin_file="psi1_mid_bin.npy",
-        hist_file="psi1_n.npy", plot=False, sample_by_dist=False):
+def sample_starting_configurations(msm_savedir, n_samples, sample_method,
+        bin_file="psi1_mid_bin.npy", hist_file="psi1_n.npy", plot=False, 
+        psi_bounds=None):
     """Sample starting configuations using the distribution"""
 
     cwd = os.getcwd()
@@ -42,6 +43,7 @@ def sample_starting_configurations(msm_savedir, n_samples, bin_file="psi1_mid_bi
     #    plt.savefig("cumulative_psi1.png")
 
     ticnames = glob.glob("run_*_TIC_1.npy")
+    rgnames = []
 
     n_frames_traj = []
     traj_idxs = []
@@ -56,6 +58,8 @@ def sample_starting_configurations(msm_savedir, n_samples, bin_file="psi1_mid_bi
         temp = np.load(tname)
         n_frames_traj.append(temp.shape[0])
         tic_trajs.append(temp)
+        
+        rgnames.append("run_{}/rg_{}.npy".format(idx1, idx2))
 
     # cumulative function of weights
     weights = [ n_frames_traj[i]/float(np.sum(n_frames_traj)) for i in range(len(n_frames_traj)) ]
@@ -67,15 +71,24 @@ def sample_starting_configurations(msm_savedir, n_samples, bin_file="psi1_mid_bi
     for i in range(n_samples):
         q1 = np.random.uniform()
 
-        if sample_by_dist:
+        if sample_method == "dist":
             for n in range(len(Cumul) - 1):
                 # use cumulative distribution function to 
                 # sample distribution
                 if (q1 > Cumul[n]) and (q1 <= Cumul[n + 1]):
                     pick_psi = mid_bin[n]
                     break
+        elif sample_method == "uniform":
+            if not (psi_bounds is None):
+                if i == 0:
+                    print("sampling psi uniformly within bounds: " + str(psi_bounds))
+                pick_psi = psi_bounds[0] + q1*(psi_bounds[-1] - psi_bounds[0])
+            else:
+                if i == 0:
+                    print("sampling psi uniformly")
+                pick_psi = mid_bin[0] + q1*(mid_bin[-1] - mid_bin[0])
         else:
-            pick_psi = mid_bin[0] + q1*(mid_bin[-1] - mid_bin[0])
+            print("Pick ")
 
         samp_vals.append(pick_psi)
 
@@ -151,9 +164,11 @@ def save_coords(saveas, xyz_ply, box_edge_nm):
 
 if __name__ == "__main__":
     msm_savedir = "../msm_dists"
+    sample_method = "uniform"
 
-    n_runs = 100
-    run_idxs = np.arange(1, n_runs + 1)
+    start_run_idx = 1
+    n_runs = 50
+    run_idxs = np.arange(start_run_idx, n_runs + start_run_idx)
 
     #box_edge = 5.9576
     cwd = os.getcwd()
@@ -170,7 +185,7 @@ if __name__ == "__main__":
         app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
 
     print("sampling starting configurations...")
-    ini_xyz, ini_idxs = sample_starting_configurations(msm_savedir, n_runs)
+    ini_xyz, ini_idxs = sample_starting_configurations(msm_savedir, n_runs, sample_method)
 
     print("saving...")
     for i in range(len(run_idxs)):
@@ -179,14 +194,16 @@ if __name__ == "__main__":
             print(rundir, end="\r")
         else:
             print(rundir)
+
         if not os.path.exists(rundir):
             os.mkdir(rundir)
 
         os.chdir(rundir)
-        np.save("ini_struct_idxs.npy", np.array(ini_idxs[i]))
+        if not os.path.exists("c25_noslv_min.pdb"):
+            np.save("ini_struct_idxs.npy", np.array(ini_idxs[i]))
 
-        shutil.copy("../../dum.pdb", "dum.pdb")
-        save_coords("c25_noslv_min.pdb", ini_xyz[i], box_edge_nm)
-        os.remove("dum.pdb")
+            shutil.copy("../../dum.pdb", "dum.pdb")
+            save_coords("c25_noslv_min.pdb", ini_xyz[i], box_edge_nm)
+            os.remove("dum.pdb")
         os.chdir("..")
 

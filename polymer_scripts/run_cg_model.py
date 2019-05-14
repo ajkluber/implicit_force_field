@@ -87,6 +87,8 @@ def add_containment_potential(msm_savedir, temp_cv_r0, cv_grid, dcv, Ucv, dUcv, 
 
     return cv_grid_ext, Ucv_ext
 
+
+
 def get_Upair_force(Ucg, coeff, r_vals):
     """Create pairwise potentials as tabulated functions"""
 
@@ -98,11 +100,11 @@ def get_Upair_force(Ucg, coeff, r_vals):
         for i in range(len(Up_vals)):
             table_vals[i,:] = Up_vals[i]
 
-        xvals = np.arange(len(Up_vals))
+        xvals = np.arange(len(Up_vals)).astype(float)
         yvals = r_vals
 
         Table_func = omm.Continuous2DFunction(len(xvals), len(yvals),
-            table_vals, xvals[0], xvals[-1], yvals[0], yvals[-1])
+                table_vals.flatten(), xvals[0], xvals[-1], yvals[0], yvals[-1])
 
         Up_force = omm.CustomCompoundBondForce(2, "Table(p_idx, distance(p1, p2))")
         Up_force.addPerBondParameter("p_idx")
@@ -112,6 +114,7 @@ def get_Upair_force(Ucg, coeff, r_vals):
 
         Up_force = omm.CustomCompoundBondForce(2, "Table(distance(p1, p2))")
         Up_force.addTabulatedFunction("Table", Table_func)
+
 
     if Ucg.pair_symmetry == "shared":
         # all pairs share same interaction
@@ -123,21 +126,20 @@ def get_Upair_force(Ucg, coeff, r_vals):
         # pairs with same sequence sep share same interaction
         for i in range(N - bcut):
             for j in range(i + bcut, N):
-                p_idx = np.abs(j - i)
-                Up_force.addBond([i, j], [p_idx])
+                p_idx = np.abs(j - i) - bcut
+                Up_force.addBond([i, j], p_idx)
 
     elif Ucg.pair_symmetry == "unique":
         # all pair have different interactions
         p_idx = 0
         for i in range(N - bcut):
             for j in range(i + bcut, N):
-                Up_force.addBond([i, j], [p_idx])
+                Up_force.addBond((i, j), (p_idx))
                 p_idx += 1
     else:
         raise ValueError("pair_symmetry must be: shared, seq_sep, unique. Gave:" + str(Ucg.pair_symmetry))
 
     return Up_force
-
 
 def get_Ucv_force(n_beads, Ucv_ext, cv_grid_ext, cv_coeff, cv_mean, feat_types, feat_idxs):
     feature_funcs = {"dist":"distance(p{}, p{})", "invdist":"(1/distance(p{}, p{}))", 
@@ -296,17 +298,15 @@ if __name__ == "__main__":
 
     if n_pair_gauss != -1:
         if not pair_symmetry in ["shared", "seq_sep", "unique"]:
-            raise ValueError("Must specificy pair_symmetry")
+            raise ValueError("--pair_symmetry must be: " + ", ".join(["shared", "seq_sep", "unique"]))
 
-    cg_savedir = util.test_Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
+    cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back, fix_exvol,
             bond_cutoff, using_cv, n_cv_basis_funcs=n_cv_basis_funcs,
             n_cv_test_funcs=n_cv_test_funcs, a_coeff=a_coeff,
             n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
             pair_symmetry=pair_symmetry)
 
     print(cg_savedir)
-    #print(str(os.path.exists(cg_savedir + "/" + args.coeff_file)))
-    #raise SystemExit
 
     Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg( msm_savedir,
             n_beads, M, beta, fix_back, fix_exvol, using_cv, using_D2,
@@ -413,9 +413,11 @@ if __name__ == "__main__":
     # Run production 
     ###################################################
     os.chdir(rundir)
+
     ini_pdb_file = name + "_noslv_min.pdb"
     if not os.path.exists(ini_pdb_file):
         shutil.copy("../../" + ini_pdb_file, ini_pdb_file)
+
 
     starttime = time.time()
     ref_pdb = app.PDBFile(ini_pdb_file)

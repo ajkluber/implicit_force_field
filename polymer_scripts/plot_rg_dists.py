@@ -2,13 +2,11 @@ import os
 import glob
 import argparse
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 import matplotlib as mpl
+mpl.use("Agg")
 mpl.rcParams['mathtext.fontset'] = 'cm'
 mpl.rcParams['mathtext.rm'] = 'serif'
+import matplotlib.pyplot as plt
 
 def funk():
     name = "c25"
@@ -48,28 +46,34 @@ def funk():
     psi_rg_corr = np.corrcoef(np.concatenate(psi_trajs), np.concatenate(rg_trajs))
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='.')
     parser.add_argument('name', type=str, help='Name.')
-    parser.add_argument('subdir', type=str, help='Name.')
+    parser.add_argument('--subdir', type=str, default=".", help='Name.')
     args = parser.parse_args()
 
     name = args.name
     subdir = args.subdir
 
+    # DEPRECATED Mar 2019
 
     #name = "c25"
     savedir = "rg_dist"
 
-    os.chdir(subdir)
-    if len(glob.glob("*/T_*")) > 0:
-        # We are in directory above temps.
-        Tpaths = glob.glob("*/T_*")
-    else:
-        Tpaths = glob.glob("T_*")
-
     cwd = os.getcwd()
+
+    if len(glob.glob(subdir + "/*/T_*/" + tname)) > 0:
+        # We are in directory above temps.
+        Tpaths = glob.glob(subdir + "*/T_*")
+    elif len(glob.glob(subdir + "/" + tname)) > 0:
+        Tpaths = []
+    elif len(glob.glob(subdir + "/T_*/" + tname)) > 0:
+        Tpaths = glob.glob(subdir + "/T_*")
+    else:
+        raise ValueError("Couldn't find trajectories")
+
+    if len(Tpaths) > 0:
+        pass
     for i in range(len(Tpaths)):
         os.chdir(Tpaths[i])
 

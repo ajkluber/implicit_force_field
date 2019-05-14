@@ -7,7 +7,7 @@ import simtk.openmm.app as app
 import simulation.openmm as sop
 import implicit_force_field as iff
 
-def test_Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
+def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
         using_cv, cv_lin_pot=None, n_cv_basis_funcs=None, n_cv_test_funcs=None,
         n_pair_gauss=None, pair_symmetry=None, a_coeff=None):
 
@@ -15,43 +15,6 @@ def test_Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
         cg_savedir = "TEST_Ucg_FM"
     elif method == "eigenpair":
         cg_savedir = "TEST_Ucg_EG"
-    else:
-        raise ValueError("Method must be force-matching or eigenpair")
-
-    if using_U0:
-        if fix_back:
-            cg_savedir += "_fixback"
-
-        if fix_exvol:
-            cg_savedir += "_fixexvol"
-    else:
-        cg_savedir += "_noU0"
-
-    if using_cv:
-        if (cv_lin_pot is None) or (cv_lin_pot == False):
-            cg_savedir += "_CV_{}_{}_{}".format(M, n_cv_basis_funcs, n_cv_test_funcs)
-        else:
-            cg_savedir += "_CV_lin_{}_{}_{}".format(M, n_cv_basis_funcs, n_cv_test_funcs)
-    else:
-        cg_savedir += "_{}_pair_{}".format(pair_symmetry, n_pair_gauss)
-
-    if using_U0 or not using_cv:
-        cg_savedir += "_bondcut_{}".format(bond_cutoff)
-
-    if method == "eigenpair" and (not a_coeff is None):
-        #cg_savedir += "_fixed_a"
-        cg_savedir += "_fixed_a_{:.2e}".format(a_coeff)
-
-    return cg_savedir 
-
-def Ucg_dirname(method, M, using_U0, fix_back, fix_exvol, bond_cutoff,
-        using_cv, cv_lin_pot=None, n_cv_basis_funcs=None, n_cv_test_funcs=None,
-        n_pair_gauss=None, pair_symmetry=None, a_coeff=None):
-
-    if method == "force-matching":
-        cg_savedir = "Ucg_FM"
-    elif method == "eigenpair":
-        cg_savedir = "Ucg_EG"
     else:
         raise ValueError("Method must be force-matching or eigenpair")
 
@@ -138,7 +101,7 @@ def create_polymer_Ucg(msm_savedir, n_beads, M, beta, fix_back, fix_exvol,
     # TODO: more modular treatment of test functions
     cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:n_cvs]
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
-    Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
+    Ucg.add_linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
     Ucg.gaussian_cv_test_funcs(cv_r0_test, cv_w_test)
 
     if using_cv:
@@ -193,6 +156,6 @@ def create_Ucg_collective_variable(msm_savedir, n_beads, n_cvs, beta,
     cv_coeff = np.load(msm_savedir + "/tica_eigenvects.npy")[:,:n_cvs]
     cv_mean = np.load(msm_savedir + "/tica_mean.npy")
 
-    Ucg.linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
+    Ucg.add_linear_collective_variables(["dist"], pair_idxs, cv_coeff, cv_mean)
 
     return Ucg

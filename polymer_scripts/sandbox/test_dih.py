@@ -37,35 +37,42 @@ if __name__ == "__main__":
     n_ang = len(dih_idxs)
 
     # need to define element types before reading in the topology
-    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
-    eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
-    app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
-    app.element.solvent = app.element.Element(201, "Solvent", "Sv", mass_slv)
+    #sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
+    #eps_slv, sigma_slv, B, r0, Delta, mass_slv = sop.build_ff.CS_water_params()
+    #app.element.polymer = app.element.Element(200, "Polymer", "Pl", mass_ply)
+    #app.element.solvent = app.element.Element(201, "Solvent", "Sv", mass_slv)
 
-    sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
-    r0, kb, theta0, ka = bonded_params
+    #sigma_ply, eps_ply, mass_ply, bonded_params = sop.build_ff.toy_polymer_params()
+    #r0, kb, theta0, ka = bonded_params
 
-    sigma_ply_nm = sigma_ply/unit.nanometer
-    r0_wca_nm = sigma_ply_nm*(2**(1./6))
-    eps_ply_kj = eps_ply/unit.kilojoule_per_mole
-    kb_kj = kb/(unit.kilojoule_per_mole/(unit.nanometer**2))
-    ka_kj = (ka/(unit.kilojoule_per_mole/(unit.radian**2)))
-    theta0_rad = theta0/unit.radian
-    r0_nm = r0/unit.nanometer
+    #sigma_ply_nm = sigma_ply/unit.nanometer
+    #r0_wca_nm = sigma_ply_nm*(2**(1./6))
+    #eps_ply_kj = eps_ply/unit.kilojoule_per_mole
+    #kb_kj = kb/(unit.kilojoule_per_mole/(unit.nanometer**2))
+    #ka_kj = (ka/(unit.kilojoule_per_mole/(unit.radian**2)))
+    #theta0_rad = theta0/unit.radian
+    #r0_nm = r0/unit.nanometer
 
-    Ucg = iff.basis_library.PolymerModel(n_beads)
-    Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
-    Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
-    Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=eps_ply_kj, fixed=True)
+    #Ucg = iff.basis_library.PolymerModel(n_beads)
+    #Ucg.harmonic_bond_potentials(r0_nm, scale_factor=kb_kj, fixed=True)
+    #Ucg.harmonic_angle_potentials(theta0_rad, scale_factor=ka_kj, fixed=True)
+    #Ucg.inverse_r12_potentials(sigma_ply_nm, scale_factor=eps_ply_kj, fixed=True)
 
-    traj = md.load("c25_traj_cent_1.dcd", top="c25_nosolv_min.pdb")
+    U = iff.basis_library.FunctionLibrary(25, 1./(0.0083145*300))
+
+    #traj = md.load("c25_traj_cent_1.dcd", top="c25_nosolv_min.pdb")
+    traj = md.load("c25_traj_1.dcd", top="c25_nosolv_min.pdb")
     phi_sim = md.compute_dihedrals(traj, dih_idxs)
+    
+    raise SystemExit
+
+
 
     coords = traj.xyz[:,(0,1,2,3)]
     xyz_flat = np.reshape(coords, (traj.n_frames, 12))
 
-    phi_fun = sympy.lambdify(Ucg.phi_ijkl_args, Ucg.phi_ijkl_sym, modules="numpy")
-    phi_fun2 = sympy.lambdify(Ucg.phi_ijkl_args, Ucg.phi_ijkl_sym_mdtraj, modules="numpy")
+    phi_fun = sympy.lambdify(U.phi_ijkl_args, U.phi_ijkl_sym, modules="numpy")
+    phi_fun2 = sympy.lambdify(U.phi_ijkl_args, U.phi_ijkl_sym_mdtraj, modules="numpy")
 
     phi_cg = phi_fun(*xyz_flat.T)
     phi_cg2 = phi_fun2(*xyz_flat.T)

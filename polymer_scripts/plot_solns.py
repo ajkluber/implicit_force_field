@@ -59,18 +59,135 @@ def compare_Ucv_for_free_a_coeff():
     fig.savefig("plots/compare_Ucg_ntest_nbasis.pdf")
     fig.savefig("plots/compare_Ucg_ntest_nbasis.png")
 
+def plot_Ucv_crossval_sigma():
+    # plot collective variable potentials
+    n_pair_gauss = None
+    lin_pot = True
+    fixed_a = True
+    using_U0 = True
+    using_cv = True
+    fix_back = True
+    fix_exvol = False
+    using_cv_r0 = False
+    using_D2 = False
+    n_cross_val_sets = 5
+    pair_symmetry = None
+    n_cv_test_funcs = 100
+    n_cv_basis_funcs = 40
+    bond_cutoff = 4
+
+    methods = ["force-matching", "eigenpair", "eigenpair"]
+    a_coeffs = [1, 0.027, 0.000135]
+
+    plt.figure()
+    for i in range(len(methods)):
+        cg_method = methods[i]
+        a_coeff = a_coeffs[i]
+
+        cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
+                fix_exvol, bond_cutoff, using_cv,
+                n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
+                a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
+                pair_symmetry=pair_symmetry)
+
+        print(cg_savedir)
+
+        Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg( msm_savedir,
+                n_beads, M, beta, fix_back, fix_exvol, using_cv, using_D2,
+                n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss, bond_cutoff,
+                cv_lin_pot=lin_pot, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
+
+        cv_grid = np.linspace(1.3*cv_r0_basis.min(), 1.2*cv_r0_basis.max(), 200)
+
+        coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
+        Ucv = Ucg.Ucv_values(coeff, cv_grid)
+        Ucv -= Ucv.min()
+
+        if cg_method == "force-matching":
+            label = "FM"
+        else:
+            label = r"EG $a = {:.2e}$".format(a_coeff)
+
+        plt.plot(cv_grid, beta*Ucv, label=label, lw=2)
+
+    #plt.legend(title=r"$n_{basis}$  $n_{test}$", fontsize=12)
+    plt.legend()
+    plt.xlabel("TIC1 $\psi_1$")
+    plt.ylabel(r"$U_{\mathrm{cv}}(\psi_1)$ (k$_B$T)")
+    plt.savefig("plots/Ucv_crossval_sigma.pdf")
+    plt.savefig("plots/Ucv_crossval_sigma.png")
+
+def plot_Upair_crossval_sigma():
+    # plot collective variable potentials
+    n_pair_gauss = 40
+    lin_pot = False
+    fixed_a = True
+    using_U0 = True
+    using_cv = False
+    fix_back = True
+    fix_exvol = False
+    using_cv_r0 = False
+    using_D2 = False
+    n_cross_val_sets = 5
+    pair_symmetry = "shared"
+    n_cv_test_funcs = 100
+    n_cv_basis_funcs = 40
+    bond_cutoff = 4
+
+    r_vals = np.linspace(0.1, 2, 300)
+
+    methods = ["force-matching", "eigenpair", "eigenpair"]
+    a_coeffs = [1, 0.027, 0.000135]
+    plt.figure()
+    for i in range(len(methods)):
+        cg_method = methods[i]
+        a_coeff = a_coeffs[i]
+
+        cg_savedir = util.Ucg_dirname(cg_method, M, using_U0, fix_back,
+                fix_exvol, bond_cutoff, using_cv,
+                n_cv_basis_funcs=n_cv_basis_funcs, n_cv_test_funcs=n_cv_test_funcs,
+                a_coeff=a_coeff, n_pair_gauss=n_pair_gauss, cv_lin_pot=lin_pot,
+                pair_symmetry=pair_symmetry)
+
+        print(cg_savedir)
+
+        Ucg, cv_r0_basis, cv_r0_test = util.create_polymer_Ucg( msm_savedir,
+                n_beads, M, beta, fix_back, fix_exvol, using_cv, using_D2,
+                n_cv_basis_funcs, n_cv_test_funcs, n_pair_gauss, bond_cutoff,
+                cv_lin_pot=lin_pot, a_coeff=a_coeff, pair_symmetry=pair_symmetry)
+
+
+        coeff = np.load(cg_savedir + "/rdg_fixed_sigma_cstar.npy")
+        Upair = Ucg.Upair_values(coeff, r_vals)[0]
+        #Upair -= Upair.min()
+
+        if cg_method == "force-matching":
+            label = "FM"
+        else:
+            label = r"EG $a = {:.2e}$".format(a_coeff)
+
+        plt.plot(r_vals, beta*Upair, label=label, lw=2)
+
+    plt.xlim(0.25, 1.25)
+    plt.ylim(-1, 3)
+    plt.legend()
+    plt.xlabel("$r$ (nm)")
+    plt.ylabel(r"$U_{\mathrm{pair}}(r)$ (k$_B$T)")
+    plt.savefig("plots/Upair_crossval_sigma.pdf")
+    plt.savefig("plots/Upair_crossval_sigma.png")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("name", type=str)
     parser.add_argument("msm_savedir", type=str)
-    parser.add_argument("--keep_dims", type=int, default=5)
+    #parser.add_argument("--keep_dims", type=int, default=5)
     parser.add_argument("--plot_d", action="store_true")
     parser.add_argument("--plot_U", action="store_true")
     args = parser.parse_args()
 
     name = args.name
     msm_savedir = args.msm_savedir
-    keep_dims = args.keep_dims
+    #keep_dims = args.keep_dims
     plot_d = args.plot_d
     plot_U = args.plot_U
 
@@ -80,20 +197,12 @@ if __name__ == "__main__":
     T = 300
     kb = 0.0083145
     beta = 1./(kb*T)
-    n_pair_gauss = 10
-    M = 1   # number of eigenvectors to use
-
-    using_U0 = True
-    using_cv = True
-    fix_back = True
-    fix_exvol = False
-    a_coeff = True
-
-    using_cv_r0 = False
-    using_D2 = False
-    n_cross_val_sets = 5
+    M = 1   
 
     msm_savedir = "msm_dists"
+
+    #plot_Upair_crossval_sigma()
+    plot_Ucv_crossval_sigma()
 
     #if plot_U:
     #    n_test = 100

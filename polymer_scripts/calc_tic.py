@@ -41,6 +41,44 @@ def local_density_feature(traj, pairs, r0, widths):
     #rho_i = np.sum(0.5*(np.tanh((r0 - r)/widths) + 1), axis=1).astype(np.float32).reshape(-1,1)
     return rho_i.astype(np.float32)
 
+
+def plot_corr():
+
+    import glob
+    import numpy as np
+    import matplotlib as mpl
+    mpl.use("Agg")
+    mpl.rcParams['mathtext.fontset'] = 'cm'
+    mpl.rcParams['mathtext.rm'] = 'serif'
+    import matplotlib.pyplot as plt
+
+    import pyemma.coordinates as coor
+
+    fnames = glob.glob("run*TIC_1.npy")
+    tics = [ np.load(fname) for fname in fnames ]
+    lags = np.array([0, 1, 10, 100, 500, 1000, 1500, 5000, 8000])
+    Deltat = 0.2
+
+    c00 = coor.covariance_lagged(tics, c00=True, c0t=False, ctt=False, lag=0).C00_
+
+    cov_vs_tau = [ coor.covariance_lagged(tics, c0t=True, lag=lag) for lag in lags[1:] ]
+    corr = np.array([c00[0][0]] + [ x.C0t_[0][0] for x in cov_vs_tau ])
+
+    import scipy.optimize
+    line = lambda x, a: -a*x
+
+    popt, pcov = scipy.optimize.curve_fit(line, Deltat*lags, np.log(corr), p0=1/294.)
+
+    yfit = np.exp(-popt[0]*Deltat*lags)
+    t2 = 1/popt[0]
+
+    plt.figure()
+    plt.plot(Deltat*lags, corr)
+    plt.plot(Deltat*lags, yfit, 'k--', label=r"$t_2 = {}$".format(t2))
+    plt.legend()
+    plt.savefig("psi_2_acf.pdf")
+    plt.savefig("psi_2_acf.png")
+
 def plot_tica_stuff():
     # calculate TICA at different lagtimes
     #tica_lags = np.array(range(1, 11) + [12, 15, 20, 25, 50, 75, 100, 150, 200])
